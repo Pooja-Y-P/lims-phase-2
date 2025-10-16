@@ -1,15 +1,22 @@
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { User } from "../types"; // Using the centralized User type from src/types/index.ts
+import { User } from "../types";
 import { Mail, Lock, ArrowRight, HelpCircle, Loader2 } from "lucide-react";
+import { api, ENDPOINTS } from "../api/config";
 
-// The relative path is now correct because Vite's proxy will handle forwarding it to your backend.
-const ENDPOINTS = {
-  USERS: {
-    LOGIN: '/api/users/login',
-  },
-};
+interface LoginResponse {
+  user_id: number;
+  username: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string | null;
+  token: string;
+  customer_id?: number | null;
+}
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -20,8 +27,6 @@ const Login: React.FC = () => {
   const [success, setSuccess] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
-  // 1. Show a loading spinner until the app has checked for an existing session.
-  // This is crucial to prevent the login form from flashing for already logged-in users.
   if (!bootstrapped) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100">
@@ -30,13 +35,12 @@ const Login: React.FC = () => {
     );
   }
 
-  // 2. If the session check is done and a user exists, redirect them immediately.
   if (user) {
     const path = {
       admin: '/admin',
       engineer: '/engineer',
       customer: '/customer',
-    }[user.role] || '/'; // Fallback to root just in case
+    }[user.role] || '/';
     return <Navigate to={path} replace />;
   }
 
@@ -49,56 +53,42 @@ const Login: React.FC = () => {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    setError("");
+    setSuccess("");
     setLoading(true);
 
     try {
-      // 🛑 FIX: Use URLSearchParams to create 'application/x-www-form-urlencoded' data.
-      // FastAPI's OAuth2PasswordRequestForm expects this format and expects the email 
-      // field to be named 'username'.
       const formData = new URLSearchParams();
-      formData.append('username', form.email); // Map frontend 'email' to backend 'username'
+      formData.append('username', form.email);
       formData.append('password', form.password);
 
-      const res = await fetch(ENDPOINTS.USERS.LOGIN, {
-        method: "POST",
+      const response = await api.post<LoginResponse>(ENDPOINTS.USERS.LOGIN, formData, {
         headers: {
-          // You can explicitly set this header, but using URLSearchParams in the body
-          // often handles it automatically and correctly.
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: formData.toString(), // Send the URL-encoded string
       });
 
-      if (!res.ok) {
-        // Try to parse the specific error `detail` from FastAPI.
-        const errorData = await res.json().catch(() => ({ detail: "Invalid email or password." }));
-        
-        // Handle common FastAPI error structure for displaying a clear message
-        const errorMessage = errorData.detail 
-          ? (Array.isArray(errorData.detail) ? errorData.detail[0].msg : errorData.detail)
-          : "Login failed. Please check your credentials.";
-
-        setError(errorMessage);
-        setLoading(false);
+      const loginData = response.data;
+      
+      if (!loginData || !loginData.user_id) {
+        setError("Failed to parse user profile data from response.");
         return;
       }
 
-      // The response from your backend is the user object directly.
-      const userInfo: User = await res.json();
-      
-      if (!userInfo || !userInfo.user_id) {
-          setError("Failed to parse user profile data from response.");
-          setLoading(false);
-          return;
-      }
+      // Convert the login response to the User type
+      const userInfo: User = {
+        user_id: loginData.user_id,
+        customer_id: loginData.customer_id || null,
+        username: loginData.username,
+        email: loginData.email,
+        full_name: loginData.full_name,
+        role: loginData.role as any,
+        token: loginData.token,
+        is_active: loginData.is_active,
+      };
 
       setSuccess("Login successful! Redirecting...");
-      
-      // Update the global state via the AuthProvider.
       login(userInfo);
 
-      // Redirect based on role after a short delay for the success message to be visible.
       setTimeout(() => {
         const path = {
           admin: '/admin',
@@ -108,19 +98,16 @@ const Login: React.FC = () => {
         navigate(path, { replace: true });
       }, 500);
 
-    } catch (err) {
-      // This catches network errors (e.g., server is down) or fetch API errors.
-      setError("A network error occurred. Please try again.");
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || "Login failed. Please check your credentials.";
+      setError(errorMessage);
     } finally {
-      // Only stop the loader if an error occurred. On success, the page navigates away,
-      // so we don't need to visually stop the loader.
       if (!success) {
         setLoading(false);
       }
     }
   };
 
-  // Your UI is rendered only if the user is not logged in.
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
@@ -150,7 +137,7 @@ const Login: React.FC = () => {
               />
             </div>
 
-             <div className="relative">
+            <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
                 <Lock className="h-5 w-5" />
               </span>
@@ -178,8 +165,16 @@ const Login: React.FC = () => {
               </button>
             </div>
 
-            {error && (<div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center"><p className="text-red-800 text-sm">{error}</p></div>)}
-            {success && (<div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center"><p className="text-green-800 text-sm">{success}</p></div>)}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                <p className="text-red-800 text-sm">{error}</p>
+              </div>
+            )}
+            {success && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <p className="text-green-800 text-sm">{success}</p>
+              </div>
+            )}
 
             <button
               type="submit"

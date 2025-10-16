@@ -1,22 +1,22 @@
-# backend/routes/inward_router.py
+# backend/routes/inward_routes.py
 
 from typing import List
-from fastapi import APIRouter, Depends, status, HTTPException, Request, Body, Form, UploadFile
+from fastapi import APIRouter, Depends, status, HTTPException, Request, Body, Form
 from sqlalchemy.orm import Session
 import json
 
 # Local imports
 from backend.db import get_db
 from backend.services.inward_services import InwardService
-from backend.schemas.inward_schemas import InwardCreate, InwardResponse, InwardEquipmentCreate
+from backend.schemas.inward_schemas import InwardCreate, InwardResponse
 from backend.auth import get_current_user
-from backend.schemas.user_schemas import User as UserSchema
+from backend.schemas.user_schemas import UserResponse
 
 ALLOWED_ROLES = ["staff", "admin", "engineer"] 
 
 router = APIRouter(prefix="/staff/inwards", tags=["Inwards"])
 
-def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
+def check_staff_role(current_user: UserResponse = Depends(get_current_user)):
     """Dependency to authorize user roles."""
     if current_user.role not in ALLOWED_ROLES:
         raise HTTPException(
@@ -35,10 +35,7 @@ def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
     name="Create New Inward with Photos"
 )
 async def create_inward_with_photos(
-    # --- CRITICAL FIX: The raw Request object MUST come first if followed by Form(...) fields ---
     request: Request,
-    
-    # All arguments below have default values provided by `Form(...)` or `Depends(...)`
     srf_no: int = Form(...),
     date: str = Form(...),
     customer_dc_date: str = Form(...),
@@ -46,24 +43,33 @@ async def create_inward_with_photos(
     receiver: str = Form(...),
     equipment_list: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(check_staff_role)
+    current_user: UserResponse = Depends(check_staff_role)
 ):
-    """
-    Receives multipart/form-data to create an inward record, its equipment, and save photos.
-    """
+    """Receives multipart/form-data to create an inward record, its equipment, and save photos."""
     try:
-        # Note: equipment_list is a JSON string from FormData, which must be parsed
-        # in the service layer after the InwardCreate schema is validated.
+        # Parse equipment list from JSON string
+        try:
+            equipment_data = json.loads(equipment_list)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+                detail="Invalid equipment_list JSON format"
+            )
+
+        # Create InwardCreate with parsed equipment data
         inward_data = InwardCreate(
             srf_no=srf_no,
             date=date,
             customer_dc_date=customer_dc_date,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list # Passed as string to be handled by service
+            equipment_list=equipment_data  # Pass parsed data directly
         )
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Form data validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, 
+            detail=f"Form data validation error: {e}"
+        )
 
     # Process files from the form data
     form_data = await request.form()
@@ -74,7 +80,6 @@ async def create_inward_with_photos(
                 index = int(key.split("_")[1])
                 if index not in photos_by_index:
                     photos_by_index[index] = []
-                # Check if the value is an UploadFile instance
                 if hasattr(value, 'filename'): 
                     photos_by_index[index].append(value)
             except (ValueError, IndexError):
@@ -90,7 +95,7 @@ async def create_inward_with_photos(
     
     response_data = InwardResponse.from_orm(db_inward)
     response_data.receiver_name = db_inward.receiver.full_name if db_inward.receiver else "N/A"
-    response_data.customer_name = db_inward.customer.name if db_inward.customer else db_inward.customer_details
+    response_data.customer_name = db_inward.customer.customer_details if db_inward.customer else db_inward.customer_details
     
     return response_data
 
@@ -98,14 +103,17 @@ async def create_inward_with_photos(
 # 2. GET / (Get All Inward Records)
 # -----------------------
 @router.get("/", response_model=List[InwardResponse], name="Get All Inward Records")
-def get_all_inward_records(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
+def get_all_inward_records(
+    db: Session = Depends(get_db), 
+    current_user: UserResponse = Depends(check_staff_role)
+):
     inward_service = InwardService(db)
     all_inwards = inward_service.get_all_inwards()
     response_list = []
     for db_inward in all_inwards:
         response_data = InwardResponse.from_orm(db_inward)
         response_data.receiver_name = db_inward.receiver.full_name if db_inward.receiver else "N/A"
-        response_data.customer_name = db_inward.customer.name if db_inward.customer else db_inward.customer_details
+        response_data.customer_name = db_inward.customer.customer_details if db_inward.customer else db_inward.customer_details
         response_list.append(response_data)
     return response_list
 
@@ -113,12 +121,16 @@ def get_all_inward_records(db: Session = Depends(get_db), current_user: UserSche
 # 3. GET /{inward_id} (Get Inward by ID)
 # -----------------------
 @router.get("/{inward_id}", response_model=InwardResponse, name="Get Inward by ID")
-def get_inward_by_id(inward_id: int, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
+def get_inward_by_id(
+    inward_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: UserResponse = Depends(check_staff_role)
+):
     inward_service = InwardService(db)
     db_inward = inward_service.get_inward_by_id(inward_id)
     response_data = InwardResponse.from_orm(db_inward)
     response_data.receiver_name = db_inward.receiver.full_name if db_inward.receiver else "N/A"
-    response_data.customer_name = db_inward.customer.name if db_inward.customer else db_inward.customer_details
+    response_data.customer_name = db_inward.customer.customer_details if db_inward.customer else db_inward.customer_details
     return response_data
 
 # -----------------------
@@ -129,7 +141,7 @@ def send_inspection_report(
     inward_id: int,
     email: str = Body(..., embed=True),
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(check_staff_role)
+    current_user: UserResponse = Depends(check_staff_role)
 ):
     inward_service = InwardService(db)
     db_inward = inward_service.get_inward_by_id(inward_id)

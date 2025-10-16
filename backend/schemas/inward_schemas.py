@@ -1,7 +1,7 @@
 # backend/schemas/inward_schemas.py
 from datetime import date
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Json
+from pydantic import BaseModel, ConfigDict
 
 # --- Inward Equipment Schemas ---
 class InwardEquipmentCreate(BaseModel):
@@ -45,8 +45,7 @@ class InwardCreate(BaseModel):
     customer_dc_date: str
     customer_details: str
     receiver: str
-    equipment_list: Json[List[InwardEquipmentCreate]]
-
+    equipment_list: List[InwardEquipmentCreate]  # Changed from Json[List[...]] to List[...]
 
 
 class InwardResponse(BaseModel):

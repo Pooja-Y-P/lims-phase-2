@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import {
   Wrench,
   FileText,
@@ -10,19 +10,19 @@ import {
 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { UserInfo } from "../auth/AuthProvider"; // Corrected import path
+import { User } from "../types"; // Use the existing User type
 
 // --- Import the real, functional components ---
 import { InwardForm } from "../components/InwardForm";
 import { SrfManagement } from "../components/SrfManagement";
-import { SrfForm } from "../components/SrfForm"; // Corrected import path
+import { SrfForm } from "../components/SrfForm";
 
 // --- Placeholders for pages you haven't built yet ---
 const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-lg">Certificates Page Content</div>;
 const DeviationPage = () => <div className="p-8 bg-white rounded-2xl shadow-lg">Deviation View Page Content</div>;
 
 interface EngineerPortalProps {
-  user: UserInfo | null;
+  user: User | null;
   onLogout: () => void;
 }
 
@@ -53,7 +53,7 @@ const ActionButton: React.FC<{
 
 // The Main EngineerPortal Layout Component
 const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
-  const username = user?.name || user?.email || "Engineer";
+  const username = user?.full_name || user?.email || "Engineer";
 
   // This is the component for the main dashboard view at `/engineer`
   const EngineerDashboard = () => {

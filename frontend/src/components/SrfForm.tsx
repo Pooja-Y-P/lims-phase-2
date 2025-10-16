@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 // Import the centralized api instance and endpoints
@@ -36,8 +36,6 @@ interface EquipmentItem {
   serial_no: string;
   quantity: number;
 }
-
-// REMOVED: const API_BASE = "http://localhost:8000/api";
 
 export const SrfForm = () => {
   const { srfId } = useParams<{ srfId: string }>();
@@ -118,9 +116,7 @@ export const SrfForm = () => {
   if (!srf) return <div className="p-10 text-center">SRF not found.</div>;
 
   return (
-    // The JSX remains the same, as it was already using the correct state variables.
     <div className="bg-white p-6 md:p-8 rounded-lg shadow-md border max-w-6xl mx-auto my-8">
-      {/* ... existing correct JSX for the form ... */}
       <div className="flex justify-between items-start mb-5">
         <p className="text-xs text-gray-500">Ref: NEPL / {srf.srf_no}</p>
         <p className="text-sm font-medium border rounded-md px-3 py-1 bg-gray-50">

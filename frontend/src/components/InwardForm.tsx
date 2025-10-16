@@ -6,27 +6,6 @@ import { generateSRFNo, generateBarcode, generateQRCode } from '../utils/idGener
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
 import { api, ENDPOINTS } from '../api/config';
 
-// --- Helper Functions ---
-const redirectToLogin = () => {
-  console.log("Session expired or invalid. Redirecting to login...");
-  localStorage.removeItem('token');
-  alert("Your session has expired. Please log in again.");
-  window.location.href = '/login';
-};
-
-const getAuthHeader = (isFormData = false) => {
-  const token = localStorage.getItem('token');
-  if (!token) return { headers: {} };
-  
-  const headers: any = { 'Authorization': `Bearer ${token}` };
-  // When isFormData is true, we DO NOT set the Content-Type header.
-  // The browser will automatically set it to 'multipart/form-data' with the correct boundary.
-  if (!isFormData) {
-    headers['Content-Type'] = 'application/json';
-  }
-  return { headers };
-};
-
 interface InwardResponse {
   inward_id: number;
   srf_no: number;
@@ -64,7 +43,6 @@ export const InwardForm: React.FC = () => {
   const [lastSavedInwardId, setLastSavedInwardId] = useState<number | null>(null);
   const [lastSavedSrfNo, setLastSavedSrfNo] = useState<string>('');
   
-  // Derived state to check if the form is ready for submission
   const isFormReady = !isLoading && formData.srf_no !== 'Loading...';
 
   useEffect(() => { initializeForm(); }, []);
@@ -73,7 +51,12 @@ export const InwardForm: React.FC = () => {
 
   const initializeForm = () => {
     try {
-      if (!localStorage.getItem('token')) { redirectToLogin(); return; }
+      const token = localStorage.getItem('token');
+      if (!token) { 
+        alert("Session expired. Please log in again.");
+        navigate('/login');
+        return; 
+      }
       const srfNo = generateSRFNo();
       setFormData({ 
           srf_no: srfNo, 
@@ -182,8 +165,6 @@ export const InwardForm: React.FC = () => {
         return;
     }
 
-    if (!localStorage.getItem('token')) { redirectToLogin(); setIsLoading(false); return; }
-
     try {
       if (!formData.receiver || !formData.customer_details) {
         throw new Error('Please fill in all required basic information fields.');
@@ -210,7 +191,11 @@ export const InwardForm: React.FC = () => {
         }
       });
       
-      const response = await api.post<InwardResponse>(ENDPOINTS.INWARDS, submissionData, getAuthHeader(true));
+      const response = await api.post<InwardResponse>(ENDPOINTS.INWARDS, submissionData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
       
       showMessage('success', `Inward form SRF ${response.data.srf_no} saved successfully!`);
       setShowEmailModal(true);
@@ -220,7 +205,11 @@ export const InwardForm: React.FC = () => {
 
     } catch (error: unknown) {
         if (isSimpleAxiosError(error)) {
-            if (error.response?.status === 401) { showMessage('error', 'Session Expired.'); redirectToLogin(); return; }
+            if (error.response?.status === 401) { 
+              showMessage('error', 'Session Expired.'); 
+              navigate('/login');
+              return; 
+            }
             if (error.response?.status === 403) { showMessage('error', 'Permission Denied.'); return; }
             if (error.response?.status === 422) {
                 const errorDetail = error.response?.data?.detail;
@@ -248,11 +237,10 @@ export const InwardForm: React.FC = () => {
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportEmail || !lastSavedInwardId) return;
-    if (!localStorage.getItem('token')) { redirectToLogin(); return; }
 
     try {
       const sendReportEndpoint = ENDPOINTS.INWARD_REPORT(lastSavedInwardId);
-      await api.post(sendReportEndpoint, { email: reportEmail }, getAuthHeader());
+      await api.post(sendReportEndpoint, { email: reportEmail });
       showMessage('success', `Report sent to ${reportEmail}!`);
       
       setShowEmailModal(false);
@@ -261,7 +249,11 @@ export const InwardForm: React.FC = () => {
       setLastSavedSrfNo('');
     } catch (error: unknown) {
         if (isSimpleAxiosError(error)) {
-            if (error.response?.status === 401) { showMessage('error', 'Session Expired.'); redirectToLogin(); return; }
+            if (error.response?.status === 401) { 
+              showMessage('error', 'Session Expired.'); 
+              navigate('/login');
+              return; 
+            }
             const errorMessage = error.response?.data?.detail || error.message || 'Failed to send report.';
             showMessage('error', errorMessage);
         } else {
