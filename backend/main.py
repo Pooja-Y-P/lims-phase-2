@@ -7,6 +7,9 @@ from backend.db import Base, engine
 # Import routers
 from backend.routes import user_routes
 from backend.routes import inward_router
+from backend.routes import customer_routes
+
+# Import dependencies
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -25,6 +28,7 @@ app.add_middleware(
 # Include routers with the /api prefix
 app.include_router(user_routes.router, prefix="/api")
 app.include_router(inward_router.router, prefix="/api")
+app.include_router(customer_routes.router, prefix="/api")
 
 @app.get("/")
 def root():

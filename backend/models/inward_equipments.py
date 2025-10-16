@@ -1,5 +1,3 @@
-# backend/models/inward_equipment.py
-
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
@@ -10,7 +8,6 @@ class InwardEquipment(Base):
     __tablename__ = "inward_equipments"
 
     inward_eqp_id = Column(Integer, primary_key=True)
-    # This should now point to the singular 'inward' table
     inward_id = Column(Integer, ForeignKey("inward.inward_id", ondelete="CASCADE"))
     
     nepl_id = Column(String(100), unique=True, nullable=False, index=True)
@@ -29,13 +26,20 @@ class InwardEquipment(Base):
     nextage_contract_reference = Column(String(255))
     
     # --- START: THE FIX ---
-    # Change from String(255) to Text to allow for long base64 strings
     qr_code = Column(Text)
     barcode = Column(Text)
     # --- END: THE FIX ---
+    
+    # ✅ Newly added column
+    remarks = Column(Text)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True))
 
     inward = relationship("Inward", back_populates="equipments")
-    srf_equipment = relationship("SrfEquipment", back_populates="inward_equipment", uselist=False, cascade="all, delete-orphan")
+    srf_equipment = relationship(
+        "SrfEquipment",
+        back_populates="inward_equipment",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )

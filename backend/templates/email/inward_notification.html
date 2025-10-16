@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #f9f9f9; }
+        .header { font-size: 24px; font-weight: 600; color: #1a237e; margin-bottom: 20px; border-bottom: 2px solid #3949ab; padding-bottom: 10px; }
+        .button { display: inline-block; padding: 12px 25px; margin: 20px 0; font-size: 16px; font-weight: 500; color: #ffffff; background-color: #3949ab; text-decoration: none; border-radius: 5px; }
+        .footer { font-size: 12px; color: #777; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">{{ title }}</h1>
+        <p>Dear Customer,</p>
+        <p>This is a notification that new equipment under Service Request Form (SRF) No: <strong>{{ srf_no }}</strong> requires your inspection and remarks.</p>
+        <p>Please log in to our customer portal to add your comments by clicking the button below:</p>
+        <a href="{{ remarks_link }}" class="button">Add Remarks Now</a>
+        <p>If you have any questions, please feel free to contact us.</p>
+        <p>Thank you,</p>
+        <p><strong>The Nextage LIMS Team</strong></p>
+        <div class="footer">
+            <p>You are receiving this email because your account is associated with this SRF.</p>
+        </div>
+    </div>
+</body>
+</html>
