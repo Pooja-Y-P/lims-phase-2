@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #fef9f3; /* Lighter background */
+        }
+        .header {
+            font-size: 24px;
+            font-weight: 600;
+            color: #d9534f; /* A more urgent red */
+            margin-bottom: 20px;
+            border-bottom: 2px solid #d9534f;
+            padding-bottom: 10px;
+        }
+        .warning {
+            background-color: #f2dede;
+            border-left: 4px solid #d9534f;
+            padding: 12px;
+            margin: 20px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 25px;
+            margin: 20px 0;
+            font-size: 16px;
+            font-weight: 500;
+            color: #ffffff;
+            background-color: #d9534f;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .footer {
+            font-size: 12px;
+            color: #777;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">{{ title }}</h1>
+        <p>Dear {{ engineer_name }},</p>
+        
+        <div class="warning">
+            <strong>⚠️ URGENT ATTENTION REQUIRED</strong>
+            <p>You have <strong>{{ pending_count }}</strong> unsent first inspection report(s) that are now overdue.</p>
+        </div>
+        
+        <!-- This message is now supplied by the Python code -->
+        <p>{{ message }}</p>
+        
+        <p>Please log in to your engineer portal immediately to send these reports to the customers:</p>
+        <a href="{{ portal_link }}" class="button">Access Engineer Portal</a>
+        
+        <p><strong>Why this is important:</strong></p>
+        <ul>
+            <li>Customers are waiting for their inspection reports.</li>
+            <li>Delays affect our service quality and customer satisfaction.</li>
+            <li>Timely communication is essential for maintaining trust.</li>
+        </ul>
+        
+        <p>If you need assistance, please contact your supervisor immediately.</p>
+        
+        <p>Best regards,</p>
+        <p><strong>LIMS System</strong></p>
+        
+        <div class="footer">
+            <p>This is an automated reminder. Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -26,10 +26,13 @@ class CustomerPortalService:
         stmt = select(Invitation).where(Invitation.token == token)
         invitation = self.db.scalars(stmt).first()
 
-        if not invitation or invitation.is_used or invitation.expires_at < datetime.utcnow():
+        if not invitation or invitation.used_at or invitation.expires_at < datetime.utcnow():
             raise HTTPException(status_code=400, detail="Invalid or expired invitation token.")
         
-        user_to_activate = self.db.get(User, invitation.user_to_activate_id)
+        # Find user by email since invitation doesn't have user_to_activate_id
+        user_stmt = select(User).where(User.email == invitation.email)
+        user_to_activate = self.db.scalars(user_stmt).first()
+        
         if not user_to_activate:
              raise HTTPException(status_code=404, detail="Associated user account not found.")
 
@@ -37,8 +40,8 @@ class CustomerPortalService:
         user_to_activate.password_hash = pwd_context.hash(new_password)
         user_to_activate.is_active = True
         
-        # Invalidate the invitation
-        invitation.is_used = True
+        # Mark invitation as used
+        invitation.used_at = datetime.utcnow()
         
         self.db.commit()
 
@@ -89,7 +92,7 @@ class CustomerPortalService:
     def submit_equipment_remarks(self, inward_id: int, remarks_data: RemarksSubmissionRequest, customer_id: int):
         """
         Updates remarks for multiple equipment items within a specific inward.
-        Performs an authorization check to ensure the inward belongs to the customer.
+        Changes inward status to 'reviewed' after remarks submission.
         """
         # Step 1: Authorize and fetch the inward
         inward = self.get_customer_inward_details(inward_id, customer_id)
@@ -107,9 +110,12 @@ class CustomerPortalService:
         if len(equipments) != len(equipment_ids_to_update):
             raise HTTPException(status_code=400, detail="One or more equipment IDs are invalid for this inward.")
 
-        # Step 4: Update remarks and inward status
+        # Step 4: Update remarks and change inward status to 'reviewed'
         for eqp in equipments:
             eqp.remarks = equipment_ids_to_update.get(eqp.inward_eqp_id)
         
-        inward.status = 'remarks_added'
+        # Change status to 'reviewed' so engineers can fill SRF forms
+        inward.status = 'reviewed'
+        inward.updated_at = datetime.utcnow()
+        
         self.db.commit()

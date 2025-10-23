@@ -2,23 +2,23 @@
 
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-# 🛑 CORRECTED IMPORTS: Need String, Text to define column types
 from sqlalchemy import ForeignKey, String, Text 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from backend.db import Base 
 
-# 🛑 Import the necessary token models
 from .password_reset_token import PasswordResetToken
 from .refresh_token import RefreshToken
 
 # Use TYPE_CHECKING to prevent circular imports during runtime
 if TYPE_CHECKING:
-    # Ensure correct singular/plural naming convention for imports (e.g., 'customer' not 'customers')
     from .customers import Customer 
     from .inward import Inward
     from .notifications import Notification
     from .invitations import Invitation
+    # --- ADD THIS IMPORT ---
+    # This is needed for the new relationship's type hint
+    from .delayed_email_tasks import DelayedEmailTask
 
 
 class User(Base):
@@ -30,22 +30,11 @@ class User(Base):
     customer_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("customers.customer_id", ondelete="SET NULL")
     )
-    
-    # 🚀 FIX: Replaced text("VARCHAR(150)") with String(150)
     username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
-    
-    # 🚀 FIX: Replaced text("VARCHAR(320)") with String(320)
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
-    
-    # 🚀 FIX: Replaced text("TEXT") with Text
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    
-    # 🚀 FIX: Replaced text("VARCHAR(255)") with String(255)
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
-    
-    # 🚀 FIX: Replaced text("VARCHAR(50)") with String(50)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
-    
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     
     # --- Timestamps ---
@@ -53,7 +42,6 @@ class User(Base):
         server_default=func.now(), 
         nullable=False
     )
-    # onupdate is typically sufficient for updated_at, no need for server_default here.
     updated_at: Mapped[Optional[datetime]] = mapped_column(onupdate=func.now()) 
 
     # --- Relationships ---
@@ -99,5 +87,15 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     
+    # --- THIS IS THE MISSING RELATIONSHIP ---
+    # 7. Delayed Email Tasks (One-to-Many)
+    # This creates the necessary 'created_delayed_tasks' attribute that SQLAlchemy was looking for.
+    created_delayed_tasks: Mapped[List["DelayedEmailTask"]] = relationship(
+        "DelayedEmailTask",
+        foreign_keys="[DelayedEmailTask.created_by]",
+        back_populates="creator",
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self) -> str:
         return f"User(id={self.user_id}, username='{self.username}', role='{self.role}')"
