@@ -1,26 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ENDPOINTS } from '../api/config';
-import { Loader2, AlertTriangle, FileText, ChevronRight, ArrowLeft } from 'lucide-react'; // Import ArrowLeft
+import { Loader2, AlertTriangle, FileText, ChevronRight, ArrowLeft } from 'lucide-react';
 
-// --- Type Definition for the data we expect from the API list endpoint ---
+
 interface InwardSummary {
   inward_id: number;
-  srf_id: number; // The ID needed to open the SRF form
+  srf_id: number | null; 
   srf_no: string;
   date: string;
   customer_details: string;
   status: 'created' | 'reviewed' | 'approved_by_customer' | 'rejected_by_customer' | 'inward_completed';
 }
 
-// --- Helper to get authorization token ---
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');
   if (!token) return { headers: {} };
   return { headers: { Authorization: `Bearer ${token}` } };
 };
 
-// --- Custom Error Checker ---
+
 interface SimpleAxiosError {
   isAxiosError: true;
   response?: { data?: any; status?: number; };
@@ -30,8 +29,7 @@ function isSimpleAxiosError(error: unknown): error is SimpleAxiosError {
   return typeof error === 'object' && error !== null && (error as any).isAxiosError === true;
 }
 
-// --- Main Component ---
-export const SrfManagement: React.FC = () => {
+const EnhancedSrfManagement: React.FC = () => {
   const [inwards, setInwards] = useState<InwardSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +41,11 @@ export const SrfManagement: React.FC = () => {
       setError(null);
       try {
         const response = await api.get<InwardSummary[]>(ENDPOINTS.INWARDS, getAuthHeader());
-        setInwards(response.data);
+        
+        const filteredInwards = response.data.filter(inward => 
+            inward.status === 'created' || inward.status === 'reviewed'
+        );
+        setInwards(filteredInwards);
       } catch (err: unknown) {
         if (isSimpleAxiosError(err)) {
           setError(err.response?.data?.detail || err.message);
@@ -59,16 +61,16 @@ export const SrfManagement: React.FC = () => {
     fetchInwards();
   }, []);
   
-  // --- Navigation Handlers ---
-  const handleOpenSrf = (srfId: number) => {
-    navigate(`/engineer/srf/${srfId}`);
+    const handleOpenSrfForm = (inwardId: number) => {
+   
+    navigate(`/engineer/create-srf/${inwardId}`);
   };
 
   const handleBackToPortal = () => {
-    navigate('/engineer'); // Navigates to the main Engineer Portal dashboard
+    navigate('/engineer'); 
   };
 
-  // --- UI Helper for rendering status badges ---
+  
   const getStatusBadge = (status: InwardSummary['status']) => {
     const statusStyles: { [key: string]: string } = {
       created: 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -181,7 +183,7 @@ export const SrfManagement: React.FC = () => {
                 </div>
                 <div className="mt-4 pt-4 border-t">
                   <button
-                    onClick={() => handleOpenSrf(inward.srf_id)}
+                    onClick={() => handleOpenSrfForm(inward.inward_id)}
                     className="w-full flex items-center justify-center bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                   >
                     Open SRF Form
@@ -202,3 +204,6 @@ export const SrfManagement: React.FC = () => {
     </div>
   );
 };
+
+// FIX 2: Added a default export
+export default EnhancedSrfManagement;

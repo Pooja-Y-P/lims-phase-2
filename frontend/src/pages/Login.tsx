@@ -1,5 +1,5 @@
 import React, { useState, ChangeEvent, FormEvent } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { User } from "../types";
 import { Mail, Lock, ArrowRight, HelpCircle, Loader2 } from "lucide-react";
@@ -12,14 +12,13 @@ interface LoginResponse {
   full_name: string | null;
   role: string;
   is_active: boolean;
-  created_at: string;
-  updated_at: string | null;
   token: string;
   customer_id?: number | null;
 }
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, user, bootstrapped } = useAuth();
 
   const [form, setForm] = useState({ email: "", password: "" });
@@ -52,9 +51,9 @@ const Login: React.FC = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     setError("");
     setSuccess("");
-    setLoading(true);
 
     try {
       const formData = new URLSearchParams();
@@ -62,19 +61,10 @@ const Login: React.FC = () => {
       formData.append('password', form.password);
 
       const response = await api.post<LoginResponse>(ENDPOINTS.USERS.LOGIN, formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
       const loginData = response.data;
-      
-      if (!loginData || !loginData.user_id) {
-        setError("Failed to parse user profile data from response.");
-        return;
-      }
-
-      // Convert the login response to the User type
       const userInfo: User = {
         user_id: loginData.user_id,
         customer_id: loginData.customer_id || null,
@@ -89,22 +79,26 @@ const Login: React.FC = () => {
       setSuccess("Login successful! Redirecting...");
       login(userInfo);
 
+      const params = new URLSearchParams(location.search);
+      const redirectPath = params.get('redirect');
+
       setTimeout(() => {
-        const path = {
-          admin: '/admin',
-          engineer: '/engineer',
-          customer: '/customer',
-        }[userInfo.role] || '/';
-        navigate(path, { replace: true });
+        if (redirectPath) {
+          navigate(redirectPath, { replace: true });
+        } else {
+          const defaultPath = {
+            admin: '/admin',
+            engineer: '/engineer',
+            customer: '/customer',
+          }[userInfo.role] || '/';
+          navigate(defaultPath, { replace: true });
+        }
       }, 500);
 
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || "Login failed. Please check your credentials.";
       setError(errorMessage);
-    } finally {
-      if (!success) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
@@ -119,6 +113,7 @@ const Login: React.FC = () => {
             <p className="mt-2 text-gray-600">Sign in to your account</p>
           </div>
 
+          {/* --- THIS IS THE RESTORED JSX THAT FIXES ALL WARNINGS --- */}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">

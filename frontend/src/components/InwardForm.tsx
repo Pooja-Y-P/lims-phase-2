@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Eye, Barcode, Save, FileText, Loader2, ScanLine, X, Mail, ArrowLeft, Paperclip, Camera } from 'lucide-react';
+import { Plus, Trash2, Eye, Barcode, Save, FileText, Loader2, ScanLine, X, Mail, ArrowLeft, Paperclip, Camera, Clock, Send } from 'lucide-react';
 import { InwardForm as InwardFormType, EquipmentDetail } from '../types/inward';
 import { generateSRFNo, generateBarcode, generateQRCode } from '../utils/idGenerators';
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
@@ -51,12 +51,6 @@ export const InwardForm: React.FC = () => {
 
   const initializeForm = () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) { 
-        alert("Session expired. Please log in again.");
-        navigate('/login');
-        return; 
-      }
       const srfNo = generateSRFNo();
       setFormData({ 
           srf_no: srfNo, 
@@ -96,7 +90,6 @@ export const InwardForm: React.FC = () => {
       const newFiles = Array.from(e.target.files);
       setEquipmentList(currentList => {
         const updatedList = [...currentList];
-        if (!updatedList[index]) return currentList;
         const currentEquipment = updatedList[index];
         const existingPhotos = currentEquipment.photos || [];
         updatedList[index] = { ...currentEquipment, photos: [...existingPhotos, ...newFiles] };
@@ -108,7 +101,6 @@ export const InwardForm: React.FC = () => {
   const handleRemovePhoto = (eqIndex: number, photoIndex: number) => {
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
-      if (!updatedList[eqIndex]) return currentList;
       const currentEquipment = updatedList[eqIndex];
       const updatedPhotos = currentEquipment.photos?.filter((_, pIndex) => pIndex !== photoIndex);
       updatedList[eqIndex] = { ...currentEquipment, photos: updatedPhotos };
@@ -144,7 +136,6 @@ export const InwardForm: React.FC = () => {
       });
     } catch (error) {
       console.error("Code generation failed:", error);
-      showMessage('error', `Failed to generate codes for row ${index + 1}.`);
     } finally {
       setLoadingCodes(prev => ({ ...prev, [index]: false }));
     }
@@ -159,22 +150,18 @@ export const InwardForm: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (formData.srf_no === 'Loading...' || isNaN(Number(formData.srf_no))) {
-        showMessage('error', 'SRF Number is not ready. Please wait a moment and try again.');
+    if (formData.srf_no === 'Loading...') {
+        showMessage('error', 'SRF Number is not ready. Please wait.');
         setIsLoading(false);
         return;
     }
 
     try {
-      if (!formData.receiver || !formData.customer_details) {
-        throw new Error('Please fill in all required basic information fields.');
-      }
-      if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) {
-        throw new Error('Please fill in required fields for all equipment (Material Desc, Make, Model).');
-      }
+      if (!formData.receiver || !formData.customer_details) throw new Error('Please fill in all required basic information fields.');
+      if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) throw new Error('Please fill in Material Desc, Make, and Model for all equipment.');
 
       const submissionData = new FormData();
-      submissionData.append('srf_no', Number(formData.srf_no).toString());
+      submissionData.append('srf_no', String(formData.srf_no));
       submissionData.append('date', formData.date);
       submissionData.append('customer_dc_date', formData.customer_dc_date);
       submissionData.append('receiver', formData.receiver);
@@ -184,46 +171,26 @@ export const InwardForm: React.FC = () => {
       submissionData.append('equipment_list', JSON.stringify(equipmentDataForJson));
 
       equipmentList.forEach((equipment, index) => {
-        if (equipment.photos) {
-          equipment.photos.forEach(photoFile => {
-            submissionData.append(`photos_${index}`, photoFile, photoFile.name);
-          });
-        }
+        equipment.photos?.forEach(photoFile => {
+          submissionData.append(`photos_${index}`, photoFile, photoFile.name);
+        });
       });
       
       const response = await api.post<InwardResponse>(ENDPOINTS.INWARDS, submissionData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       
       showMessage('success', `Inward form SRF ${response.data.srf_no} saved successfully!`);
       setShowEmailModal(true);
       setLastSavedInwardId(response.data.inward_id);
-      setLastSavedSrfNo(response.data.srf_no.toString());
+      setLastSavedSrfNo(String(response.data.srf_no));
       initializeForm();
 
     } catch (error: unknown) {
         if (isSimpleAxiosError(error)) {
-            if (error.response?.status === 401) { 
-              showMessage('error', 'Session Expired.'); 
-              navigate('/login');
-              return; 
-            }
-            if (error.response?.status === 403) { showMessage('error', 'Permission Denied.'); return; }
-            if (error.response?.status === 422) {
-                const errorDetail = error.response?.data?.detail;
-                let errorMessage = "Validation Error. Please check your inputs.";
-                if (typeof errorDetail === 'string') {
-                    errorMessage = errorDetail;
-                } else if (Array.isArray(errorDetail) && errorDetail[0]?.msg) {
-                    const field = errorDetail[0].loc?.slice(1).join(' -> ') || 'field';
-                    errorMessage = `Error in ${field}: ${errorDetail[0].msg}`;
-                }
-                showMessage('error', errorMessage);
-                return;
-            }
-            showMessage('error', error.response?.data?.detail || error.message || 'Failed to save form.');
+            const detail = error.response?.data?.detail;
+            const errorMessage = Array.isArray(detail) ? detail[0].msg : detail || 'An error occurred while saving.';
+            showMessage('error', errorMessage);
         } else if (error instanceof Error) {
             showMessage('error', error.message);
         } else {
@@ -237,77 +204,48 @@ export const InwardForm: React.FC = () => {
   const handleSendEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportEmail || !lastSavedInwardId) return;
-
     try {
-      const sendReportEndpoint = ENDPOINTS.INWARD_REPORT(lastSavedInwardId);
-      await api.post(sendReportEndpoint, { email: reportEmail });
-      showMessage('success', `Report sent to ${reportEmail}!`);
-      
+      await api.post(ENDPOINTS.INWARD_REPORT(lastSavedInwardId), { email: reportEmail, send_later: false });
+      showMessage('success', `Report for SRF ${lastSavedSrfNo} sent to ${reportEmail}!`);
       setShowEmailModal(false);
       setReportEmail('');
-      setLastSavedInwardId(null);
-      setLastSavedSrfNo('');
-    } catch (error: unknown) {
-        if (isSimpleAxiosError(error)) {
-            if (error.response?.status === 401) { 
-              showMessage('error', 'Session Expired.'); 
-              navigate('/login');
-              return; 
-            }
-            const errorMessage = error.response?.data?.detail || error.message || 'Failed to send report.';
-            showMessage('error', errorMessage);
-        } else {
-            showMessage('error', 'An unknown error occurred while sending report.');
-        }
+    } catch (error: any) {
+        showMessage('error', error.response?.data?.detail || 'Failed to send report.');
     }
   };
 
-  const renderCodeViewerModal = () => {
-    if (!viewingCodesFor) return null;
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" onClick={() => setViewingCodesFor(null)}>
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-md m-4 p-6 relative animate-fade-in" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => setViewingCodesFor(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700"><X size={24} /></button>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Codes for Equipment</h2>
-          <p className="text-lg text-blue-600 font-semibold mb-6">{viewingCodesFor.nepl_id}</p>
-          <div className="space-y-6">
-            <div className="text-center">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Barcode</h3>
-              {viewingCodesFor.barcode ? <div className="bg-white p-4 border rounded-md inline-block"><img src={viewingCodesFor.barcode} alt={`Barcode for ${viewingCodesFor.nepl_id}`} className="h-20" /></div> : <p className="text-gray-500">Not generated</p>}
-              <p className="text-gray-700 mt-2 font-mono">{viewingCodesFor.nepl_id}</p>
-            </div>
-            <div className="text-center">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">QR Code</h3>
-              {viewingCodesFor.qr_code ? <div className="bg-white p-4 border rounded-md inline-block"><img src={viewingCodesFor.qr_code} alt={`QR Code for ${viewingCodesFor.nepl_id}`} className="h-40 w-40" /></div> : <p className="text-gray-500">Not generated</p>}
-            </div>
-          </div>
-          <div className="mt-8 text-center"><button onClick={() => setViewingCodesFor(null)} className="bg-blue-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-700">Close</button></div>
-        </div>
-      </div>
-    );
+  const handleSendLater = async () => {
+    if (!lastSavedInwardId) return;
+    try {
+      await api.post(ENDPOINTS.INWARD_REPORT(lastSavedInwardId), { send_later: true });
+      showMessage('success', `Report for SRF ${lastSavedSrfNo} is scheduled. Manage it in the Engineer Portal.`);
+      setShowEmailModal(false);
+    } catch (error: any) {
+      showMessage('error', error.response?.data?.detail || 'Failed to schedule email.');
+    }
   };
 
   const renderEmailModal = () => {
     if (!showEmailModal) return null;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm" onClick={() => setShowEmailModal(false)}>
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-8 relative transform transition-all duration-300 scale-100" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => setShowEmailModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"><X size={24} /></button>
-          <div className="flex items-center space-x-4 mb-6 border-b pb-4">
-            <Mail className="text-blue-600" size={36} />
-            <h2 className="text-2xl font-bold text-gray-800">Send Inspection Report</h2>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={() => setShowEmailModal(false)}>
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-8 relative" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => setShowEmailModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button>
+          <div className="flex items-center space-x-4 mb-4"><Mail className="text-blue-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">What's Next?</h2></div>
+          <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> is saved. Choose an option to send the first inspection report.</p>
+          <div className="space-y-6">
+            <form onSubmit={handleSendEmail} className="p-4 border rounded-lg bg-gray-50">
+              <label htmlFor="reportEmail" className="block text-sm font-medium text-gray-700 mb-2">Option 1: Send Immediately</label>
+              <div className="flex gap-2">
+                <input id="reportEmail" type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} required placeholder="Enter customer's email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" />
+                <button type="submit" disabled={!reportEmail} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 font-bold"><Send size={18} /><span>Send Now</span></button>
+              </div>
+            </form>
+            <div className="p-4 border rounded-lg bg-gray-50">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Option 2: Schedule for Later</label>
+              <button type="button" onClick={handleSendLater} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Add to Scheduled Tasks (Send within 24 Hours)</span></button>
+            </div>
           </div>
-          <p className="text-gray-600 mb-6">The Inward Form has been saved. Enter an email to send the initial *Inspection Report* for SRF **{lastSavedSrfNo}** to the customer.</p>
-          <form onSubmit={handleSendEmail} className="space-y-4">
-            <div>
-              <label htmlFor="reportEmail" className="block text-sm font-medium text-gray-700 mb-1">Customer Email Address</label>
-              <input id="reportEmail" type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} required placeholder="e.g., recipient@company.com" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" />
-            </div>
-            <div className="flex justify-end space-x-3 pt-4">
-              <button type="button" onClick={() => setShowEmailModal(false)} className="px-6 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 font-medium">Later</button>
-              <button type="submit" disabled={!reportEmail} className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 font-bold transition-colors"><Mail size={20} /><span>Send Report</span></button>
-            </div>
-          </form>
         </div>
       </div>
     );
@@ -316,14 +254,8 @@ export const InwardForm: React.FC = () => {
   return (
     <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100">
       <div className="flex items-center justify-between border-b pb-4 mb-6">
-        <div className="flex items-center space-x-4">
-          <FileText className="h-8 w-8 text-blue-600" />
-          <h1 className="text-3xl font-bold text-gray-900">Inward Form</h1>
-        </div>
-        <button type="button" onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold transition-colors">
-          <ArrowLeft size={20} />
-          <span>Back to Portal</span>
-        </button>
+        <div className="flex items-center space-x-4"><FileText className="h-8 w-8 text-blue-600" /><h1 className="text-3xl font-bold text-gray-900">Inward Form</h1></div>
+        <button type="button" onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold"><ArrowLeft size={20} /><span>Back to Portal</span></button>
       </div>
 
       {message && (<div className={`my-4 px-4 py-3 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-800 border' : 'bg-red-50 text-red-800 border'}`}>{message.text}</div>)}
@@ -332,14 +264,15 @@ export const InwardForm: React.FC = () => {
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Basic Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border">
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Date *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date *</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} required className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver name" className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div>
-            <div className="md:col-span-1"><label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-500">(Auto)</span></label><input type="text" value={formData.srf_no} disabled className="w-full px-4 py-2 bg-gray-200 text-gray-700 border border-gray-300 rounded-lg" /></div>
-            <div className="md:col-span-2 lg:col-span-3"><label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label><input type="text" name="customer_details" value={formData.customer_details} onChange={handleFormChange} required placeholder="Enter company name and address" className="w-full px-4 py-2 border border-gray-300 rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Date *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date *</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div className="md:col-span-1"><label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-500">(Auto)</span></label><input type="text" value={formData.srf_no} disabled className="w-full px-4 py-2 bg-gray-200 rounded-lg" /></div>
+            <div className="md:col-span-2 lg:col-span-3"><label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label><input type="text" name="customer_details" value={formData.customer_details} onChange={handleFormChange} required placeholder="Enter company name and address" className="w-full px-4 py-2 border rounded-lg" /></div>
           </div>
         </div>
 
+        {/* --- THIS IS THE RESTORED JSX --- */}
         <div className="mb-8">
           <div className="mb-4"><h2 className="text-xl font-semibold text-gray-800">Equipment Details</h2></div>
           <div className="overflow-x-auto border rounded-lg">
@@ -379,25 +312,7 @@ export const InwardForm: React.FC = () => {
                     <td className="p-2 border"><input type="text" value={equipment.nextage_ref || ''} onChange={(e) => handleEquipmentChange(index, 'nextage_ref', e.target.value)} className="w-full px-2 py-1 border rounded" /></td>
                     <td className="p-2 border"><textarea rows={1} value={equipment.inspe_notes || ''} onChange={(e) => handleEquipmentChange(index, 'inspe_notes', e.target.value)} className="w-full px-2 py-1 border rounded" /></td>
                     <td className="p-2 border align-top">
-                      <div className="flex flex-col gap-2">
-                        <label htmlFor={`photo-upload-${index}`} className="flex items-center justify-center gap-2 w-full cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-3 py-1.5 rounded-md text-xs">
-                          <Camera size={14} /> Attach
-                        </label>
-                        <input id={`photo-upload-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handlePhotoChange(index, e)} />
-                        {equipment.photos && equipment.photos.length > 0 && (
-                          <div className="flex flex-col gap-1.5 mt-1">
-                            {equipment.photos.map((photo, photoIndex) => (
-                              <div key={photoIndex} className="flex items-center justify-between bg-gray-50 p-1 rounded text-xs">
-                                <span className="flex items-center gap-1.5 text-gray-600 truncate">
-                                  <Paperclip size={12} />
-                                  <span className="truncate" title={photo.name}>{photo.name}</span>
-                                </span>
-                                <button type="button" onClick={() => handleRemovePhoto(index, photoIndex)} className="text-red-500 hover:text-red-700 p-0.5 rounded-full"><X size={14} /></button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      <div className="flex flex-col gap-2"><label htmlFor={`photo-upload-${index}`} className="flex items-center justify-center gap-2 w-full cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-3 py-1.5 rounded-md text-xs"><Camera size={14} /> Attach</label><input id={`photo-upload-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handlePhotoChange(index, e)} />{equipment.photos && equipment.photos.length > 0 && (<div className="flex flex-col gap-1.5 mt-1">{equipment.photos.map((photo, photoIndex) => (<div key={photoIndex} className="flex items-center justify-between bg-gray-50 p-1 rounded text-xs"><span className="flex items-center gap-1.5 text-gray-600 truncate"><Paperclip size={12} /><span className="truncate" title={photo.name}>{photo.name}</span></span><button type="button" onClick={() => handleRemovePhoto(index, photoIndex)} className="text-red-500 hover:text-red-700 p-0.5 rounded-full"><X size={14} /></button></div>))}</div>)}</div>
                     </td>
                     <td className="p-2 border align-middle text-center">{loadingCodes[index] ? (<div className="flex justify-center items-center text-gray-400"><Loader2 className="animate-spin" size={20} /></div>) : equipment.barcode && equipment.qr_code ? (<button type="button" onClick={() => setViewingCodesFor(equipment)} className="bg-indigo-500 text-white px-3 py-1 rounded-md text-xs hover:bg-indigo-600 flex items-center justify-center w-full"><ScanLine size={14} className="mr-1" /> View</button>) : (<span className="text-gray-400 text-xs italic">Auto-gen</span>)}</td>
                     <td className="p-2 border sticky right-0 z-10 bg-white group-hover:bg-gray-50">
@@ -416,26 +331,38 @@ export const InwardForm: React.FC = () => {
             <button type="button" onClick={() => setShowStickerSheet(true)} className="flex items-center space-x-2 bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800 font-semibold"><Barcode size={20} /><span>Print Stickers</span></button>
           </div>
         </div>
+
         <div className="flex justify-end pt-6 border-t mt-8">
-          <button type="submit" disabled={!isFormReady} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg">
-            <Save size={20} />
+          <button
+            type="submit"
+            disabled={!isFormReady || isLoading}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
             <span>{isLoading ? 'Saving...' : 'Save Inward Form'}</span>
           </button>
         </div>
       </form>
 
       {selectedEquipment && <EquipmentDetailsModal equipment={selectedEquipment} onClose={() => setSelectedEquipment(null)} />}
-      {renderCodeViewerModal()}
+      {viewingCodesFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60" onClick={() => setViewingCodesFor(null)}>
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md m-4 p-6 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setViewingCodesFor(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700"><X size={24} /></button>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Codes for Equipment</h2>
+            <p className="text-lg text-blue-600 font-semibold mb-6">{viewingCodesFor.nepl_id}</p>
+            <div className="space-y-6">
+              <div className="text-center"><h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Barcode</h3>{viewingCodesFor.barcode ? <div className="bg-white p-4 border rounded-md inline-block"><img src={viewingCodesFor.barcode} alt={`Barcode for ${viewingCodesFor.nepl_id}`} className="h-20" /></div> : <p className="text-gray-500">Not generated</p>}<p className="text-gray-700 mt-2 font-mono">{viewingCodesFor.nepl_id}</p></div>
+              <div className="text-center"><h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">QR Code</h3>{viewingCodesFor.qr_code ? <div className="bg-white p-4 border rounded-md inline-block"><img src={viewingCodesFor.qr_code} alt={`QR Code for ${viewingCodesFor.nepl_id}`} className="h-40 w-40" /></div> : <p className="text-gray-500">Not generated</p>}</div>
+            </div>
+            <div className="mt-8 text-center"><button onClick={() => setViewingCodesFor(null)} className="bg-blue-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-700">Close</button></div>
+          </div>
+        </div>
+      )}
       {renderEmailModal()}
       {showStickerSheet && (
         <div className="fixed inset-0 z-50 bg-white p-6 overflow-auto print:overflow-visible print:p-0">
-          <div className="flex justify-between items-center mb-6 print:hidden">
-            <h2 className="text-2xl font-bold">Printable Sticker Sheet</h2>
-            <div className="space-x-2">
-              <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Print</button>
-              <button onClick={() => setShowStickerSheet(false)} className="bg-gray-300 hover:bg-gray-400 text-black px-4 py-2 rounded">Close</button>
-            </div>
-          </div>
+          <div className="flex justify-between items-center mb-6 print:hidden"><h2 className="text-2xl font-bold">Printable Sticker Sheet</h2><div className="space-x-2"><button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">Print</button><button onClick={() => setShowStickerSheet(false)} className="bg-gray-300 hover:bg-gray-400 text-black px-4 py-2 rounded">Close</button></div></div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 print:grid-cols-4">
             {equipmentList.map((item, index) => (
               <div key={index} className="border border-gray-400 rounded p-3 text-center text-xs break-inside-avoid print:break-inside-avoid">

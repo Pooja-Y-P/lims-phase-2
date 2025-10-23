@@ -11,13 +11,30 @@ export const ENDPOINTS = {
     ALL_USERS: `/users`,  
     LOGOUT: `/users/logout`,
   },
-  CUSTOMERS: `/customers/`,
-  SRFS: `/srfs/`,
-  INWARDS: `/staff/inwards/`, 
+  
+  // --- FIX: Removed trailing slashes from base paths ---
+  CUSTOMERS: `/customers`,
+  SRFS: `/staff/srfs`,
+  INWARDS: `/staff/inwards`, // The main fix is here
+  
+  // Dynamic endpoints are fine as they are
   INWARD_REPORT: (id: number) => `/staff/inwards/${id}/send-report`, 
-  JOBS: `/jobs/`,
-  DEVIATIONS: `/deviations/`,
-  NOTIFICATIONS: `/notifications/`,
+  
+  JOBS: `/jobs`,
+  DEVIATIONS: `/deviations`,
+  NOTIFICATIONS: `/notifications`,
+  
+  AUTH: {
+    FORGOT_PASSWORD: `/auth/forgot-password`,
+    RESET_PASSWORD: `/auth/reset-password`,
+    VERIFY_TOKEN: (token: string) => `/auth/verify-reset-token/${token}`,
+  },
+  PORTAL: {
+    ACTIVATE: `/portal/activate-account`,
+    INWARDS: `/portal/inwards`,
+    INWARD_DETAILS: (id: number) => `/portal/inwards/${id}`,
+    SUBMIT_REMARKS: (id: number) => `/portal/inwards/${id}/remarks`,
+  }
 };
 
 export const api = axios.create({
@@ -46,8 +63,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Optional: Add a check to avoid redirect loops if already on the login page
+      if (window.location.pathname !== '/login') {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

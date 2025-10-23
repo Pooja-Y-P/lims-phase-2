@@ -7,6 +7,7 @@ import Login from '../pages/Login';
 import AdminDashboard from '../pages/AdminDashboard';
 import EngineerPortal from '../pages/EngineerPortal';
 import CustomerPortal from '../pages/CustomerPortal';
+import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
 
 const RootRedirect = () => {
   const { user, bootstrapped } = useAuth();
@@ -32,13 +33,15 @@ const RootRedirect = () => {
 };
 
 const AppRoutes = () => {
-  // Corrected: Get both user and logout
   const { logout, user } = useAuth();
 
   return (
     <Routes>
       {/* --- Public Routes --- */}
       <Route path="/login" element={<Login />} />
+      
+      {/* --- Customer Remarks Portal (Public with token authentication) --- */}
+      <Route path="/portal/inwards/:inwardId/remarks" element={<CustomerRemarksPortal />} />
       
       {/* --- Protected Routes --- */}
       <Route 
@@ -53,7 +56,6 @@ const AppRoutes = () => {
         path="/engineer/*"
         element={
           <RequireAuth allowedRoles={['engineer']}>
-            {/* Corrected: Pass the 'user' prop down */}
             <EngineerPortal user={user} onLogout={logout} />
           </RequireAuth>
         } 
