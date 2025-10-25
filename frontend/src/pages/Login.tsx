@@ -1,7 +1,7 @@
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { User } from "../types";
+import { User, UserRole } from "../types"; // Assuming UserRole is in your types
 import { Mail, Lock, ArrowRight, HelpCircle, Loader2 } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 
@@ -60,18 +60,20 @@ const Login: React.FC = () => {
       formData.append('username', form.email);
       formData.append('password', form.password);
 
-      const response = await api.post<LoginResponse>(ENDPOINTS.USERS.LOGIN, formData, {
+      const response = await api.post<LoginResponse>(ENDPOINTS.AUTH.LOGIN, formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
       const loginData = response.data;
+      
+      // --- FIX: Removed the 'created_at' property which is not in the User type definition ---
       const userInfo: User = {
         user_id: loginData.user_id,
         customer_id: loginData.customer_id || null,
         username: loginData.username,
         email: loginData.email,
         full_name: loginData.full_name,
-        role: loginData.role as any,
+        role: loginData.role as UserRole, 
         token: loginData.token,
         is_active: loginData.is_active,
       };
@@ -98,7 +100,8 @@ const Login: React.FC = () => {
     } catch (err: any) {
       const errorMessage = err.response?.data?.detail || "Login failed. Please check your credentials.";
       setError(errorMessage);
-      setLoading(false);
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -113,7 +116,6 @@ const Login: React.FC = () => {
             <p className="mt-2 text-gray-600">Sign in to your account</p>
           </div>
 
-          {/* --- THIS IS THE RESTORED JSX THAT FIXES ALL WARNINGS --- */}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">

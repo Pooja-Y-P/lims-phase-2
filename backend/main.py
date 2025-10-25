@@ -11,6 +11,7 @@ from backend.routes import inward_router
 from backend.routes import customer_routes
 from backend.routes import srf_router
 from backend.routes import password_reset_router
+from backend.routes import invitation_routes
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -35,6 +36,7 @@ app.include_router(inward_router.router, prefix="/api")
 app.include_router(customer_routes.router, prefix="/api")
 app.include_router(srf_router.router, prefix="/api")
 app.include_router(password_reset_router.router, prefix="/api")
+app.include_router(invitation_routes.router, prefix="/api")
 
 @app.get("/")
 def root():

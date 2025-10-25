@@ -1,22 +1,25 @@
 # backend/routes/user_routes.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordRequestForm 
-from typing import List 
+from fastapi.security import OAuth2PasswordRequestForm
+from typing import List
+# --- FIX 1: Import 'timezone' from the datetime module ---
+from datetime import datetime, timedelta, timezone
 
 from backend.schemas.user_schemas import (
-    UserResponse, 
-    CurrentUserResponse, 
+    UserResponse,
+    CurrentUserResponse,
     UserListResponse
 )
 from backend.services.user_services import (
-    authenticate_user, 
-    get_all_users, 
+    authenticate_user,
+    get_all_users,
     get_user_by_id
 )
-from backend.db import get_db 
+from backend.services.email_services import send_welcome_email
+from backend.db import get_db
 from backend.core import security
 from backend.auth import get_current_user
 
@@ -25,13 +28,15 @@ router = APIRouter(
     tags=["Authentication & Users"]
 )
 
-
 @router.post("/login", response_model=UserResponse, status_code=status.HTTP_200_OK)
 def login(
+    background_tasks: BackgroundTasks,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    """Authenticates a user and returns a JWT token."""
+    """
+    Authenticates a user, returns a JWT token, and sends a welcome email on first login.
+    """
     user = authenticate_user(db, form_data.username, form_data.password)
 
     if not user:
@@ -41,7 +46,14 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Create JWT access token
+    # Check if this is the user's first login
+    is_first_login = (
+        user.created_at and 
+        # --- FIX 2: Use datetime.now(timezone.utc) to create a timezone-aware object ---
+        user.created_at > datetime.now(timezone.utc) - timedelta(days=1) and
+        user.updated_at is None
+    )
+
     access_token = security.create_access_token(
         data={
             "user_id": user.user_id,
@@ -51,17 +63,27 @@ def login(
         }
     )
 
-    # Create the Pydantic model from the database object
     user_response = UserResponse.from_orm(user)
     user_response.token = access_token
-    
+
+    if is_first_login:
+        background_tasks.add_task(
+            send_welcome_email,
+            email=user.email,
+            name=user.full_name or user.username,
+            role=user.role
+        )
+        
+        # --- FIX 3: Also use a timezone-aware object for the update ---
+        user.updated_at = datetime.now(timezone.utc)
+        db.commit()
+
     return user_response
 
 
 @router.get("/me", response_model=CurrentUserResponse)
 def read_current_user(current_user: UserResponse = Depends(get_current_user)):
     """Returns currently authenticated user details."""
-    # Don't expose token in this response
     current_user.token = None
     return current_user
 

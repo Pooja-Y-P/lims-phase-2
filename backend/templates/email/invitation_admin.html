@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIMS Administrator Access</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; font-weight: bold; }
+        .header p { margin: 10px 0 0; opacity: 0.9; font-size: 16px; }
+        .content { padding: 40px 30px; }
+        .welcome-box { background: #f8f9ff; border: 2px solid #e8ebff; border-radius: 8px; padding: 25px; margin: 20px 0; text-align: center; }
+        .credentials { background: #fff8e1; border: 1px solid #ffcc02; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .credentials h3 { margin-top: 0; color: #f57c00; font-size: 18px; }
+        .cred-item { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; font-family: monospace; }
+        .button { display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; transition: transform 0.2s; }
+        .button:hover { transform: translateY(-1px); }
+        .features { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
+        .feature { background: #f8f9ff; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea; }
+        .feature h4 { margin: 0 0 8px; color: #667eea; font-size: 16px; }
+        .warning { background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 15px; border-radius: 6px; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px 30px; border-radius: 0 0 8px 8px; text-align: center; color: #6c757d; font-size: 14px; }
+        @media (max-width: 600px) { .features { grid-template-columns: 1fr; } .container { margin: 0; border-radius: 0; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Administrator Access Granted</h1>
+            <p>Welcome to the LIMS Administrative Dashboard</p>
+        </div>
+        
+        <div class="content">
+            <div class="welcome-box">
+                <h2>Welcome, {{ name }}!</h2>
+                <p>You've been granted <strong>Administrator</strong> privileges in our Laboratory Information Management System. You now have full access to manage users, oversee operations, and configure system settings.</p>
+            </div>
+
+            <div class="credentials">
+                <h3>🔐 Your Login Credentials</h3>
+                <div class="cred-item"><strong>Email:</strong> {{ email }}</div>
+                <div class="cred-item"><strong>Temporary Password:</strong> {{ temporary_password }}</div>
+                <div class="cred-item"><strong>Role:</strong> {{ role }}</div>
+            </div>
+
+            <div class="warning">
+                <strong>⚠️ Important Security Notice:</strong> Please change your password immediately after your first login for security purposes. Your temporary password expires in {{ expires_hours }} hours.
+            </div>
+
+            <div style="text-align: center;">
+                <a href="{{ activation_link }}" class="button">🚀 Activate Account & Set Password</a>
+            </div>
+
+            <h3>🎯 Your Administrative Capabilities:</h3>
+            <div class="features">
+                <div class="feature">
+                    <h4>👥 User Management</h4>
+                    <p>Create, modify, and manage user accounts across all roles</p>
+                </div>
+                <div class="feature">
+                    <h4>📊 System Analytics</h4>
+                    <p>Access comprehensive reports and system performance metrics</p>
+                </div>
+                <div class="feature">
+                    <h4>⚙️ Configuration</h4>
+                    <p>Configure system settings, workflows, and business rules</p>
+                </div>
+                <div class="feature">
+                    <h4>🔒 Security Oversight</h4>
+                    <p>Monitor system security and manage access permissions</p>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #e8f5e8; border-radius: 6px; border-left: 4px solid #28a745;">
+                <h4 style="color: #155724; margin-top: 0;">🎉 Ready to Get Started?</h4>
+                <p style="color: #155724; margin-bottom: 0;">Click the activation button above to set your secure password and begin managing your LIMS environment. If you have any questions, our support team is here to help.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This invitation expires in {{ expires_hours }} hours. If you need assistance, please contact our support team.</p>
+            <p>© 2025 Laboratory Information Management System</p>
+        </div>
+    </div>
+</body>
+</html>

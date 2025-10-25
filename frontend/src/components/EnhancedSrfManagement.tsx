@@ -1,8 +1,11 @@
+// src/components/EnhancedSrfManagement.tsx
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, ENDPOINTS } from '../api/config';
 import { Loader2, AlertTriangle, FileText, ChevronRight, ArrowLeft } from 'lucide-react';
 
+// NOTE: No need to import 'axios' here for this fix.
 
 interface InwardSummary {
   inward_id: number;
@@ -11,22 +14,6 @@ interface InwardSummary {
   date: string;
   customer_details: string;
   status: 'created' | 'reviewed' | 'approved_by_customer' | 'rejected_by_customer' | 'inward_completed';
-}
-
-const getAuthHeader = () => {
-  const token = localStorage.getItem('token');
-  if (!token) return { headers: {} };
-  return { headers: { Authorization: `Bearer ${token}` } };
-};
-
-
-interface SimpleAxiosError {
-  isAxiosError: true;
-  response?: { data?: any; status?: number; };
-  message: string;
-}
-function isSimpleAxiosError(error: unknown): error is SimpleAxiosError {
-  return typeof error === 'object' && error !== null && (error as any).isAxiosError === true;
 }
 
 const EnhancedSrfManagement: React.FC = () => {
@@ -40,15 +27,19 @@ const EnhancedSrfManagement: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await api.get<InwardSummary[]>(ENDPOINTS.INWARDS, getAuthHeader());
+        const response = await api.get<InwardSummary[]>(ENDPOINTS.STAFF.INWARDS);
         
         const filteredInwards = response.data.filter(inward => 
             inward.status === 'created' || inward.status === 'reviewed'
         );
         setInwards(filteredInwards);
       } catch (err: unknown) {
-        if (isSimpleAxiosError(err)) {
-          setError(err.response?.data?.detail || err.message);
+        // --- FIX: Using a legacy-compatible type guard for older Axios versions ---
+        // This checks if the error object has the 'isAxiosError' property.
+        if (err && typeof err === 'object' && 'isAxiosError' in err) {
+          // We can now safely treat 'err' as an Axios error.
+          const axiosError = err as any; 
+          setError(axiosError.response?.data?.detail || axiosError.message);
         } else {
           setError('An unknown error occurred while fetching data.');
         }
@@ -61,15 +52,13 @@ const EnhancedSrfManagement: React.FC = () => {
     fetchInwards();
   }, []);
   
-    const handleOpenSrfForm = (inwardId: number) => {
-   
+  const handleOpenSrfForm = (inwardId: number) => {
     navigate(`/engineer/create-srf/${inwardId}`);
   };
 
   const handleBackToPortal = () => {
     navigate('/engineer'); 
   };
-
   
   const getStatusBadge = (status: InwardSummary['status']) => {
     const statusStyles: { [key: string]: string } = {
@@ -115,7 +104,6 @@ const EnhancedSrfManagement: React.FC = () => {
 
   return (
     <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100">
-      {/* MODIFIED HEADER SECTION */}
       <div className="flex items-center justify-between border-b pb-4 mb-8">
         <div className="flex items-center space-x-4">
             <FileText className="h-8 w-8 text-green-600" />
@@ -205,5 +193,4 @@ const EnhancedSrfManagement: React.FC = () => {
   );
 };
 
-// FIX 2: Added a default export
 export default EnhancedSrfManagement;

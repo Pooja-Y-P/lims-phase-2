@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIMS Customer Portal Access</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); color: white; padding: 40px 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header h1 { margin: 0; font-size: 28px; font-weight: bold; }
+        .header p { margin: 10px 0 0; opacity: 0.9; font-size: 16px; }
+        .content { padding: 40px 30px; }
+        .welcome-box { background: #f8f9ff; border: 2px solid #e3e8ff; border-radius: 8px; padding: 25px; margin: 20px 0; text-align: center; }
+        .credentials { background: #fff8e1; border: 1px solid #ffcc02; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .credentials h3 { margin-top: 0; color: #f57c00; font-size: 18px; }
+        .cred-item { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; font-family: monospace; }
+        .button { display: inline-block; background: linear-gradient(135deg, #007bff 0%, #6610f2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; transition: transform 0.2s; }
+        .button:hover { transform: translateY(-1px); }
+        .features { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 25px 0; }
+        .feature { background: #f8f9ff; padding: 15px; border-radius: 6px; border-left: 4px solid #007bff; }
+        .feature h4 { margin: 0 0 8px; color: #007bff; font-size: 16px; }
+        .warning { background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 15px; border-radius: 6px; margin: 20px 0; }
+        .footer { background: #f8f9fa; padding: 20px 30px; border-radius: 0 0 8px 8px; text-align: center; color: #6c757d; font-size: 14px; }
+        @media (max-width: 600px) { .features { grid-template-columns: 1fr; } .container { margin: 0; border-radius: 0; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤝 Welcome to LIMS</h1>
+            <p>Your trusted quality assurance partner</p>
+        </div>
+        
+        <div class="content">
+            <div class="welcome-box">
+                <h2>Hello {{ name }}!</h2>
+                <p>We're delighted to welcome you as a <strong>Customer</strong> to our Laboratory Information Management System. You now have access to track your samples, view reports, and monitor the progress of your quality testing.</p>
+            </div>
+
+            <div class="credentials">
+                <h3>🔐 Your Login Credentials</h3>
+                <div class="cred-item"><strong>Email:</strong> {{ email }}</div>
+                <div class="cred-item"><strong>Temporary Password:</strong> {{ temporary_password }}</div>
+                <div class="cred-item"><strong>Role:</strong> {{ role }}</div>
+            </div>
+
+            <div class="warning">
+                <strong>🔒 Secure Your Account:</strong> For your security, please set a new password when you first log in. Your temporary access expires in {{ expires_hours }} hours.
+            </div>
+
+            <div style="text-align: center;">
+                <a href="{{ activation_link }}" class="button">🎯 Activate Account & Set Password</a>
+            </div>
+
+            <h3>🌟 What You Can Do:</h3>
+            <div class="features">
+                <div class="feature">
+                    <h4>📋 Track Samples</h4>
+                    <p>Monitor the status of your submitted samples in real-time</p>
+                </div>
+                <div class="feature">
+                    <h4>📊 View Reports</h4>
+                    <p>Access detailed calibration and inspection reports</p>
+                </div>
+                <div class="feature">
+                    <h4>📞 Direct Communication</h4>
+                    <p>Connect directly with our quality engineers</p>
+                </div>
+                <div class="feature">
+                    <h4>📈 Historical Data</h4>
+                    <p>Review your complete testing history and trends</p>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #1976d2;">
+                <h4 style="color: #1565c0; margin-top: 0;">🎉 We're Here for You!</h4>
+                <p style="color: #1565c0; margin-bottom: 0;">Our team is committed to providing you with exceptional service. Log in to explore your portal and don't hesitate to reach out if you need any assistance.</p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This invitation expires in {{ expires_hours }} hours. Questions? Contact our support team.</p>
+            <p>© 2025 Laboratory Information Management System</p>
+        </div>
+    </div>
+</body>
+</html>

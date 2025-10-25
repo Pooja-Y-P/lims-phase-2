@@ -176,7 +176,8 @@ export const InwardForm: React.FC = () => {
         });
       });
       
-      const response = await api.post<InwardResponse>(ENDPOINTS.INWARDS, submissionData, {
+      // --- FIX: Corrected endpoint path from ENDPOINTS.INWARDS to ENDPOINTS.STAFF.INWARDS ---
+      const response = await api.post<InwardResponse>(ENDPOINTS.STAFF.INWARDS, submissionData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       
@@ -205,7 +206,8 @@ export const InwardForm: React.FC = () => {
     e.preventDefault();
     if (!reportEmail || !lastSavedInwardId) return;
     try {
-      await api.post(ENDPOINTS.INWARD_REPORT(lastSavedInwardId), { email: reportEmail, send_later: false });
+      // --- FIX: Corrected and renamed endpoint path ---
+      await api.post(ENDPOINTS.STAFF.INWARD_SEND_REPORT(lastSavedInwardId), { email: reportEmail, send_later: false });
       showMessage('success', `Report for SRF ${lastSavedSrfNo} sent to ${reportEmail}!`);
       setShowEmailModal(false);
       setReportEmail('');
@@ -217,7 +219,8 @@ export const InwardForm: React.FC = () => {
   const handleSendLater = async () => {
     if (!lastSavedInwardId) return;
     try {
-      await api.post(ENDPOINTS.INWARD_REPORT(lastSavedInwardId), { send_later: true });
+      // --- FIX: Corrected and renamed endpoint path ---
+      await api.post(ENDPOINTS.STAFF.INWARD_SEND_REPORT(lastSavedInwardId), { send_later: true });
       showMessage('success', `Report for SRF ${lastSavedSrfNo} is scheduled. Manage it in the Engineer Portal.`);
       setShowEmailModal(false);
     } catch (error: any) {
@@ -272,7 +275,6 @@ export const InwardForm: React.FC = () => {
           </div>
         </div>
 
-        {/* --- THIS IS THE RESTORED JSX --- */}
         <div className="mb-8">
           <div className="mb-4"><h2 className="text-xl font-semibold text-gray-800">Equipment Details</h2></div>
           <div className="overflow-x-auto border rounded-lg">
