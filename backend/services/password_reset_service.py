@@ -1,7 +1,8 @@
 # backend/services/password_reset_service.py
 
 import secrets
-from datetime import datetime, timedelta
+# --- FIX 1: Import timezone for aware datetime objects ---
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, delete
@@ -10,7 +11,7 @@ from fastapi import HTTPException, BackgroundTasks
 from backend.models.users import User
 from backend.models.password_reset_token import PasswordResetToken
 from backend.core.security import hash_password
-from backend.core.email import get_password_reset_template, send_email
+from backend.core.email import send_email, get_password_reset_template
 
 class PasswordResetService:
     def __init__(self, db: Session):
@@ -34,15 +35,16 @@ class PasswordResetService:
         
         # Invalidate all existing tokens for this user by deleting them.
         self.db.execute(
-            delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+            delete(PasswordResetToken).where(PasswordResetToken.user_id == user.user_id)
         )
 
         # Create a new reset token
         token = self.generate_reset_token()
-        expires_at = datetime.utcnow() + timedelta(hours=1)  # Token is valid for 1 hour
+        # --- FIX 1: Use timezone-aware datetime for token creation ---
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
         new_reset_request = PasswordResetToken(
-            user_id=user.id,
+            user_id=user.user_id,
             token=token,
             expires_at=expires_at
         )
@@ -50,20 +52,21 @@ class PasswordResetService:
         self.db.commit()
 
         # Prepare and send the email in the background.
-        # NOTE: Replace 'https://your-frontend-app.com' with your actual frontend URL.
-        reset_link = f"https://your-frontend-app.com/reset-password?token={token}"
-        email_content = get_password_reset_template(user.full_name, reset_link)
+        reset_link = f"http://localhost:5173/reset-password?token={token}"
+        template_data = get_password_reset_template(user.full_name, reset_link)
 
-        background_tasks.add_task(
-            send_email,
-            recipient_email=user.email,
-            subject="Your Password Reset Request",
-            content=email_content
+        # Send email using the correct parameters
+        await send_email(
+            background_tasks=background_tasks,
+            subject=template_data["subject"],
+            recipient=user.email,
+            template_name=template_data["template_name"],
+            template_body=template_data["template_body"]
         )
         
         return True
 
-    async def reset_password(self, token: str, new_password: str) -> bool:
+    def reset_password(self, token: str, new_password: str) -> bool:
         """
         Resets the user's password if the provided token is valid, unused, and not expired.
         """
@@ -76,10 +79,11 @@ class PasswordResetService:
         if not reset_request:
             raise HTTPException(status_code=400, detail="Invalid password reset token.")
         
-        if reset_request.used:
+        if reset_request.is_used:
             raise HTTPException(status_code=400, detail="Password reset token has already been used.")
 
-        if datetime.utcnow() > reset_request.expires_at:
+        # --- FIX 1: Use timezone-aware datetime for comparison ---
+        if datetime.now(timezone.utc) > reset_request.expires_at:
             raise HTTPException(status_code=400, detail="Password reset token has expired.")
 
         # Find the associated user
@@ -88,12 +92,36 @@ class PasswordResetService:
             # This is an edge case but good to handle
             raise HTTPException(status_code=404, detail="User associated with this token not found.")
 
-        # Update the user's password and mark the token as used
-        user.hashed_password = hash_password(new_password)
-        reset_request.used = True
+        # --- FIX 2: Use the correct attribute name 'password_hash' from the User model ---
+        user.password_hash = hash_password(new_password)
+        reset_request.is_used = True
         
         self.db.add(user)
         self.db.add(reset_request)
         self.db.commit()
 
         return True
+    
+    def verify_reset_token(self, token: str) -> Optional[User]:
+        """
+        Verify if a reset token is valid and return the associated user.
+        """
+        # Find the reset request by the token
+        reset_request = self.db.scalars(
+            select(PasswordResetToken).where(PasswordResetToken.token == token)
+        ).first()
+
+        # Validate the token
+        if not reset_request:
+            return None
+        
+        if reset_request.is_used:
+            return None
+
+        # --- FIX 1: Use timezone-aware datetime for comparison ---
+        if datetime.now(timezone.utc) > reset_request.expires_at:
+            return None
+
+        # Find and return the associated user
+        user = self.db.get(User, reset_request.user_id)
+        return user

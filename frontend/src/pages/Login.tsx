@@ -1,8 +1,8 @@
 import React, { useState, ChangeEvent, FormEvent } from "react";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { User, UserRole } from "../types"; // Assuming UserRole is in your types
-import { Mail, Lock, ArrowRight, HelpCircle, Loader2 } from "lucide-react";
+import { User, UserRole } from "../types";
+import { Mail, Lock, ArrowRight, HelpCircle, Loader2, Eye, EyeOff } from "lucide-react"; // Added Eye, EyeOff
 import { api, ENDPOINTS } from "../api/config";
 
 interface LoginResponse {
@@ -25,6 +25,7 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false); // Added state for password visibility
 
   if (!bootstrapped) {
     return (
@@ -66,7 +67,6 @@ const Login: React.FC = () => {
 
       const loginData = response.data;
       
-      // --- FIX: Removed the 'created_at' property which is not in the User type definition ---
       const userInfo: User = {
         user_id: loginData.user_id,
         customer_id: loginData.customer_id || null,
@@ -141,14 +141,21 @@ const Login: React.FC = () => {
               <input
                 id="password"
                 name="password"
-                type="password"
+                type={showPassword ? "text" : "password"} // Updated to use showPassword state
                 autoComplete="current-password"
                 required
                 value={form.password}
                 onChange={handleChange}
                 placeholder="Password"
-                className="appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
+                className="appearance-none block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
             </div>
 
             <div className="text-right">
@@ -175,7 +182,7 @@ const Login: React.FC = () => {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !form.email || !form.password}
               className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -191,7 +198,8 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          {/* Commented out signup section since it's not in your routes yet */}
+          {/* <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{" "}
               <button
@@ -202,7 +210,7 @@ const Login: React.FC = () => {
                 Sign up here
               </button>
             </p>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

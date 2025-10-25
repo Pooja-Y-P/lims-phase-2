@@ -1,9 +1,12 @@
+// src/routes/AppRoutes.tsx
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { RequireAuth } from '../auth/RequireAuth';
 
 // Import all your page components
 import Login from '../pages/Login';
+import ForgotPassword from '../components/Forgotpassword';  // Add this import
+import ResetPassword from '../components/ResetPassword';    // Add this import
 import AdminDashboard from '../pages/AdminDashboard';
 import EngineerPortal from '../pages/EngineerPortal';
 import CustomerPortal from '../pages/CustomerPortal';
@@ -39,6 +42,8 @@ const AppRoutes = () => {
     <Routes>
       {/* --- Public Routes --- */}
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />  {/* Add this route */}
+      <Route path="/reset-password" element={<ResetPassword />} />    {/* Add this route */}
       
       {/* --- Customer Remarks Portal (Public with token authentication) --- */}
       <Route path="/portal/inwards/:inwardId/remarks" element={<CustomerRemarksPortal />} />
