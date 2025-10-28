@@ -3,7 +3,6 @@ import os
 import aiofiles
 import secrets
 import string
-import json
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -15,12 +14,11 @@ from backend.models.inward_equipments import InwardEquipment
 from backend.models.users import User
 from backend.models.customers import Customer
 from backend.models.invitations import Invitation
-from backend.schemas.inward_schemas import InwardCreate
+from backend.schemas.inward_schemas import InwardCreate, InwardUpdate
 from backend.services.delayed_email_services import DelayedEmailService
 
 # Core Service Imports
 from backend.core.security import create_invitation_token, hash_password
-# --- THIS IS THE FIX: Updated import names ---
 from backend.core.email import (
     send_new_user_invitation_email,
     send_existing_user_notification_email
@@ -36,13 +34,13 @@ class InwardService:
     def _get_receiver_id(self, receiver_name: str) -> int:
         user = self.db.execute(select(User).where(User.username == receiver_name)).scalars().first()
         if not user:
-             raise HTTPException(status_code=404, detail=f"Receiver user '{receiver_name}' not found.")
+            raise HTTPException(status_code=404, detail=f"Receiver user '{receiver_name}' not found.")
         return user.user_id
 
     async def create_inward_with_files(self, inward_data: InwardCreate, files_by_index: Dict[int, List[UploadFile]], creator_id: int) -> Inward:
         try:
             receiver_id = self._get_receiver_id(inward_data.receiver)
-            
+
             db_inward = Inward(
                 srf_no=inward_data.srf_no,
                 date=inward_data.date,
@@ -55,44 +53,8 @@ class InwardService:
             self.db.add(db_inward)
             self.db.flush()
 
-            equipment_models = []
-            for index, eqp_model in enumerate(inward_data.equipment_list):
-                photo_paths = []
-                if index in files_by_index:
-                    for file in files_by_index[index]:
-                        if file and file.filename:
-                            file_extension = os.path.splitext(file.filename)[1]
-                            unique_filename = f"{uuid.uuid4()}{file_extension}"
-                            file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
-                            
-                            async with aiofiles.open(file_path, 'wb') as out_file:
-                                content = await file.read()
-                                await out_file.write(content)
-                            photo_paths.append(file_path)
-
-                db_equipment = InwardEquipment(
-                    inward_id=db_inward.inward_id,
-                    nepl_id=eqp_model.nepl_id,
-                    material_description=eqp_model.material_desc,
-                    make=eqp_model.make,
-                    model=eqp_model.model,
-                    range=eqp_model.range,
-                    serial_no=eqp_model.serial_no,
-                    quantity=eqp_model.qty,
-                    visual_inspection_notes=eqp_model.inspe_notes,
-                    calibration_by=eqp_model.calibration_by,
-                    supplier=eqp_model.supplier,
-                    out_dc=eqp_model.out_dc,
-                    in_dc=eqp_model.in_dc,
-                    nextage_contract_reference=eqp_model.nextage_ref,
-                    qr_code=eqp_model.qr_code,
-                    barcode=eqp_model.barcode,
-                    photos=photo_paths,
-                    remarks=eqp_model.remarks or 'No remarks'
-                )
-                equipment_models.append(db_equipment)
+            await self._process_equipment_list(db_inward.inward_id, inward_data.equipment_list, files_by_index)
             
-            self.db.add_all(equipment_models)
             self.db.commit()
             self.db.refresh(db_inward)
             
@@ -103,6 +65,88 @@ class InwardService:
         except Exception as e:
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+
+    async def update_inward_with_files(self, inward_id: int, inward_data: InwardUpdate, files_by_index: Dict[int, List[UploadFile]], updater_id: int) -> Inward:
+        try:
+            # Get existing inward
+            db_inward = self.db.get(Inward, inward_id)
+            if not db_inward:
+                raise HTTPException(status_code=404, detail="Inward record not found.")
+
+            receiver_id = self._get_receiver_id(inward_data.receiver)
+
+            # Update inward fields
+            db_inward.srf_no = inward_data.srf_no
+            db_inward.date = inward_data.date
+            db_inward.customer_dc_date = inward_data.customer_dc_date
+            db_inward.customer_details = inward_data.customer_details
+            db_inward.received_by = receiver_id
+            db_inward.updated_by = updater_id  # Recommended to track who updated
+
+            # --- THE FIX: Perform a bulk delete and FLUSH the session ---
+            # This is more efficient than fetching and then deleting one-by-one.
+            # It sends a single DELETE statement to the database for all matching equipment.
+            self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete(synchronize_session=False)
+            
+            # This flush is CRITICAL. It forces the session to execute the pending DELETE
+            # statement above, clearing the unique constraint violation before we add the new items.
+            self.db.flush()
+
+            # Add new/updated equipment list from the form
+            await self._process_equipment_list(inward_id, inward_data.equipment_list, files_by_index)
+            
+            # Commit the entire transaction (updates to Inward, deletion of old equipment, insertion of new equipment)
+            self.db.commit()
+            self.db.refresh(db_inward)
+            
+            return db_inward
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+
+    async def _process_equipment_list(self, inward_id: int, equipment_list: List, files_by_index: Dict[int, List[UploadFile]]):
+        """Process and save equipment list for both create and update operations."""
+        equipment_models = []
+        for index, eqp_model in enumerate(equipment_list):
+            photo_paths = []
+            if index in files_by_index:
+                for file in files_by_index[index]:
+                    if file and file.filename:
+                        file_extension = os.path.splitext(file.filename)[1]
+                        unique_filename = f"{uuid.uuid4()}{file_extension}"
+                        file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+                        
+                        async with aiofiles.open(file_path, 'wb') as out_file:
+                            content = await file.read()
+                            await out_file.write(content)
+                        photo_paths.append(file_path)
+
+            db_equipment = InwardEquipment(
+                inward_id=inward_id,
+                nepl_id=eqp_model.nepl_id,
+                material_description=eqp_model.material_desc,
+                make=eqp_model.make,
+                model=eqp_model.model,
+                range=eqp_model.range,
+                serial_no=eqp_model.serial_no,
+                quantity=eqp_model.qty,
+                visual_inspection_notes=eqp_model.inspe_notes,
+                calibration_by=eqp_model.calibration_by,
+                supplier=eqp_model.supplier,
+                out_dc=eqp_model.out_dc,
+                in_dc=eqp_model.in_dc,
+                nextage_contract_reference=eqp_model.nextage_ref,
+                qr_code=eqp_model.qr_code,
+                barcode=eqp_model.barcode,
+                photos=photo_paths,
+                remarks=eqp_model.remarks or 'No remarks'
+            )
+            equipment_models.append(db_equipment)
+        
+        self.db.add_all(equipment_models)
 
     def get_all_inwards(self) -> List[Inward]:
         return self.db.execute(select(Inward).order_by(Inward.created_at.desc())).scalars().all()
@@ -143,7 +187,7 @@ class InwardService:
             raise HTTPException(status_code=422, detail="Customer email is required for immediate sending.")
 
         existing_user = self.db.scalars(select(User).where(User.email == customer_email)).first()
-        
+
         if existing_user:
             # --- SCENARIO 1: USER EXISTS ---
             if existing_user.role.lower() != 'customer':
@@ -153,7 +197,6 @@ class InwardService:
                 db_inward.customer_id = existing_user.customer_id
                 self.db.commit()
 
-            # --- FIX: Use the new function for existing users ---
             await send_existing_user_notification_email(
                 background_tasks=background_tasks,
                 recipient_email=existing_user.email,
@@ -193,7 +236,6 @@ class InwardService:
             self.db.add(new_invitation)
             self.db.commit()
             
-            # --- FIX: Use the new function for new users ---
             await send_new_user_invitation_email(
                 background_tasks=background_tasks,
                 recipient_email=customer_email,
@@ -222,6 +264,6 @@ class InwardService:
             background_tasks=background_tasks,
             send_later=False
         )
-        
+
         delayed_service.mark_task_as_sent(task_id)
         return True

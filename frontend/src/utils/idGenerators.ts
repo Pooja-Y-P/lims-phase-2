@@ -1,72 +1,57 @@
-// REMOVED: import { supabase } from '../lib/supabase'; // No longer needed
+// src/utils/idGenerators.ts
+
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 
-/**
- * Generates a new SRF No in YYNNN format (e.g., 25001).
- * FRONTEND-ONLY VERSION: Uses localStorage to persist the counter instead of a database.
- */
+// --- SRF No Generation (Unchanged) ---
 export const generateSRFNo = (): string => {
   const currentYear = new Date().getFullYear();
   const yearSuffix = currentYear.toString().slice(-2);
-
-  // Use a unique key for each year to automatically reset the counter annually.
   const storageKey = `srf_counter_${yearSuffix}`;
-  
-  // Get the last number from browser storage, defaulting to 0 if not found.
-  const lastNumber = parseInt(localStorage.getItem(storageKey) || '0', 10);
-  
-  const nextNumber = lastNumber + 1;
-
-  // Save the new number back to storage for the next time.
-  localStorage.setItem(storageKey, String(nextNumber));
-
-  // Format the final SRF number string.
+  const lastCommittedNumber = parseInt(localStorage.getItem(storageKey) || '0', 10);
+  const nextNumber = lastCommittedNumber + 1;
   return `${yearSuffix}${String(nextNumber).padStart(3, '0')}`;
 };
 
-// --- NO CHANGES TO THE FUNCTIONS BELOW ---
-
-/**
- * Generates a barcode image from a given ID string.
- */
-export const generateBarcode = (neplId: string): string => {
-  try {
-    // Create a canvas element in memory to draw the barcode on.
-    const canvas = document.createElement('canvas');
-    JsBarcode(canvas, neplId, {
-      format: 'CODE128',
-      displayValue: false,
-      margin: 10,
-      width: 2,
-      height: 50,
-    });
-    // Return the barcode as a base64 encoded PNG image.
-    return canvas.toDataURL('image/png');
-  } catch (error) {
-    console.error('Failed to generate barcode:', error);
-    return ''; // Return an empty string on failure.
+export const commitUsedSRFNo = (srfNo: string) => {
+  if (!srfNo || srfNo.length < 5) return;
+  const yearSuffix = srfNo.slice(0, 2);
+  const committedNumber = parseInt(srfNo.slice(2), 10);
+  const storageKey = `srf_counter_${yearSuffix}`;
+  const lastStoredNumber = parseInt(localStorage.getItem(storageKey) || '0', 10);
+  if (committedNumber > lastStoredNumber) {
+    localStorage.setItem(storageKey, String(committedNumber));
   }
 };
 
 /**
- * Generates a QR code image from equipment data.
+ * Generates a standard 1D barcode image containing the given ID string.
  */
-export const generateQRCode = async (equipmentData: any): Promise<string> => {
-  // Stringify the relevant equipment data to be encoded in the QR code.
-  const dataString = JSON.stringify({
-    nepl_id: equipmentData.nepl_id,
-    material_desc: equipmentData.material_desc,
-    make: equipmentData.make,
-    model: equipmentData.model,
-    serial_no: equipmentData.serial_no,
-  });
-
+export const generateBarcode = async (idToEncode: string): Promise<string> => {
   try {
-    // Return the QR code as a base64 encoded PNG image.
-    return await QRCode.toDataURL(dataString);
+    const canvas = document.createElement('canvas');
+    JsBarcode(canvas, idToEncode, {
+      format: 'CODE128',
+      displayValue: false, // The human-readable value will be printed on the sticker separately
+      margin: 10,
+      width: 2,
+      height: 50,
+    });
+    return canvas.toDataURL('image/png');
+  } catch (error) {
+    console.error('Failed to generate 1D barcode:', error);
+    return '';
+  }
+};
+
+/**
+ * Generates a QR code image from any given string (like a status or an ID).
+ */
+export const generateQRCode = async (dataToEncode: string): Promise<string> => {
+  try {
+    return await QRCode.toDataURL(dataToEncode, { errorCorrectionLevel: 'M', width: 200 });
   } catch (error) {
     console.error('Failed to generate QR code:', error);
-    return ''; // Return an empty string on failure.
+    return '';
   }
 };

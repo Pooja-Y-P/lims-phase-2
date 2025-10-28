@@ -4,7 +4,6 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 # --- Inward Equipment Schemas ---
-
 class InwardEquipmentCreate(BaseModel):
     nepl_id: str
     material_desc: str
@@ -35,19 +34,37 @@ class InwardEquipmentResponse(BaseModel):
     visual_inspection_notes: Optional[str] = None
     photos: Optional[List[str]] = []
     remarks: Optional[str] = None
+    
     model_config = ConfigDict(from_attributes=True)
 
-
 # --- Inward Main Schemas ---
-
 class InwardCreate(BaseModel):
-    # This schema is for *creating* an inward. It should expect a string from the form.
+    """This schema is for creating an inward. It should expect a string from the form."""
     srf_no: str
     date: date
     customer_dc_date: str
     customer_details: str
     receiver: str
-    equipment_list: List[InwardEquipmentCreate] 
+    equipment_list: List[InwardEquipmentCreate]
+
+    @field_validator('equipment_list', mode='before')
+    @classmethod
+    def parse_json_string(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                raise ValueError("equipment_list contains invalid JSON")
+        return v
+
+class InwardUpdate(BaseModel):
+    """Schema for updating an existing inward."""
+    srf_no: str
+    date: date
+    customer_dc_date: str
+    customer_details: str
+    receiver: str
+    equipment_list: List[InwardEquipmentCreate]
 
     @field_validator('equipment_list', mode='before')
     @classmethod
@@ -62,16 +79,12 @@ class InwardCreate(BaseModel):
 class InwardResponse(BaseModel):
     """Schema for the main Inward record response to the client."""
     inward_id: int
-    
-    # --- THIS IS THE FIX ---
     # The database stores srf_no as an integer, so the response model
     # must expect an integer to avoid a validation error.
-    srf_no: int 
-    
+    srf_no: int
     date: date
     customer_details: str
     status: str
-    
     equipments: List[InwardEquipmentResponse] = []
 
     model_config = ConfigDict(from_attributes=True)

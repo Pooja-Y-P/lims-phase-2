@@ -1,23 +1,21 @@
 from typing import List, Optional
 from datetime import date
 from fastapi import (
-    APIRouter, Depends, status, HTTPException, Request, 
+    APIRouter, Depends, status, HTTPException, Request,
     Body, Form, UploadFile, BackgroundTasks
 )
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-# json is no longer needed for the create endpoint
-# import json 
 
 # Local imports
 from backend.db import get_db
 from backend.services.inward_services import InwardService
-from backend.services.delayed_email_services import DelayedEmailService 
-from backend.schemas.inward_schemas import InwardCreate, InwardResponse
+from backend.services.delayed_email_services import DelayedEmailService
+from backend.schemas.inward_schemas import InwardCreate, InwardResponse, InwardUpdate
 from backend.auth import get_current_user
 from backend.schemas.user_schemas import User as UserSchema
 
-ALLOWED_ROLES = ["staff", "admin", "engineer"] 
+ALLOWED_ROLES = ["staff", "admin", "engineer"]
 router = APIRouter(prefix="/staff/inwards", tags=["Inwards"])
 
 def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
@@ -34,9 +32,7 @@ class SendReportRequest(BaseModel):
     email: Optional[EmailStr] = None
     send_later: bool = False
 
-# -----------------------
-# 1. POST / (Create Inward with Photos) - CORRECTED & SIMPLIFIED
-# -----------------------
+# POST / (Create Inward with Photos) - CORRECTED & SIMPLIFIED
 @router.post("/", response_model=InwardResponse, status_code=status.HTTP_201_CREATED)
 async def create_inward_with_photos(
     request: Request,
@@ -51,9 +47,7 @@ async def create_inward_with_photos(
 ):
     """Receives multipart/form-data and lets Pydantic handle validation and parsing."""
     try:
-        # --- THIS IS THE FIX ---
-        # REMOVED: equipment_data = json.loads(equipment_list)
-        # We now pass the raw `equipment_list` string directly to the Pydantic model.
+        # We now pass the raw equipment_list string directly to the Pydantic model.
         # The schema's @field_validator will handle parsing it into a list.
         inward_data = InwardCreate(
             srf_no=srf_no,
@@ -61,7 +55,7 @@ async def create_inward_with_photos(
             customer_dc_date=customer_dc_date,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list # Pass the raw string here
+            equipment_list=equipment_list  # Pass the raw string here
         )
     except Exception as e:
         # This will now correctly catch validation errors from the Pydantic model
@@ -82,25 +76,19 @@ async def create_inward_with_photos(
 
     inward_service = InwardService(db)
     db_inward = await inward_service.create_inward_with_files(
-        inward_data=inward_data, 
-        files_by_index=photos_by_index, 
+        inward_data=inward_data,
+        files_by_index=photos_by_index,
         creator_id=current_user.user_id
     )
     return db_inward
 
-# --- THE REST OF THE FILE IS CORRECT AND DOES NOT NEED CHANGES ---
-
-# -----------------------
-# 2. GET / (Get All Inward Records)
-# -----------------------
+# GET / (Get All Inward Records)
 @router.get("/", response_model=List[InwardResponse])
 def get_all_inward_records(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
     return inward_service.get_all_inwards()
 
-# -----------------------
-# 3. GET /{inward_id} (Get Inward by ID)
-# -----------------------
+# GET /{inward_id} (Get Inward by ID)
 @router.get("/{inward_id}", response_model=InwardResponse)
 def get_inward_by_id(inward_id: int, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
@@ -109,9 +97,56 @@ def get_inward_by_id(inward_id: int, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=404, detail="Inward not found")
     return db_inward
 
-# -----------------------------------------------------------------
-# 4. POST /{inward_id}/send-report (Handles "Send Now" and "Send Later")
-# -----------------------------------------------------------------
+# PUT /{inward_id} (Update Inward)
+@router.put("/{inward_id}", response_model=InwardResponse)
+async def update_inward_with_photos(
+    inward_id: int,
+    request: Request,
+    srf_no: str = Form(...),
+    date: date = Form(...),
+    customer_dc_date: str = Form(...),
+    customer_details: str = Form(...),
+    receiver: str = Form(...),
+    equipment_list: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    """Update an existing inward with photos."""
+    try:
+        inward_data = InwardUpdate(
+            srf_no=srf_no,
+            date=date,
+            customer_dc_date=customer_dc_date,
+            customer_details=customer_details,
+            receiver=receiver,
+            equipment_list=equipment_list
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
+
+    # Process photos from form data
+    form_data = await request.form()
+    photos_by_index: dict[int, list[UploadFile]] = {}
+    for key, value in form_data.items():
+        if key.startswith("photos_") and isinstance(value, UploadFile) and value.filename:
+            try:
+                index = int(key.split("_")[1])
+                if index not in photos_by_index:
+                    photos_by_index[index] = []
+                photos_by_index[index].append(value)
+            except (ValueError, IndexError):
+                continue
+
+    inward_service = InwardService(db)
+    db_inward = await inward_service.update_inward_with_files(
+        inward_id=inward_id,
+        inward_data=inward_data,
+        files_by_index=photos_by_index,
+        updater_id=current_user.user_id
+    )
+    return db_inward
+
+# POST /{inward_id}/send-report (Handles "Send Now" and "Send Later")
 @router.post("/{inward_id}/send-report", status_code=status.HTTP_200_OK)
 async def send_customer_feedback_request(
     inward_id: int,
@@ -131,23 +166,20 @@ async def send_customer_feedback_request(
         creator_id=current_user.user_id,
         background_tasks=background_tasks
     )
+
     return result
 
-# -----------------------------------------------------------------
-# 5. GET /delayed-emails/pending (The endpoint for the manager)
-# -----------------------------------------------------------------
+# GET /delayed-emails/pending (The endpoint for the manager)
 @router.get("/delayed-emails/pending", response_model=dict)
 def get_pending_delayed_emails(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     if not hasattr(current_user, 'user_id'):
         raise HTTPException(status_code=401, detail="Authentication failed.")
-        
+
     delayed_email_service = DelayedEmailService(db)
     pending_tasks = delayed_email_service.get_pending_tasks_for_user(creator_id=current_user.user_id)
     return {"pending_tasks": pending_tasks}
 
-# -----------------------------------------------------------------
-# 6. POST /delayed-emails/{task_id}/send (Send a scheduled email)
-# -----------------------------------------------------------------
+# POST /delayed-emails/{task_id}/send (Send a scheduled email)
 @router.post("/delayed-emails/{task_id}/send", status_code=status.HTTP_200_OK)
 async def send_delayed_email_now(
     task_id: int,
@@ -159,20 +191,19 @@ async def send_delayed_email_now(
     email = request_data.get("email")
     if not email:
         raise HTTPException(status_code=422, detail="Email is required.")
-        
+
     inward_service = InwardService(db)
     success = await inward_service.send_scheduled_report_now(
-        task_id=task_id, 
-        customer_email=email, 
+        task_id=task_id,
+        customer_email=email,
         background_tasks=background_tasks
     )
     if not success:
         raise HTTPException(status_code=500, detail="Failed to send email.")
+
     return {"message": "Email sent successfully."}
 
-# -----------------------------------------------------------------
-# 7. DELETE /delayed-emails/{task_id} (Cancel a scheduled email)
-# -----------------------------------------------------------------
+# DELETE /delayed-emails/{task_id} (Cancel a scheduled email)
 @router.delete("/delayed-emails/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def cancel_delayed_email(
     task_id: int,
