@@ -1,17 +1,15 @@
-// src/components/EnhancedSrfManagement.tsx
-
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, Inbox, ChevronRight, ArrowLeft } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
- 
+
 interface CreatedInward {
   inward_id: number;
   srf_no: number;
   customer_name: string | null;
   date: string;
 }
- 
+
 interface SrfSummary {
   srf_id: number;
   srf_no: number;
@@ -19,7 +17,7 @@ interface SrfSummary {
   date: string;
   status: string | null;
 }
- 
+
 interface WorkItem {
   id: number;
   type: "inward" | "srf";
@@ -28,32 +26,32 @@ interface WorkItem {
   date: string;
   status: "created" | "inward_completed" | "approved" | "rejected";
 }
- 
-export const EnhancedSrfManagement: React.FC = () => {
+
+export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("created");
   const navigate = useNavigate();
- 
+
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
       setError(null);
       try {
         const [inwardsResponse, srfsResponse] = await Promise.all([
-          api.get<CreatedInward[]>(`${ENDPOINTS.STAFF.INWARDS}?status=created`),
+          api.get<CreatedInward[]>(`${ENDPOINTS.INWARDS}?status=created`),
           api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`),
         ]);
- 
+
         const srfs = srfsResponse.data;
         const inwards = inwardsResponse.data;
- 
+
         const workItemsList: WorkItem[] = [];
- 
+
         inwards.forEach((inward) => {
           const relatedSrf = srfs.find((srf) => srf.srf_no === inward.srf_no);
- 
+
           if (!relatedSrf) {
             workItemsList.push({
               id: inward.inward_id,
@@ -63,21 +61,19 @@ export const EnhancedSrfManagement: React.FC = () => {
               date: inward.date,
               status: "created",
             });
-          }
-        });
-        
-        srfs.forEach((srf) => {
-            const status = srf.status || "created";
-             workItemsList.push({
-              id: srf.srf_id,
+          } else {
+            const status = relatedSrf.status || "created";
+            workItemsList.push({
+              id: relatedSrf.srf_id,
               type: "srf",
-              displayNumber: `SRF No: ${srf.srf_no}`,
-              customer_name: srf.customer_name,
-              date: srf.date,
+              displayNumber: `SRF No: ${relatedSrf.srf_no}`,
+              customer_name: relatedSrf.customer_name,
+              date: relatedSrf.date,
               status: status as WorkItem["status"],
             });
+          }
         });
- 
+
         setWorkItems(workItemsList);
       } catch (err: any) {
         console.error("Failed to fetch data:", err);
@@ -90,45 +86,44 @@ export const EnhancedSrfManagement: React.FC = () => {
         setLoading(false);
       }
     };
- 
+
     fetchAllData();
   }, []);
- 
+
   const statuses = ["created", "inward_completed", "approved", "rejected"];
- 
+
   const groupedWorkItems = workItems.reduce(
     (groups: Record<string, WorkItem[]>, item) => {
-      const statusKey = item.status || 'created';
-      if (!groups[statusKey]) groups[statusKey] = [];
-      groups[statusKey].push(item);
+      if (!groups[item.status]) groups[item.status] = [];
+      groups[item.status].push(item);
       return groups;
     },
     {}
   );
- 
+
   const statusLabels: Record<string, string> = {
     created: "Pending SRF Creation",
     inward_completed: "Customer Review Pending",
     approved: "Approved",
     rejected: "Rejected",
   };
- 
+
   const tabColors: Record<string, string> = {
     created: "text-yellow-600 border-yellow-500",
     inward_completed: "text-blue-600 border-blue-500",
     approved: "text-green-600 border-green-500",
     rejected: "text-red-600 border-red-500",
   };
- 
+
   const currentWorkItems = groupedWorkItems[activeTab] || [];
- 
+
   if (loading)
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center text-gray-600 text-lg">Loading Data...</div>
       </div>
     );
- 
+
   if (error)
     return (
       <div className="flex items-center justify-center h-screen bg-red-50">
@@ -137,7 +132,7 @@ export const EnhancedSrfManagement: React.FC = () => {
         </div>
       </div>
     );
- 
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-10">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
@@ -151,7 +146,7 @@ export const EnhancedSrfManagement: React.FC = () => {
             Back to Dashboard
           </button>
         </div>
- 
+
         {/* Header */}
         <div className="flex items-center gap-4 mb-8 border-b pb-5">
           <div className="bg-blue-100 p-3 rounded-full">
@@ -166,7 +161,7 @@ export const EnhancedSrfManagement: React.FC = () => {
             </p>
           </div>
         </div>
- 
+
         {/* Tabs */}
         <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-8">
           {statuses.map((status) => (
@@ -186,7 +181,7 @@ export const EnhancedSrfManagement: React.FC = () => {
             </button>
           ))}
         </div>
- 
+
         {/* Work Items List */}
         <div className="space-y-3">
           {currentWorkItems.length > 0 ? (
@@ -233,4 +228,4 @@ export const EnhancedSrfManagement: React.FC = () => {
     </div>
   );
 };
-export default EnhancedSrfManagement;
+export default SrfListPage;

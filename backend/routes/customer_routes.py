@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-
+from backend import models
+from backend.schemas.srf_schemas import SrfResponse
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import SQLAlchemyError
 from backend.db import get_db
 from backend.auth import get_current_user
 from backend.schemas.user_schemas import User as AuthenticatedUser
@@ -13,6 +16,7 @@ from backend.schemas.customer_schemas import (
 )
 from backend.schemas.user_schemas import Token as TokenResponse # Use your existing Token schema
 from backend.services.customer_services import CustomerPortalService
+from backend.auth import get_current_user  # Make sure this returns the logged-in user
 
 router = APIRouter(prefix="/portal", tags=["Customer Portal"])
 
@@ -84,3 +88,67 @@ def submit_inward_remarks(
         
     service.submit_equipment_remarks(inward_id, payload, current_user.customer_id)
     return {"message": "Remarks have been submitted successfully."}
+
+router = APIRouter(
+    prefix="/customer",
+    tags=["Customer"]
+)
+
+# Helper to fetch SRFs for a customer
+def get_customer_srfs(customer_id: int, db: Session) -> List[models.Srf]:
+    return db.query(models.Srf).join(
+        models.Inward, models.Srf.inward_id == models.Inward.inward_id
+    ).options(
+        joinedload(models.Srf.inward).joinedload(models.Inward.customer)
+    ).filter(
+        models.Inward.customer_id == customer_id
+    ).order_by(models.Srf.srf_id.desc()).all()
+
+
+@router.get("/srfs", response_model=dict)
+def fetch_customer_srfs(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Fetch SRFs for the logged-in customer.
+    Categorize them into pending, approved, rejected.
+    """
+    if not current_user.customer_id:
+        raise HTTPException(status_code=403, detail="This user is not associated with a customer.")
+
+    try:
+        srfs = get_customer_srfs(current_user.customer_id, db)
+
+        pending = []
+        approved = []
+        rejected = []
+
+        for srf in srfs:
+            customer_name = srf.inward.customer.customer_details if srf.inward and srf.inward.customer else None
+            srf_data = SrfResponse(
+                srf_id=srf.srf_id,
+                srf_no=srf.srf_no,
+                nepl_srf_no=srf.nepl_srf_no,
+                status=srf.status,
+                created_at=srf.created_at,
+                inward_id=srf.inward_id,
+                customer_name=customer_name
+            )
+
+            # Categorize based on status
+            if srf.status == "inward-completed":
+                pending.append(srf_data)
+            elif srf.status == "approved":
+                approved.append(srf_data)
+            elif srf.status == "rejected":
+                rejected.append(srf_data)
+
+        return {
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected
+        }
+
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")

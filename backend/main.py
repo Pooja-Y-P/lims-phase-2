@@ -6,22 +6,30 @@ from fastapi.staticfiles import StaticFiles
 from backend.db import Base, engine
 
 # Import routers
-from backend.routes import user_routes
-from backend.routes import inward_router
-from backend.routes import customer_routes
-from backend.routes import srf_router
-from backend.routes import password_reset_router
-from backend.routes import invitation_routes
+from backend.routes import (
+    user_routes,
+    inward_router,
+    customer_routes,
+    srf_router,
+    password_reset_router,
+    invitation_routes
+)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Initialize FastAPI app
 app = FastAPI(title="LIMS Backend", version="1.0")
 
-# CORS middleware
+# ✅ Updated CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",     # Added for your frontend port
+        "http://127.0.0.1:5174"      # Added for 127.0.0.1 variant
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

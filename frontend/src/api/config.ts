@@ -1,4 +1,4 @@
-// src/api/config.ts
+/// src/api/config.ts
 
 import axios from "axios";
 
@@ -48,7 +48,8 @@ export const ENDPOINTS = {
   JOBS: `/jobs`,
   DEVIATIONS: `/deviations`,
   NOTIFICATIONS: `/notifications`,
-
+  SRFS: `/srfs/`,
+  INWARDS: `/staff/inwards/`, 
 } as const; // Using 'as const' for better type safety and autocompletion
 
 // Create axios instance with default configuration

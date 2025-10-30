@@ -1,10 +1,14 @@
+# backend/schemas/inward_schemas.py
+
 import json
 from datetime import date
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 
 # --- Inward Equipment Schemas ---
-class InwardEquipmentCreate(BaseModel):
+
+# FIX: Renamed from InwardEquipmentCreate to EquipmentCreate for consistency
+class EquipmentCreate(BaseModel):
     nepl_id: str
     material_desc: str
     make: str
@@ -39,13 +43,14 @@ class InwardEquipmentResponse(BaseModel):
 
 # --- Inward Main Schemas ---
 class InwardCreate(BaseModel):
-    """This schema is for creating an inward. It should expect a string from the form."""
-    srf_no: str
+    """This schema is for creating an inward. It expects a string from the form for equipment_list."""
+    srf_no: int # SRF number is an integer
     date: date
     customer_dc_date: str
     customer_details: str
     receiver: str
-    equipment_list: List[InwardEquipmentCreate]
+    # This will be validated by the field_validator below
+    equipment_list: List[EquipmentCreate] 
 
     @field_validator('equipment_list', mode='before')
     @classmethod
@@ -59,12 +64,12 @@ class InwardCreate(BaseModel):
 
 class InwardUpdate(BaseModel):
     """Schema for updating an existing inward."""
-    srf_no: str
+    srf_no: int
     date: date
     customer_dc_date: str
     customer_details: str
     receiver: str
-    equipment_list: List[InwardEquipmentCreate]
+    equipment_list: List[EquipmentCreate]
 
     @field_validator('equipment_list', mode='before')
     @classmethod
@@ -79,8 +84,6 @@ class InwardUpdate(BaseModel):
 class InwardResponse(BaseModel):
     """Schema for the main Inward record response to the client."""
     inward_id: int
-    # The database stores srf_no as an integer, so the response model
-    # must expect an integer to avoid a validation error.
     srf_no: int
     date: date
     customer_details: str

@@ -1,17 +1,23 @@
+
+# backend/routes/inward_router.py
+
 from typing import List, Optional
 from datetime import date
 from fastapi import (
     APIRouter, Depends, status, HTTPException, Request,
     Body, Form, UploadFile, BackgroundTasks
 )
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ValidationError, parse_obj_as
+import json
 from sqlalchemy.orm import Session
 
 # Local imports
 from backend.db import get_db
 from backend.services.inward_services import InwardService
 from backend.services.delayed_email_services import DelayedEmailService
-from backend.schemas.inward_schemas import InwardCreate, InwardResponse, InwardUpdate
+from backend.services.notification_services import NotificationService
+from backend.services.srf_services import SrfService
+from backend.schemas.inward_schemas import InwardCreate, InwardResponse, InwardUpdate, EquipmentCreate
 from backend.auth import get_current_user
 from backend.schemas.user_schemas import User as UserSchema
 
@@ -27,41 +33,63 @@ def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
         )
     return current_user
 
-# --- Pydantic model for the /send-report request body ---
+# --- Pydantic models for requests ---
 class SendReportRequest(BaseModel):
     email: Optional[EmailStr] = None
     send_later: bool = False
 
-# POST / (Create Inward with Photos) - CORRECTED & SIMPLIFIED
+class RetryNotificationRequest(BaseModel):
+    email: Optional[EmailStr] = None
+
+# --- NEW ENDPOINT ---
+# GET /next-srf-no (Get next SRF number)
+@router.get("/next-srf-no", response_model=dict)
+def get_next_srf_no(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
+    """Get the next available SRF number for creating a new inward."""
+    srf_service = SrfService(db)
+    try:
+        next_srf = srf_service.generate_next_srf_no()
+        return {"srf_no": next_srf}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- SIMPLIFIED ENDPOINT ---
+# POST / (Create Inward with Photos)
 @router.post("/", response_model=InwardResponse, status_code=status.HTTP_201_CREATED)
 async def create_inward_with_photos(
     request: Request,
-    srf_no: str = Form(...),
     date: date = Form(...),
     customer_dc_date: str = Form(...),
     customer_details: str = Form(...),
     receiver: str = Form(...),
-    equipment_list: str = Form(...), # This is received as a raw string
+    equipment_list: str = Form(...),
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
     """Receives multipart/form-data and lets Pydantic handle validation and parsing."""
     try:
-        # We now pass the raw equipment_list string directly to the Pydantic model.
-        # The schema's @field_validator will handle parsing it into a list.
+        # Generate SRF number on the backend
+        srf_service = SrfService(db)
+        srf_no = srf_service.generate_next_srf_no()
+        
+        # Manually parse and validate equipment_list
+        equipment_list_data = json.loads(equipment_list)
+        validated_equipment_list = parse_obj_as(List[EquipmentCreate], equipment_list_data)
+
         inward_data = InwardCreate(
             srf_no=srf_no,
             date=date,
             customer_dc_date=customer_dc_date,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list  # Pass the raw string here
+            equipment_list=validated_equipment_list # Use the validated list
         )
+    except (ValidationError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=422, detail=f"Validation Error in equipment list: {e}")
     except Exception as e:
-        # This will now correctly catch validation errors from the Pydantic model
-        raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # The rest of the function remains the same
+
     form_data = await request.form()
     photos_by_index: dict[int, list[UploadFile]] = {}
     for key, value in form_data.items():
@@ -81,6 +109,8 @@ async def create_inward_with_photos(
         creator_id=current_user.user_id
     )
     return db_inward
+
+# ... (rest of the file remains the same) ...
 
 # GET / (Get All Inward Records)
 @router.get("/", response_model=List[InwardResponse])
@@ -102,7 +132,6 @@ def get_inward_by_id(inward_id: int, db: Session = Depends(get_db), current_user
 async def update_inward_with_photos(
     inward_id: int,
     request: Request,
-    srf_no: str = Form(...),
     date: date = Form(...),
     customer_dc_date: str = Form(...),
     customer_details: str = Form(...),
@@ -111,20 +140,25 @@ async def update_inward_with_photos(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    """Update an existing inward with photos."""
     try:
+        inward_service = InwardService(db)
+        existing_inward = inward_service.get_inward_by_id(inward_id)
+        srf_no = existing_inward.srf_no
+        
+        equipment_list_data = json.loads(equipment_list)
+        validated_equipment_list = parse_obj_as(List[EquipmentCreate], equipment_list_data)
+
         inward_data = InwardUpdate(
             srf_no=srf_no,
             date=date,
             customer_dc_date=customer_dc_date,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list
+            equipment_list=validated_equipment_list
         )
-    except Exception as e:
+    except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
 
-    # Process photos from form data
     form_data = await request.form()
     photos_by_index: dict[int, list[UploadFile]] = {}
     for key, value in form_data.items():
@@ -146,29 +180,24 @@ async def update_inward_with_photos(
     )
     return db_inward
 
-# POST /{inward_id}/send-report (Handles "Send Now" and "Send Later")
+# POST /{inward_id}/send-report
 @router.post("/{inward_id}/send-report", status_code=status.HTTP_200_OK)
 async def send_customer_feedback_request(
-    inward_id: int,
-    request_data: SendReportRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(check_staff_role)
+    inward_id: int, request_data: SendReportRequest, background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)
 ):
     if not request_data.send_later and not request_data.email:
         raise HTTPException(status_code=422, detail="Email is required for immediate sending.")
 
     inward_service = InwardService(db)
     result = await inward_service.process_customer_notification(
-        inward_id=inward_id,
-        customer_email=request_data.email,
-        send_later=request_data.send_later,
-        creator_id=current_user.user_id,
+        inward_id=inward_id, customer_email=request_data.email,
+        send_later=request_data.send_later, creator_id=current_user.user_id,
         background_tasks=background_tasks
     )
-
     return result
 
+# ... (rest of the file remains the same) ...
 # GET /delayed-emails/pending (The endpoint for the manager)
 @router.get("/delayed-emails/pending", response_model=dict)
 def get_pending_delayed_emails(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -214,4 +243,61 @@ def cancel_delayed_email(
     success = delayed_service.cancel_task(task_id=task_id)
     if not success:
         raise HTTPException(status_code=404, detail="Task not found or already processed.")
+    return
+
+# GET /notifications/failed (Get failed notifications)
+@router.get("/notifications/failed", response_model=dict)
+def get_failed_notifications(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    notification_service = NotificationService(db)
+    failed_notifications = notification_service.get_failed_notifications(
+        created_by=current_user.username,
+        limit=limit
+    )
+    
+    stats = notification_service.get_notification_stats(
+        created_by=current_user.username
+    )
+    
+    return {
+        "failed_notifications": failed_notifications,
+        "stats": stats
+    }
+
+# POST /notifications/{notification_id}/retry (Retry failed notification)
+@router.post("/notifications/{notification_id}/retry", status_code=status.HTTP_200_OK)
+async def retry_failed_notification(
+    notification_id: int,
+    request_data: RetryNotificationRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    notification_service = NotificationService(db)
+    
+    success = await notification_service.retry_failed_notification(
+        notification_id=notification_id,
+        background_tasks=background_tasks,
+        new_email=request_data.email
+    )
+    
+    if success:
+        return {"message": "Notification retry queued successfully."}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to queue notification retry.")
+
+# DELETE /notifications/{notification_id} (Delete notification)
+@router.delete("/notifications/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    notification_service = NotificationService(db)
+    success = notification_service.delete_notification(notification_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Notification not found.")
     return

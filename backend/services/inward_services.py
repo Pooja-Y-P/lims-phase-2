@@ -173,6 +173,9 @@ class InwardService:
         if not db_inward.customer_details:
             raise HTTPException(status_code=400, detail="Inward is missing customer details.")
 
+        creator_user = self.db.get(User, creator_id)
+        created_by_name = creator_user.username if creator_user else f"user_{creator_id}"
+
         if send_later:
             delayed_service = DelayedEmailService(self.db)
             delayed_service.schedule_delayed_email(
@@ -197,13 +200,19 @@ class InwardService:
                 db_inward.customer_id = existing_user.customer_id
                 self.db.commit()
 
-            await send_existing_user_notification_email(
+            success = await send_existing_user_notification_email(
                 background_tasks=background_tasks,
                 recipient_email=existing_user.email,
                 inward_id=db_inward.inward_id,
                 srf_no=db_inward.srf_no,
+                db=self.db,
+                created_by=created_by_name
             )
-            return {"message": f"Notification sent to existing customer {customer_email}."}
+            
+            if success:
+                return {"message": f"Notification sent to existing customer {customer_email}."}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to queue notification email.")
         else:
             # --- SCENARIO 2: NEW USER (Full Implementation) ---
             customer = self.db.scalars(select(Customer).where(Customer.customer_details == db_inward.customer_details)).first()
@@ -236,14 +245,21 @@ class InwardService:
             self.db.add(new_invitation)
             self.db.commit()
             
-            await send_new_user_invitation_email(
+            success = await send_new_user_invitation_email(
                 background_tasks=background_tasks,
                 recipient_email=customer_email,
                 token=invitation_token,
                 srf_no=db_inward.srf_no,
-                temp_password=temp_password
+                temp_password=temp_password,
+                db=self.db,
+                inward_id=db_inward.inward_id,
+                created_by=created_by_name
             )
-            return {"message": f"Account created and invitation with temporary password sent to {customer_email}."}
+            
+            if success:
+                return {"message": f"Account created and invitation with temporary password sent to {customer_email}."}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to queue invitation email.")
 
     async def send_scheduled_report_now(self, task_id: int, customer_email: str, background_tasks: BackgroundTasks) -> bool:
         delayed_service = DelayedEmailService(self.db)

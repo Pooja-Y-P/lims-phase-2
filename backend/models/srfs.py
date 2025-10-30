@@ -26,7 +26,7 @@ class Srf(Base):
     ref_customer_requirement = Column(Boolean, default=False)
     turnaround_time = Column(Integer, default=7)
     remark_special_instructions = Column(Text)
-    customer_approval = Column(String(50))
+    remarks = Column(Text)
     status = Column(String(50), default="created")
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True))

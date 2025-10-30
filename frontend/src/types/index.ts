@@ -20,14 +20,45 @@ export interface Customer {
   is_active: boolean;
 }
 
+// src/types.ts
+export interface Equipment {
+  inward_eqp_id: number;
+  nepl_id: string;
+  material_description: string;
+  make: string;
+  model: string;
+  range: string;
+  serial_no: string;
+  quantity: number;
+}
+
+export interface Inward {
+  inward_id: number;
+  customer: {
+    customer_id: number;
+    customer_details: string;
+  };
+  equipments: Equipment[];
+}
+
 export interface Srf {
   srf_id: number;
-  inward_id: number;
+  srf_no: number;
   nepl_srf_no: string;
-  status: 'created' | 'submitted' | 'in-progress' | 'completed' | 'draft';
-  created_at: string;
-  contact_person: string | null;
+  contact_person: string;
+  email: string;
+  telephone: string;
+  certificate_issue_name: string;
+  date: string;
+  status: string;
+  inward: Inward;
+  calibration_frequency?: string | null;
+  statement_of_conformity?: boolean;
+  turnaround_time?: number;
+  remarks?: string | null;
 }
+
+
 
 // Minimal props for dashboard components
 export interface DashboardProps {

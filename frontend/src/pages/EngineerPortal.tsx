@@ -9,6 +9,7 @@ import {
   ArrowRight,
   Mail,
   Clock,
+  XCircle,
 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -21,8 +22,10 @@ import { ViewUpdateInward } from "../components/ViewUpdateInward";
 import { ViewInward } from "../components/ViewInward";
 import { PrintStickers } from "../components/PrintStickers";
 import EnhancedSrfManagement from "../components/EnhancedSrfManagement";
-import { SrfFormCreator } from "../components/SrfFormCreator";
+// --- ADD THIS IMPORT ---
+import { SrfDetailPage } from "../components/SrfDetailPage"; 
 import { DelayedEmailManager } from "../components/DelayedEmailManager";
+import { FailedNotificationsManager } from "../components/FailedNotificationManager";
 
 const CertificatesPage = () => (
   <div className="p-8 bg-white rounded-2xl shadow-lg">Certificates Page Content</div>
@@ -39,6 +42,16 @@ interface EngineerPortalProps {
 
 interface PendingEmailResponse {
   pending_tasks: any[];
+}
+
+interface FailedNotificationsResponse {
+  failed_notifications: any[];
+  stats: {
+    total: number;
+    pending: number;
+    success: number;
+    failed: number;
+  };
 }
 
 const ActionButton: React.FC<{
@@ -70,11 +83,20 @@ const ActionButton: React.FC<{
 const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
   const username = user?.full_name || user?.email || "Engineer";
   const [pendingEmailCount, setPendingEmailCount] = useState(0);
+  const [failedNotificationCount, setFailedNotificationCount] = useState(0);
   const [showDelayedEmails, setShowDelayedEmails] = useState(false);
+  const [showFailedNotifications, setShowFailedNotifications] = useState(false);
 
   useEffect(() => {
     fetchPendingEmailCount();
-    const interval = setInterval(fetchPendingEmailCount, 30000);
+    fetchFailedNotificationCount();
+    
+    // Refresh counts every 30 seconds
+    const interval = setInterval(() => {
+      fetchPendingEmailCount();
+      fetchFailedNotificationCount();
+    }, 30000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -88,6 +110,20 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
       console.error("Error fetching pending email count:", error);
       if (error.response?.status === 404) {
         setPendingEmailCount(0);
+      }
+    }
+  };
+
+  const fetchFailedNotificationCount = async () => {
+    try {
+      const response = await api.get<FailedNotificationsResponse>(
+        `${ENDPOINTS.STAFF.INWARDS}/notifications/failed`
+      );
+      setFailedNotificationCount(response.data.failed_notifications.length);
+    } catch (error: any) {
+      console.error("Error fetching failed notification count:", error);
+      if (error.response?.status === 404) {
+        setFailedNotificationCount(0);
       }
     }
   };
@@ -147,8 +183,9 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {/* Scheduled Email Notifications */}
         {pendingEmailCount > 0 && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 mb-8 shadow-lg">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 mb-6 shadow-lg">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4">
                 <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full">
@@ -172,6 +209,36 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
               >
                 <Mail className="h-5 w-5" />
                 <span>Manage Scheduled Reports</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Failed Email Notifications */}
+        {failedNotificationCount > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6 shadow-lg">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full">
+                  <XCircle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-red-900">
+                    Failed Email Notifications
+                  </h3>
+                  <p className="text-red-700">
+                    <span className="font-bold">{failedNotificationCount}</span>{" "}
+                    email{failedNotificationCount > 1 ? "s" : ""} failed to send due to server issues.
+                    Manual retry required.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFailedNotifications(true)}
+                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md"
+              >
+                <AlertTriangle className="h-5 w-5" />
+                <span>Handle Failed Emails</span>
               </button>
             </div>
           </div>
@@ -209,8 +276,13 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           <Route path="view-inward/:id" element={<ViewInward />} />
           <Route path="edit-inward/:id" element={<InwardForm />} />
           <Route path="print-stickers/:id" element={<PrintStickers />} />
+          
+          {/* SRF Routes */}
+          {/* FIX: Removed the 'onStatusChange' prop as it's no longer required by the component. */}
           <Route path="srfs" element={<EnhancedSrfManagement />} />
-          <Route path="create-srf/:inwardId" element={<SrfFormCreator />} />
+          
+          <Route path="srfs/:srfId" element={<SrfDetailPage />} />
+          
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="deviations" element={<DeviationPage />} />
         </Routes>
@@ -221,6 +293,15 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           onClose={() => {
             setShowDelayedEmails(false);
             fetchPendingEmailCount();
+          }}
+        />
+      )}
+
+      {showFailedNotifications && (
+        <FailedNotificationsManager
+          onClose={() => {
+            setShowFailedNotifications(false);
+            fetchFailedNotificationCount();
           }}
         />
       )}

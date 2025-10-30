@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 from urllib.parse import urlencode
 from enum import Enum
+from datetime import datetime, timezone
+from sqlalchemy.orm import Session
 
 # Import centralized settings
 from backend.core.config import settings
@@ -36,19 +38,78 @@ conf = ConnectionConfig(
     TEMPLATE_FOLDER=Path(__file__).parent.parent / 'templates' / 'email'
 )
 
-# --- 3. Generic Email Sending Function ---
-async def send_email(
+def log_notification_to_db(
+    db: Session,
+    recipient_email: str,
+    subject: str,
+    body_text: str,
+    status: str = "pending",
+    error: str = None,
+    recipient_user_id: int = None,
+    inward_id: int = None,
+    created_by: str = "system"
+):
+    """Log notification attempt to database"""
+    try:
+        from backend.models.notifications import Notification
+        
+        notification = Notification(
+            recipient_user_id=recipient_user_id,
+            to_email=recipient_email,
+            inward_id=inward_id,
+            subject=subject,
+            body_text=body_text,
+            status=status,
+            error=error,
+            created_by=created_by,
+            email_sent_at=datetime.now(timezone.utc) if status == "success" else None
+        )
+        
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+        return notification.id
+    except Exception as e:
+        print(f"ERROR: Failed to log notification to database: {e}")
+        return None
+
+# --- 3. Enhanced Generic Email Sending Function ---
+async def send_email_with_logging(
     background_tasks: BackgroundTasks,
     subject: str,
     recipient: EmailStr,
     template_name: str,
-    template_body: Dict[str, Any]
+    template_body: Dict[str, Any],
+    db: Session = None,
+    recipient_user_id: int = None,
+    inward_id: int = None,
+    created_by: str = "system"
 ):
-    """Queues an email sending task in the background."""
+    """Send email with comprehensive logging to notifications table."""
+    notification_id = None
+    
+    # Always log the attempt first
+    if db:
+        body_text = f"Template: {template_name}, Data: {str(template_body)}"
+        notification_id = log_notification_to_db(
+            db=db,
+            recipient_email=recipient,
+            subject=subject,
+            body_text=body_text,
+            status="pending",
+            recipient_user_id=recipient_user_id,
+            inward_id=inward_id,
+            created_by=created_by
+        )
+
     template_path = conf.TEMPLATE_FOLDER / template_name
     if not template_path.exists():
-        print(f"ERROR: Template '{template_name}' not found in {conf.TEMPLATE_FOLDER}")
-        return
+        error_msg = f"Template '{template_name}' not found in {conf.TEMPLATE_FOLDER}"
+        print(f"ERROR: {error_msg}")
+        
+        if db and notification_id:
+            update_notification_status(db, notification_id, "failed", error_msg)
+        return False
 
     try:
         message = MessageSchema(
@@ -58,12 +119,78 @@ async def send_email(
             subtype=MessageType.html
         )
         fm = FastMail(conf)
-        background_tasks.add_task(fm.send_message, message, template_name=template_name)
+        
+        # Add background task with success/failure callback
+        background_tasks.add_task(
+            send_email_task, 
+            fm, 
+            message, 
+            template_name, 
+            db, 
+            notification_id, 
+            recipient
+        )
+        
         print(f"Email task queued: '{subject}' to {recipient} using '{template_name}'")
+        return True
+        
     except Exception as e:
-        print(f"ERROR: Failed to queue email to {recipient}. Error: {e}")
+        error_msg = f"Failed to queue email to {recipient}. Error: {e}"
+        print(f"ERROR: {error_msg}")
+        
+        if db and notification_id:
+            update_notification_status(db, notification_id, "failed", error_msg)
+        return False
 
-# --- 4. Role-Based Invitation Email ---
+async def send_email_task(fm: FastMail, message: MessageSchema, template_name: str, db: Session, notification_id: int, recipient: str):
+    """Background task to actually send email and update status"""
+    try:
+        await fm.send_message(message, template_name=template_name)
+        print(f"SUCCESS: Email sent to {recipient}")
+        
+        if db and notification_id:
+            update_notification_status(db, notification_id, "success")
+            
+    except Exception as e:
+        error_msg = f"Failed to send email to {recipient}: {str(e)}"
+        print(f"ERROR: {error_msg}")
+        
+        if db and notification_id:
+            update_notification_status(db, notification_id, "failed", error_msg)
+
+def update_notification_status(db: Session, notification_id: int, status: str, error: str = None):
+    """Update notification status in database"""
+    try:
+        from backend.models.notifications import Notification
+        
+        notification = db.get(Notification, notification_id)
+        if notification:
+            notification.status = status
+            notification.error = error
+            if status == "success":
+                notification.email_sent_at = datetime.now(timezone.utc)
+            db.commit()
+    except Exception as e:
+        print(f"ERROR: Failed to update notification status: {e}")
+
+# --- 4. Legacy send_email function for backward compatibility ---
+async def send_email(
+    background_tasks: BackgroundTasks,
+    subject: str,
+    recipient: EmailStr,
+    template_name: str,
+    template_body: Dict[str, Any]
+):
+    """Legacy function - queues an email sending task in the background."""
+    return await send_email_with_logging(
+        background_tasks=background_tasks,
+        subject=subject,
+        recipient=recipient,
+        template_name=template_name,
+        template_body=template_body
+    )
+
+# --- 5. Role-Based Invitation Email ---
 async def send_new_user_invitation(
     background_tasks: BackgroundTasks,
     email: EmailStr,
@@ -72,7 +199,10 @@ async def send_new_user_invitation(
     temporary_password: str,
     role: UserRole,
     expires_hours: int = 48,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5173",
+    db: Session = None,
+    inward_id: int = None,
+    created_by: str = "system"
 ):
     """Sends an account activation invitation to a new user based on their role."""
     role_templates = {
@@ -84,7 +214,7 @@ async def send_new_user_invitation(
     template_name = role_templates.get(role)
     if not template_name:
         print(f"ERROR: No invitation template for role: {role}")
-        return
+        return False
 
     subject = f"Welcome to LIMS - Activate Your {role.value.capitalize()} Account"
     activation_link = f"{frontend_url}/portal/activate?token={token}"
@@ -98,21 +228,27 @@ async def send_new_user_invitation(
         "expires_hours": expires_hours
     }
 
-    await send_email(
+    return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=subject,
         recipient=email,
         template_name=template_name,
-        template_body=template_body
+        template_body=template_body,
+        db=db,
+        inward_id=inward_id,
+        created_by=created_by
     )
 
-# --- 5. Role-Based Welcome Email ---
+# --- 6. Role-Based Welcome Email ---
 async def send_welcome_email(
     background_tasks: BackgroundTasks,
     email: EmailStr,
     name: str,
     role: UserRole,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5173",
+    db: Session = None,
+    inward_id: int = None,
+    created_by: str = "system"
 ):
     """Sends a welcome email to a user after their first successful login."""
     role_config = {
@@ -124,20 +260,23 @@ async def send_welcome_email(
     config = role_config.get(role)
     if not config:
         print(f"ERROR: No welcome email configuration for role: {role}")
-        return
+        return False
 
     portal_url = f"{frontend_url}{config['portal_path']}"
     template_body = {"name": name, "portal_url": portal_url}
 
-    await send_email(
+    return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=config['subject'],
         recipient=email,
         template_name=config['template'],
-        template_body=template_body
+        template_body=template_body,
+        db=db,
+        inward_id=inward_id,
+        created_by=created_by
     )
 
-# --- 6. Legacy / Compatibility Email Templates ---
+# --- 7. Legacy / Compatibility Email Templates ---
 
 def get_password_reset_template(user_name: Optional[str], reset_link: str) -> Dict[str, Any]:
     """Generates subject and body for password reset email."""
@@ -174,7 +313,10 @@ async def send_new_user_invitation_email(
     token: str,
     srf_no: str,
     temp_password: str,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5173",
+    db: Session = None,
+    inward_id: int = None,
+    created_by: str = "system"
 ):
     """Legacy invitation email for a new customer."""
     subject = f"Your LIMS Account for SRF No: {srf_no} Has Been Created"
@@ -189,12 +331,15 @@ async def send_new_user_invitation_email(
         "valid_for_hours": 48
     }
 
-    await send_email(
+    return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=subject,
         recipient=recipient_email,
         template_name="new_customer_invitation.html",
-        template_body=template_body
+        template_body=template_body,
+        db=db,
+        inward_id=inward_id,
+        created_by=created_by
     )
 
 async def send_existing_user_notification_email(
@@ -202,7 +347,9 @@ async def send_existing_user_notification_email(
     recipient_email: EmailStr,
     inward_id: int,
     srf_no: str,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:5173",
+    db: Session = None,
+    created_by: str = "system"
 ):
     """Notification email for an existing customer about a new report."""
     subject = f"Inspection Report Ready for SRF No: {srf_no}"
@@ -216,10 +363,13 @@ async def send_existing_user_notification_email(
         "login_link": full_login_link,
     }
 
-    await send_email(
+    return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=subject,
         recipient=recipient_email,
         template_name="inward_notification.html",
-        template_body=template_body
+        template_body=template_body,
+        db=db,
+        inward_id=inward_id,
+        created_by=created_by
     )
