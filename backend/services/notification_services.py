@@ -13,7 +13,8 @@ class NotificationService:
     def __init__(self, db: Session):
         self.db = db
     
-    def get_failed_notifications(self, created_by: str = None, limit: int = 50) -> List[Dict[str, Any]]:
+    # FIX: Changed to async def to match the 'await' call in the router.
+    async def get_failed_notifications(self, created_by: str = None, limit: int = 50) -> List[Dict[str, Any]]:
         """Get all failed notifications with related inward and user data."""
         query = select(Notification, Inward, User).outerjoin(
             Inward, Notification.inward_id == Inward.inward_id
@@ -50,7 +51,8 @@ class NotificationService:
         
         return failed_notifications
     
-    def get_notification_by_id(self, notification_id: int) -> Optional[Notification]:
+    # FIX: Changed to async for consistency.
+    async def get_notification_by_id(self, notification_id: int) -> Optional[Notification]:
         """Get a specific notification by ID."""
         return self.db.get(Notification, notification_id)
     
@@ -61,7 +63,8 @@ class NotificationService:
         new_email: str = None
     ) -> bool:
         """Retry sending a failed notification."""
-        notification = self.get_notification_by_id(notification_id)
+        # This method uses await, so it must be async.
+        notification = await self.get_notification_by_id(notification_id)
         
         if not notification:
             raise HTTPException(status_code=404, detail="Notification not found")
@@ -69,13 +72,11 @@ class NotificationService:
         if notification.status != "failed":
             raise HTTPException(status_code=400, detail="Only failed notifications can be retried")
         
-        # Use new email if provided, otherwise use original
         recipient_email = new_email or notification.to_email
         
         if not recipient_email:
             raise HTTPException(status_code=400, detail="No recipient email available")
         
-        # Create a simple template for retry
         template_body = {
             "title": "LIMS Notification",
             "message": "This is a retry of a previously failed notification.",
@@ -83,18 +84,16 @@ class NotificationService:
             "original_content": notification.body_text
         }
         
-        # Update the notification to pending status
         notification.status = "pending"
         notification.to_email = recipient_email
         notification.error = None
         self.db.commit()
         
-        # Try to send with a generic template
         success = await send_email_with_logging(
             background_tasks=background_tasks,
             subject=notification.subject,
             recipient=recipient_email,
-            template_name="generic_notification.html",  # We'll need this template
+            template_name="generic_notification.html",
             template_body=template_body,
             db=self.db,
             recipient_user_id=notification.recipient_user_id,
@@ -104,50 +103,45 @@ class NotificationService:
         
         return success
     
-    def get_notification_stats(self, created_by: str = None) -> Dict[str, int]:
+    # FIX: Changed to async def to match the 'await' call in the router.
+    async def get_notification_stats(self, created_by: str = None) -> Dict[str, int]:
         """Get notification statistics."""
-        base_query = select(Notification)
-        
+        # Using a single, more efficient query for stats
+        from sqlalchemy import func, case
+
+        stmt = select(
+            func.count(Notification.id).label("total"),
+            func.count(case((Notification.status == 'pending', 1))).label("pending"),
+            func.count(case((Notification.status == 'success', 1))).label("success"),
+            func.count(case((Notification.status == 'failed', 1))).label("failed"),
+        )
         if created_by:
-            base_query = base_query.where(Notification.created_by == created_by)
-        
-        # Get counts for different statuses
-        total = len(self.db.execute(base_query).scalars().all())
-        
-        pending = len(self.db.execute(
-            base_query.where(Notification.status == "pending")
-        ).scalars().all())
-        
-        success = len(self.db.execute(
-            base_query.where(Notification.status == "success")
-        ).scalars().all())
-        
-        failed = len(self.db.execute(
-            base_query.where(Notification.status == "failed")
-        ).scalars().all())
+            stmt = stmt.where(Notification.created_by == created_by)
+
+        stats = self.db.execute(stmt).first()
         
         return {
-            "total": total,
-            "pending": pending,
-            "success": success,
-            "failed": failed
+            "total": stats.total or 0,
+            "pending": stats.pending or 0,
+            "success": stats.success or 0,
+            "failed": stats.failed or 0
         }
     
-    def mark_notification_as_read(self, notification_id: int) -> bool:
+    # FIX: Changed to async for consistency.
+    async def mark_notification_as_read(self, notification_id: int) -> bool:
         """Mark a notification as read/handled."""
-        notification = self.get_notification_by_id(notification_id)
+        notification = await self.get_notification_by_id(notification_id)
         if notification:
-            # You could add a 'read' field to the notification model if needed
-            # For now, we'll just update the status if it was failed
             if notification.status == "failed":
                 notification.error = f"{notification.error} [MARKED AS HANDLED]"
                 self.db.commit()
             return True
         return False
     
-    def delete_notification(self, notification_id: int) -> bool:
+    # FIX: Changed to async for consistency.
+    async def delete_notification(self, notification_id: int) -> bool:
         """Delete a notification (use with caution)."""
-        notification = self.get_notification_by_id(notification_id)
+        notification = await self.get_notification_by_id(notification_id)
         if notification:
             self.db.delete(notification)
             self.db.commit()

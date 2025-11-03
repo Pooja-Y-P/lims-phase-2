@@ -1,6 +1,6 @@
 # backend/services/delayed_email_service.py
 
-from datetime import datetime, timedelta, timezone # <-- Import timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
@@ -15,7 +15,8 @@ class DelayedEmailService:
     def __init__(self, db: Session):
         self.db = db
     
-    def schedule_delayed_email(
+    # FIX: Changed to async for consistency
+    async def schedule_delayed_email(
         self, 
         inward_id: int, 
         creator_id: int,
@@ -23,7 +24,6 @@ class DelayedEmailService:
         delay_hours: int = 24
     ) -> DelayedEmailTask:
         """Schedule a delayed email task."""
-        # Use timezone.utc to make the datetime object "aware"
         scheduled_time = datetime.now(timezone.utc) + timedelta(hours=delay_hours)
         
         task = DelayedEmailTask(
@@ -39,7 +39,8 @@ class DelayedEmailService:
         
         return task
     
-    def get_pending_tasks_for_user(self, creator_id: int) -> List[Dict[str, Any]]:
+    # FIX: This is the primary method causing the error. Changed to async.
+    async def get_pending_tasks_for_user(self, creator_id: int) -> List[Dict[str, Any]]:
         """Get pending email tasks for a specific user with countdown info."""
         stmt = (
             select(DelayedEmailTask, Inward)
@@ -57,12 +58,9 @@ class DelayedEmailService:
         results = self.db.execute(stmt).all()
         tasks = []
         
-        # --- THIS IS THE FIX ---
-        # Get the current time as an "aware" datetime object in UTC.
         now = datetime.now(timezone.utc)
 
         for task, inward in results:
-            # Now both task.scheduled_at (from DB) and now are "aware", so subtraction is allowed.
             time_left = (task.scheduled_at - now).total_seconds()
             is_overdue = time_left < 0
             
@@ -80,32 +78,36 @@ class DelayedEmailService:
         
         return tasks
     
-    def get_task_by_id(self, task_id: int) -> Optional[DelayedEmailTask]:
+    # FIX: Changed to async for consistency
+    async def get_task_by_id(self, task_id: int) -> Optional[DelayedEmailTask]:
         """Retrieves a single delayed email task by its ID."""
         return self.db.get(DelayedEmailTask, task_id)
 
-    def mark_task_as_sent(self, task_id: int) -> bool:
+    # FIX: Changed to async for consistency
+    async def mark_task_as_sent(self, task_id: int) -> bool:
         """Mark a delayed email task as sent."""
-        task = self.get_task_by_id(task_id)
+        task = await self.get_task_by_id(task_id)
         if task and not task.is_sent:
             task.is_sent = True
-            task.sent_at = datetime.now(timezone.utc) # Use aware datetime
+            task.sent_at = datetime.now(timezone.utc)
             self.db.commit()
             return True
         return False
     
-    def cancel_task(self, task_id: int) -> bool:
+    # FIX: Changed to async for consistency
+    async def cancel_task(self, task_id: int) -> bool:
         """Cancel a delayed email task."""
-        task = self.get_task_by_id(task_id)
+        task = await self.get_task_by_id(task_id)
         if task and not task.is_cancelled:
             task.is_cancelled = True
             self.db.commit()
             return True
         return False
     
-    def get_overdue_tasks(self) -> List[DelayedEmailTask]:
+    # FIX: Changed to async for consistency
+    async def get_overdue_tasks(self) -> List[DelayedEmailTask]:
         """Get all overdue tasks that haven't sent reminders."""
-        now = datetime.now(timezone.utc) # Use aware datetime
+        now = datetime.now(timezone.utc)
         one_hour_from_now = now + timedelta(hours=1)
         stmt = select(DelayedEmailTask).where(
             and_(
@@ -120,7 +122,7 @@ class DelayedEmailService:
     
     async def send_reminder_emails(self, background_tasks: BackgroundTasks):
         """Send reminder emails for tasks that are about to expire."""
-        overdue_tasks = self.get_overdue_tasks()
+        overdue_tasks = await self.get_overdue_tasks()
         
         tasks_by_creator: Dict[int, List[DelayedEmailTask]] = {}
         for task in overdue_tasks:

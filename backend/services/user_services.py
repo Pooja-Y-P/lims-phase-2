@@ -24,19 +24,19 @@ def authenticate_user(db: Session, username: str, password: str) -> Optional[Use
     # Note: Using 'username' here corresponds to the email in your database/User model.
     user = db.query(User).filter(User.email == username).first()
 
+    # Reason 1 for failure: User does not exist.
     if not user:
-        return None # User not found
+        return None
 
-    # 🛑 FIX: Check if the hash exists before verification to prevent a 500 error 
-    # if the database column is NULL/None.
+    # Reason 2 for failure: Password does not match or the hash is missing.
     if not user.password_hash or not verify_password(password, user.password_hash):
-        return None # Invalid password or missing hash
+        return None
 
+    # Reason 3 for failure: User is marked as inactive.
     if not user.is_active:
-        # A user being inactive should fail authentication
         return None 
 
-    # Returning the full ORM object ensures all fields are present for Pydantic serialization.
+    # If all checks pass, authentication is successful.
     return user
 
 

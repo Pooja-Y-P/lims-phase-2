@@ -190,56 +190,84 @@ async def send_email(
         template_body=template_body
     )
 
-# --- 5. Role-Based Invitation Email ---
-async def send_new_user_invitation(
+async def send_new_user_invitation_email(
     background_tasks: BackgroundTasks,
-    email: EmailStr,
-    name: str,
+    recipient_email: EmailStr,
     token: str,
-    temporary_password: str,
-    role: UserRole,
-    expires_hours: int = 48,
+    srf_no: str,
+    temp_password: str,
     frontend_url: str = "http://localhost:5173",
     db: Session = None,
     inward_id: int = None,
     created_by: str = "system"
 ):
-    """Sends an account activation invitation to a new user based on their role."""
-    role_templates = {
-        UserRole.ADMIN: "invitation_admin.html",
-        UserRole.ENGINEER: "invitation_engineer.html",
-        UserRole.CUSTOMER: "invitation_customer.html"
-    }
-
-    template_name = role_templates.get(role)
-    if not template_name:
-        print(f"ERROR: No invitation template for role: {role}")
-        return False
-
-    subject = f"Welcome to LIMS - Activate Your {role.value.capitalize()} Account"
+    """Legacy invitation email for a new customer."""
+    subject = f"Your LIMS Account for SRF No: {srf_no} Has Been Created"
     activation_link = f"{frontend_url}/portal/activate?token={token}"
+    
+    # UPDATED: Include direct report access link in template
+    report_link = f"{frontend_url}/report/inward/{inward_id}?token={token}" if inward_id else activation_link
 
     template_body = {
-        "name": name,
-        "email": email,
-        "temporary_password": temporary_password,
-        "role": role.value.capitalize(),
+        "title": "Welcome! Please Activate Your Account",
+        "srf_no": srf_no,
+        "email": recipient_email,
+        "temporary_password": temp_password,
         "activation_link": activation_link,
-        "expires_hours": expires_hours
+        "report_link": report_link,  # NEW: Direct link to report
+        "valid_for_hours": 48
     }
 
     return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=subject,
-        recipient=email,
-        template_name=template_name,
+        recipient=recipient_email,
+        template_name="new_customer_invitation.html",
         template_body=template_body,
         db=db,
         inward_id=inward_id,
         created_by=created_by
     )
 
-# --- 6. Role-Based Welcome Email ---
+async def send_existing_user_notification_email(
+    background_tasks: BackgroundTasks,
+    recipient_email: EmailStr,
+    inward_id: int,
+    srf_no: str,
+    frontend_url: str = "http://localhost:5173",
+    db: Session = None,
+    created_by: str = "system"
+):
+    """Notification email for an existing customer about a new report."""
+    subject = f"Inspection Report Ready for SRF No: {srf_no}"
+    
+    # UPDATED: Use direct report access link
+    direct_report_link = f"{frontend_url}/report/inward/{inward_id}"
+    
+    # Fallback login link with redirect
+    redirect_path = f"/portal/inwards/{inward_id}"
+    query_params = urlencode({"redirect": redirect_path})
+    login_redirect_link = f"{frontend_url}/login?{query_params}"
+
+    template_body = {
+        "title": "New Inspection Report Available",
+        "srf_no": srf_no,
+        "direct_link": direct_report_link,  # NEW: Direct access link
+        "login_link": login_redirect_link,   # Fallback login link
+    }
+
+    return await send_email_with_logging(
+        background_tasks=background_tasks,
+        subject=subject,
+        recipient=recipient_email,
+        template_name="inward_notification.html",
+        template_body=template_body,
+        db=db,
+        inward_id=inward_id,
+        created_by=created_by
+    )
+
+# --- Rest of the functions remain unchanged ---
 async def send_welcome_email(
     background_tasks: BackgroundTasks,
     email: EmailStr,
@@ -276,8 +304,6 @@ async def send_welcome_email(
         created_by=created_by
     )
 
-# --- 7. Legacy / Compatibility Email Templates ---
-
 def get_password_reset_template(user_name: Optional[str], reset_link: str) -> Dict[str, Any]:
     """Generates subject and body for password reset email."""
     return {
@@ -306,70 +332,3 @@ def get_reminder_email_template(data: Dict[str, Any]) -> Dict[str, Any]:
             "message": "This is a critical alert regarding overdue tasks that require your immediate action."
         }
     }
-
-async def send_new_user_invitation_email(
-    background_tasks: BackgroundTasks,
-    recipient_email: EmailStr,
-    token: str,
-    srf_no: str,
-    temp_password: str,
-    frontend_url: str = "http://localhost:5173",
-    db: Session = None,
-    inward_id: int = None,
-    created_by: str = "system"
-):
-    """Legacy invitation email for a new customer."""
-    subject = f"Your LIMS Account for SRF No: {srf_no} Has Been Created"
-    activation_link = f"{frontend_url}/portal/activate?token={token}"
-
-    template_body = {
-        "title": "Welcome! Please Activate Your Account",
-        "srf_no": srf_no,
-        "email": recipient_email,
-        "temporary_password": temp_password,
-        "activation_link": activation_link,
-        "valid_for_hours": 48
-    }
-
-    return await send_email_with_logging(
-        background_tasks=background_tasks,
-        subject=subject,
-        recipient=recipient_email,
-        template_name="new_customer_invitation.html",
-        template_body=template_body,
-        db=db,
-        inward_id=inward_id,
-        created_by=created_by
-    )
-
-async def send_existing_user_notification_email(
-    background_tasks: BackgroundTasks,
-    recipient_email: EmailStr,
-    inward_id: int,
-    srf_no: str,
-    frontend_url: str = "http://localhost:5173",
-    db: Session = None,
-    created_by: str = "system"
-):
-    """Notification email for an existing customer about a new report."""
-    subject = f"Inspection Report Ready for SRF No: {srf_no}"
-    redirect_path = f"/portal/inwards/{inward_id}"
-    query_params = urlencode({"redirect": redirect_path})
-    full_login_link = f"{frontend_url}/login?{query_params}"
-
-    template_body = {
-        "title": "New Inspection Report Available",
-        "srf_no": srf_no,
-        "login_link": full_login_link,
-    }
-
-    return await send_email_with_logging(
-        background_tasks=background_tasks,
-        subject=subject,
-        recipient=recipient_email,
-        template_name="inward_notification.html",
-        template_body=template_body,
-        db=db,
-        inward_id=inward_id,
-        created_by=created_by
-    )

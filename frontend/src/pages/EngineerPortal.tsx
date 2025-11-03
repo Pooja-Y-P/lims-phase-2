@@ -1,28 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import {
-  Wrench,
-  FileText,
-  Award,
-  ClipboardList,
-  AlertTriangle,
-  ArrowRight,
-  Mail,
-  Clock,
-  XCircle,
-} from "lucide-react";
+import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, Clock, XCircle, CreditCard as Edit3, Users, Save, CheckCircle2 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { User } from "../types";
 import { api, ENDPOINTS } from "../api/config";
 
 // Import page components
-import { InwardForm } from "../components/InwardForm";
+import { CreateInwardPage } from "../components/CreateInwardPage";
 import { ViewUpdateInward } from "../components/ViewUpdateInward";
 import { ViewInward } from "../components/ViewInward";
 import { PrintStickers } from "../components/PrintStickers";
+import { InwardForm } from "../components/InwardForm";
 import EnhancedSrfManagement from "../components/EnhancedSrfManagement";
-// --- ADD THIS IMPORT ---
 import { SrfDetailPage } from "../components/SrfDetailPage"; 
 import { DelayedEmailManager } from "../components/DelayedEmailManager";
 import { FailedNotificationsManager } from "../components/FailedNotificationManager";
@@ -54,22 +44,39 @@ interface FailedNotificationsResponse {
   };
 }
 
+interface AvailableDraft {
+  inward_id: number;
+  draft_updated_at: string;
+  created_at: string;
+  customer_details: string;
+  draft_data: {
+    customer_details?: string;
+    equipment_list?: any[];
+  };
+}
+
 const ActionButton: React.FC<{
   label: string;
   description: string;
   icon: React.ReactNode;
   onClick: () => void;
   colorClasses: string;
-}> = ({ label, description, icon, onClick, colorClasses }) => (
+  badge?: number;
+}> = ({ label, description, icon, onClick, colorClasses, badge }) => (
   <button
     onClick={onClick}
     className="group relative p-6 rounded-2xl text-left transition-all duration-300 transform hover:scale-[1.02] border border-gray-100 bg-white hover:border-blue-500 hover:shadow-xl shadow-md"
   >
     <div className="flex items-start">
       <div
-        className={`p-3 rounded-xl text-white mr-4 shadow-lg ${colorClasses} group-hover:shadow-2xl transition-shadow duration-300`}
+        className={`p-3 rounded-xl text-white mr-4 shadow-lg ${colorClasses} group-hover:shadow-2xl transition-shadow duration-300 relative`}
       >
         {icon}
+        {badge && badge > 0 && (
+          <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
       </div>
       <div className="flex-1">
         <h3 className="text-xl font-bold text-gray-900 mb-1">{label}</h3>
@@ -86,15 +93,17 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
   const [failedNotificationCount, setFailedNotificationCount] = useState(0);
   const [showDelayedEmails, setShowDelayedEmails] = useState(false);
   const [showFailedNotifications, setShowFailedNotifications] = useState(false);
+  const [availableDrafts, setAvailableDrafts] = useState<AvailableDraft[]>([]);
 
   useEffect(() => {
     fetchPendingEmailCount();
     fetchFailedNotificationCount();
+    fetchAvailableDrafts();
     
-    // Refresh counts every 30 seconds
     const interval = setInterval(() => {
       fetchPendingEmailCount();
       fetchFailedNotificationCount();
+      fetchAvailableDrafts();
     }, 30000);
     
     return () => clearInterval(interval);
@@ -128,6 +137,15 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
     }
   };
 
+  const fetchAvailableDrafts = async () => {
+    try {
+      const response = await api.get<AvailableDraft[]>(ENDPOINTS.STAFF.DRAFTS);
+      setAvailableDrafts(response.data || []);
+    } catch (error) {
+      console.error('Error loading drafts:', error);
+    }
+  };
+
   const EngineerDashboard = () => {
     const navigate = useNavigate();
 
@@ -136,7 +154,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         label: "Create Inward",
         description: "Process incoming equipment and SRF items",
         icon: <ClipboardList className="h-8 w-8" />,
-        route: "inward",
+        route: "create-inward",
         colorClasses: "bg-gradient-to-r from-blue-500 to-indigo-600",
       },
       {
@@ -182,6 +200,89 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
             </p>
           </div>
         </div>
+
+        {/* Professional Draft Management Section */}
+        {availableDrafts.length > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 mb-6 shadow-lg">
+            <div className="flex items-start justify-between flex-wrap gap-4">
+              <div className="flex items-start space-x-4">
+                <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-full flex-shrink-0">
+                  <Save className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    Continue Your Work - Auto-Saved Drafts
+                  </h3>
+                  <p className="text-blue-700 mb-4">
+                    You have{" "}
+                    <span className="font-bold">{availableDrafts.length}</span>{" "}
+                    inward form{availableDrafts.length > 1 ? "s" : ""} that were automatically saved every 2 seconds. 
+                    No data loss - your progress is secure!
+                  </p>
+                  
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {availableDrafts.slice(0, 3).map((draft) => (
+                      <div 
+                        key={draft.inward_id} 
+                        className="bg-white rounded-lg p-3 border border-blue-200 flex items-center justify-between shadow-sm"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-lg">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-blue-900 text-sm">
+                              {draft.draft_data?.customer_details || draft.customer_details || 'Untitled Draft'}
+                            </h4>
+                            <div className="flex items-center space-x-3 text-xs text-blue-600">
+                              <span className="flex items-center gap-1">
+                                <Users className="h-3 w-3" />
+                                {draft.draft_data?.equipment_list?.length || 0} items
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {new Date(draft.draft_updated_at).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => navigate(`create-inward?draft=${draft.inward_id}`)}
+                          className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 font-medium transition-colors flex items-center gap-1"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          Continue
+                        </button>
+                      </div>
+                    ))}
+                    {availableDrafts.length > 3 && (
+                      <div className="text-center pt-2">
+                        <span className="text-sm text-blue-600">
+                          +{availableDrafts.length - 3} more drafts available
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('create-inward')}
+                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md flex-shrink-0"
+              >
+                <ClipboardList className="h-5 w-5" />
+                <span>Create Inward</span>
+              </button>
+            </div>
+            <div className="mt-4 pt-4 border-t border-blue-200">
+              <div className="flex items-center gap-2 text-xs text-blue-600">
+                <Save className="h-4 w-4 text-green-500" />
+                <span className="font-medium">Professional Draft System:</span>
+                <span>Auto-saves every 2 seconds • No data loss • Logout-safe • Resume anytime</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Scheduled Email Notifications */}
         {pendingEmailCount > 0 && (
@@ -257,6 +358,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
                 icon={action.icon}
                 onClick={() => navigate(action.route)}
                 colorClasses={action.colorClasses}
+                badge={action.label === "Create Inward" ? availableDrafts.length : undefined}
               />
             ))}
           </div>
@@ -271,16 +373,14 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
       <main className="flex-1 max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 w-full">
         <Routes>
           <Route path="/" element={<EngineerDashboard />} />
-          <Route path="inward" element={<InwardForm />} />
+          <Route path="create-inward" element={<CreateInwardPage />} />
           <Route path="view-inward" element={<ViewUpdateInward />} />
           <Route path="view-inward/:id" element={<ViewInward />} />
           <Route path="edit-inward/:id" element={<InwardForm />} />
           <Route path="print-stickers/:id" element={<PrintStickers />} />
           
           {/* SRF Routes */}
-          {/* FIX: Removed the 'onStatusChange' prop as it's no longer required by the component. */}
           <Route path="srfs" element={<EnhancedSrfManagement />} />
-          
           <Route path="srfs/:srfId" element={<SrfDetailPage />} />
           
           <Route path="certificates" element={<CertificatesPage />} />

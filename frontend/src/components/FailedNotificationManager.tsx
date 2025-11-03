@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Mail, X, RefreshCw, Trash2, Loader2, CheckCircle } from 'lucide-react';
 import { api, ENDPOINTS } from '../api/config';
 
+// --- (Interfaces are unchanged) ---
 interface FailedNotification {
   id: number;
   recipient_email: string;
@@ -41,31 +42,43 @@ export const FailedNotificationsManager: React.FC<FailedNotificationsManagerProp
   const [actionState, setActionState] = useState<{ [key: number]: 'retrying' | 'deleting' | null }>({});
   const [emailInputs, setEmailInputs] = useState<{ [key: number]: string }>({});
 
+  // --- FIX: Add useEffect for polling ---
   useEffect(() => {
+    // 1. Initial fetch when the component mounts.
     fetchFailedNotifications();
-  }, []);
+
+    // 2. Set up an interval to poll for new data every 30 seconds.
+    const pollInterval = setInterval(() => {
+      fetchFailedNotifications();
+    }, 30000); // 30,000 milliseconds = 30 seconds
+
+    // 3. Cleanup function to stop polling when the component unmounts.
+    return () => clearInterval(pollInterval);
+  }, []); // Empty dependency array ensures this runs only once.
 
   const fetchFailedNotifications = async () => {
-    // Note: We don't set loading to true here to allow for silent background refreshes.
+    // Only show the main loader on the very first fetch.
+    if (notifications.length === 0 && !loading) {
+      setLoading(true);
+    }
+    
     try {
-      // FIX: Construct the URL manually from the base 'NOTIFICATIONS' endpoint.
-      // The backend router places this under /staff/inwards, so we use that as the base.
       const response = await api.get<FailedNotificationsResponse>(`${ENDPOINTS.STAFF.INWARDS}/notifications/failed`);
       setNotifications(response.data.failed_notifications);
       setStats(response.data.stats);
       
-      // Initialize email inputs with existing emails
       const initialEmails: { [key: number]: string } = {};
       response.data.failed_notifications.forEach(notification => {
-        if (notification.recipient_email) {
+        if (notification.recipient_email && !emailInputs[notification.id]) {
           initialEmails[notification.id] = notification.recipient_email;
         }
       });
-      setEmailInputs(initialEmails);
+      // Merge to preserve user's current input
+      setEmailInputs(prev => ({...initialEmails, ...prev}));
     } catch (error) {
       console.error('Error fetching failed notifications:', error);
     } finally {
-      setLoading(false); // Only set loading to false after the initial fetch.
+      setLoading(false);
     }
   };
 
@@ -82,9 +95,8 @@ export const FailedNotificationsManager: React.FC<FailedNotificationsManagerProp
 
     setActionState(prev => ({ ...prev, [notificationId]: 'retrying' }));
     try {
-      // FIX: Construct the retry URL manually.
       await api.post(`${ENDPOINTS.STAFF.INWARDS}/notifications/${notificationId}/retry`, { email });
-      // Re-fetch the list to get the latest data from the server.
+      // Re-fetch to get the latest server state.
       await fetchFailedNotifications();
       alert(`Notification retry queued successfully! Email will be sent to ${email}.`);
     } catch (error: any) {
@@ -101,9 +113,8 @@ export const FailedNotificationsManager: React.FC<FailedNotificationsManagerProp
 
     setActionState(prev => ({ ...prev, [notificationId]: 'deleting' }));
     try {
-      // FIX: Construct the delete URL manually.
       await api.delete(`${ENDPOINTS.STAFF.INWARDS}/notifications/${notificationId}`);
-      // Re-fetch the list to ensure UI consistency.
+      // Re-fetch to get the latest server state.
       await fetchFailedNotifications();
       alert('Failed notification deleted successfully.');
     } catch (error: any) {
@@ -123,14 +134,13 @@ export const FailedNotificationsManager: React.FC<FailedNotificationsManagerProp
     });
   };
 
-  // FIX: Removed the unused 'truncateText' function.
-
+  // --- (The JSX part of your component is unchanged as its logic was already sound) ---
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white rounded-lg p-8">
           <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+            <Loader2 className="animate-spin h-6 w-6 border-b-2 border-red-600" />
             <span>Loading failed notifications...</span>
           </div>
         </div>
@@ -154,7 +164,6 @@ export const FailedNotificationsManager: React.FC<FailedNotificationsManagerProp
           </button>
         </div>
 
-        {/* Stats Section */}
         <div className="bg-gray-50 px-6 py-4 border-b">
           <div className="grid grid-cols-4 gap-4">
             <div className="text-center">

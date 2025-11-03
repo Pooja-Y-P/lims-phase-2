@@ -1,216 +1,221 @@
-import React, { useState, ChangeEvent, FormEvent } from "react";
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthProvider";
-import { User, UserRole } from "../types";
-import { Mail, Lock, ArrowRight, HelpCircle, Loader2, Eye, EyeOff } from "lucide-react"; // Added Eye, EyeOff
-import { api, ENDPOINTS } from "../api/config";
+// src/pages/Login.tsx
 
-interface LoginResponse {
-  user_id: number;
-  username: string;
-  email: string;
-  full_name: string | null;
-  role: string;
-  is_active: boolean;
-  token: string;
-  customer_id?: number | null;
-}
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../auth/AuthProvider';
+import { api, ENDPOINTS } from '../api/config';
+import { User } from '../types';
+import { Eye, EyeOff, LogIn, Mail, Lock } from 'lucide-react';
 
-const Login: React.FC = () => {
+const Login = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  const auth = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const { login, user, bootstrapped } = useAuth();
+  const [searchParams] = useSearchParams();
+  
+  // Handle redirect after login
+  useEffect(() => {
+    const redirectPath = searchParams.get('redirect');
+    if (redirectPath) {
+      localStorage.setItem('postLoginRedirect', redirectPath);
+    }
+  }, [searchParams]);
 
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [error, setError] = useState<string>("");
-  const [success, setSuccess] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-  const [showPassword, setShowPassword] = useState<boolean>(false); // Added state for password visibility
-
-  if (!bootstrapped) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-100">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
-      </div>
-    );
-  }
-
-  if (user) {
-    const path = {
-      admin: '/admin',
-      engineer: '/engineer',
-      customer: '/customer',
-    }[user.role] || '/';
-    return <Navigate to={path} replace />;
-  }
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    setError("");
-    setSuccess("");
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-    setSuccess("");
+    setError('');
+    setIsLoading(true);
 
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', form.email);
-      formData.append('password', form.password);
+      const params = new URLSearchParams();
+      params.append('username', email);
+      params.append('password', password);
 
-      const response = await api.post<LoginResponse>(ENDPOINTS.AUTH.LOGIN, formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-
-      const loginData = response.data;
-      
-      const userInfo: User = {
-        user_id: loginData.user_id,
-        customer_id: loginData.customer_id || null,
-        username: loginData.username,
-        email: loginData.email,
-        full_name: loginData.full_name,
-        role: loginData.role as UserRole, 
-        token: loginData.token,
-        is_active: loginData.is_active,
-      };
-
-      setSuccess("Login successful! Redirecting...");
-      login(userInfo);
-
-      const params = new URLSearchParams(location.search);
-      const redirectPath = params.get('redirect');
-
-      setTimeout(() => {
-        if (redirectPath) {
-          navigate(redirectPath, { replace: true });
-        } else {
-          const defaultPath = {
-            admin: '/admin',
-            engineer: '/engineer',
-            customer: '/customer',
-          }[userInfo.role] || '/';
-          navigate(defaultPath, { replace: true });
+      // Make the API call with the correct form data AND explicitly set the header
+      // to override any global defaults set in your api.ts config.
+      const response = await api.post<User>(
+        ENDPOINTS.AUTH.LOGIN,
+        params,
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
         }
-      }, 500);
+      );
+      
+      const loggedInUser = response.data;
 
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.detail || "Login failed. Please check your credentials.";
-      setError(errorMessage);
+      // On success, call the context's login function with the user data
+      auth.login(loggedInUser);
+
+      // Handle navigation based on role
+      const redirectPath = localStorage.getItem('postLoginRedirect');
+      if (redirectPath) {
+        localStorage.removeItem('postLoginRedirect');
+        navigate(redirectPath, { replace: true });
+      } else {
+        switch (loggedInUser.role) {
+          case 'admin':
+            navigate('/admin', { replace: true });
+            break;
+          case 'engineer':
+            navigate('/engineer', { replace: true });
+            break;
+          case 'customer':
+            navigate('/customer', { replace: true });
+            break;
+          default:
+            navigate('/', { replace: true });
+        }
+      }
+    } catch (err: unknown) {
+      // Handle API errors gracefully
+      if (
+        err &&
+        typeof err === 'object' &&
+        'isAxiosError' in err &&
+        'response' in err &&
+        err.response
+      ) {
+        const axiosError = err as { response: { data: { detail: any } } };
+        const detail = axiosError.response.data.detail;
+
+        if (typeof detail === 'string') {
+          setError(detail);
+        } else if (Array.isArray(detail) && detail[0]?.msg) {
+          setError(detail[0].msg);
+        } else {
+          setError('Login failed. Please check your credentials.');
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
     } finally {
-        setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 flex items-center justify-center px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl sm:px-10">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Welcome Back
-            </h2>
-            <p className="mt-2 text-gray-600">Sign in to your account</p>
+        {/* Header */}
+        <div className="text-center">
+          <div className="mx-auto h-20 w-20 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+            <LogIn className="h-10 w-10 text-white" />
           </div>
+          <h2 className="mt-6 text-3xl font-bold text-gray-900">
+            Welcome to LIMS
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Sign in to access your dashboard
+          </p>
+        </div>
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                <Mail className="h-5 w-5" />
-              </span>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={form.email}
-                onChange={handleChange}
-                placeholder="Email address"
-                className="appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
-              />
+        {/* Login Form */}
+        <div className="bg-white py-8 px-8 shadow-2xl rounded-2xl border border-gray-100">
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* Email Field */}
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address / Username
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="email"
+                  name="email"
+                  type="text"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your username or email"
+                />
+              </div>
             </div>
 
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                <Lock className="h-5 w-5" />
-              </span>
-              <input
-                id="password"
-                name="password"
-                type={showPassword ? "text" : "password"} // Updated to use showPassword state
-                autoComplete="current-password"
-                required
-                value={form.password}
-                onChange={handleChange}
-                placeholder="Password"
-                className="appearance-none block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all duration-200"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
+            {/* Password Field */}
+            <div>
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  ) : (
+                    <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                  )}
+                </button>
+              </div>
             </div>
 
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={() => navigate("/forgot-password")}
-                className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-500 transition-colors font-medium"
-              >
-                <HelpCircle className="w-4 h-4 mr-1" />
-                Forgot password?
-              </button>
-            </div>
-
+            {/* Error Message */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                <p className="text-red-800 text-sm">{error}</p>
-              </div>
-            )}
-            {success && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                <p className="text-green-800 text-sm">{success}</p>
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
               </div>
             )}
 
+            {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || !form.email || !form.password}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-lg text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading}
+              className="w-full flex justify-center items-center space-x-2 py-3 px-4 border border-transparent rounded-lg shadow-sm text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-lg transition-all duration-200"
             >
-              {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+              {isLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Signing in...</span>
+                </>
               ) : (
                 <>
-                  <span className="absolute left-0 inset-y-0 flex items-center pl-3">
-                    <ArrowRight className="h-5 w-5 text-indigo-300 group-hover:text-indigo-200" />
-                  </span>
-                  Sign In
+                  <LogIn className="h-5 w-5" />
+                  <span>Sign In</span>
                 </>
               )}
             </button>
           </form>
 
-          {/* Commented out signup section since it's not in your routes yet */}
-          {/* <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Don't have an account?{" "}
-              <button
-                type="button"
-                onClick={() => navigate('/signup')}
-                className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors"
-              >
-                Sign up here
-              </button>
-            </p>
-          </div> */}
+          {/* Footer Links */}
+          <div className="mt-6 text-center">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-blue-600 hover:text-blue-500 font-medium"
+            >
+              Forgot your password?
+            </Link>
+          </div>
+        </div>
+
+        {/* Additional Info */}
+        <div className="text-center text-sm text-gray-500">
+          <p>Laboratory Information Management System</p>
+          <p className="mt-1">© 2025 LIMS. All rights reserved.</p>
         </div>
       </div>
     </div>

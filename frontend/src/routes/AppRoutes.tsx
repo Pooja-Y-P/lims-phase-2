@@ -1,5 +1,6 @@
 // src/routes/AppRoutes.tsx
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Routes, Route, Navigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { RequireAuth } from '../auth/RequireAuth';
 
@@ -35,6 +36,43 @@ const RootRedirect = () => {
   }
 };
 
+// NEW: Direct inward access component
+const DirectInwardAccess = () => {
+  const { inwardId } = useParams<{ inwardId: string }>();
+  const [searchParams] = useSearchParams();
+  const { user, bootstrapped } = useAuth();
+  const token = searchParams.get('token');
+
+  useEffect(() => {
+    // If user is not authenticated and no token, redirect to login with redirect info
+    if (bootstrapped && !user && !token) {
+      localStorage.setItem('postLoginRedirect', `/portal/inwards/${inwardId}`);
+      window.location.href = '/login';
+    }
+  }, [bootstrapped, user, token, inwardId]);
+
+  if (!bootstrapped) {
+    return <div>Loading...</div>;
+  }
+
+  // If user is authenticated, redirect to their portal to view the inward
+  if (user) {
+    if (user.role === 'customer') {
+      return <Navigate to={`/customer/view-inward/${inwardId}`} replace />;
+    }
+    // For staff members, redirect to their portal
+    return <Navigate to={`/engineer/view-inward/${inwardId}`} replace />;
+  }
+
+  // If token is provided but user is not authenticated, show direct access
+  // if (token) {
+  //   return <CustomerRemarksPortal directAccess={true} accessToken={token} />;
+  // }
+
+  // Fallback
+  return <Navigate to="/login" replace />;
+};
+
 const AppRoutes = () => {
   const { logout, user } = useAuth();
 
@@ -47,6 +85,9 @@ const AppRoutes = () => {
       
       {/* --- Customer Remarks Portal (Public with token authentication) --- */}
       <Route path="/portal/inwards/:inwardId/remarks" element={<CustomerRemarksPortal />} />
+      
+      {/* --- NEW: Direct access route for inspection reports --- */}
+      <Route path="/report/inward/:inwardId" element={<DirectInwardAccess />} />
       
       {/* --- Protected Routes --- */}
       <Route 

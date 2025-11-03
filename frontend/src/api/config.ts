@@ -1,5 +1,3 @@
-/// src/api/config.ts
-
 import axios from "axios";
 
 // Using the more specific base URL, common for versioned APIs
@@ -21,7 +19,7 @@ export const ENDPOINTS = {
     ALL_USERS: `/users`,
   },
 
-  // Invitation management (from the first file)
+  // Invitation management
   INVITATIONS: {
     SEND: '/invitations/send',
     ACCEPT: '/invitations/accept',
@@ -33,6 +31,12 @@ export const ENDPOINTS = {
     SRFS: `/staff/srfs`,
     INWARDS: `/staff/inwards`,
     INWARD_SEND_REPORT: (id: number) => `/staff/inwards/${id}/send-report`,
+    
+    // Simplified Draft endpoints
+    DRAFTS: `/staff/inwards/drafts`,  // GET - list all drafts
+    DRAFT: `/staff/inwards/draft`,    // PATCH - update draft with partial data
+    SUBMIT: `/staff/inwards/submit`,  // POST - submit/finalize draft or new form
+    DRAFT_DELETE: (id: number) => `/staff/inwards/drafts/${id}`,  // DELETE - remove draft
   },
   
   // Customer-facing portal routes
@@ -41,6 +45,8 @@ export const ENDPOINTS = {
     INWARDS: `/portal/inwards`,
     INWARD_DETAILS: (id: number) => `/portal/inwards/${id}`,
     SUBMIT_REMARKS: (id: number) => `/portal/inwards/${id}/remarks`,
+    DIRECT_ACCESS: (id: number, token?: string) => 
+      `/portal/direct/${id}${token ? `?token=${token}` : ''}`,
   },
 
   // Other primary resources
@@ -49,8 +55,7 @@ export const ENDPOINTS = {
   DEVIATIONS: `/deviations`,
   NOTIFICATIONS: `/notifications`,
   SRFS: `/srfs/`,
-  INWARDS: `/staff/inwards/`, 
-} as const; // Using 'as const' for better type safety and autocompletion
+} as const;
 
 // Create axios instance with default configuration
 export const api = axios.create({
@@ -64,7 +69,6 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    // Ensure headers object exists before modification
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -75,16 +79,24 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle global error cases, like 401 Unauthorized
+// Enhanced response interceptor
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If the error is 401, redirect to login
     if (error.response?.status === 401) {
-      // Add a check to avoid redirect loops if the user is already on the login page
+      const redirectRequired = error.response.headers?.['x-redirect-required'];
+      const inwardId = error.response.headers?.['x-inward-id'];
+      
+      if (redirectRequired && inwardId) {
+        localStorage.setItem('postLoginRedirect', `/portal/inwards/${inwardId}`);
+      }
+      
+      window.dispatchEvent(new CustomEvent('auth-logout', { 
+        detail: { reason: 'token_expired' }
+      }));
+      
       if (window.location.pathname !== '/login') {
         localStorage.removeItem('token');
-        // Use location.assign() for a full page reload to clear any stale state
         window.location.assign('/login');
       }
     }

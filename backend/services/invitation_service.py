@@ -8,9 +8,8 @@ from backend.models.customers import Customer
 from backend.models.invitations import Invitation
 from backend.core.security import hash_password, create_invitation_token
 from backend.services.password_service import generate_secure_password
-from backend.core.email import send_new_user_invitation, UserRole
+from backend.core.email import send_new_user_invitation_email, UserRole
 from backend.schemas.user_schemas import UserResponse
-
 
 class InvitationService:
     def __init__(self, db: Session):
@@ -115,7 +114,7 @@ class InvitationService:
         self.db.refresh(user)
 
         # 7️⃣ Send role-specific invitation email
-        await send_new_user_invitation(
+        await send_new_user_invitation_email(
             background_tasks=background_tasks,
             email=email,
             name=invited_name,

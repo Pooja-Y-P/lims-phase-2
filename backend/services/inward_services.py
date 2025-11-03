@@ -1,12 +1,16 @@
+# Update the InwardService class with simplified draft methods
+
 import uuid
 import os
 import aiofiles
 import secrets
 import string
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, and_, desc, or_, update
 from fastapi import HTTPException, status, UploadFile, BackgroundTasks
+from datetime import datetime, timezone, timedelta
+import json
 
 # Model and Schema imports
 from backend.models.inward import Inward
@@ -14,7 +18,9 @@ from backend.models.inward_equipments import InwardEquipment
 from backend.models.users import User
 from backend.models.customers import Customer
 from backend.models.invitations import Invitation
-from backend.schemas.inward_schemas import InwardCreate, InwardUpdate
+from backend.schemas.inward_schemas import InwardCreate, InwardUpdate, DraftResponse
+
+# Service imports
 from backend.services.delayed_email_services import DelayedEmailService
 
 # Core Service Imports
@@ -37,22 +43,237 @@ class InwardService:
             raise HTTPException(status_code=404, detail=f"Receiver user '{receiver_name}' not found.")
         return user.user_id
 
-    async def create_inward_with_files(self, inward_data: InwardCreate, files_by_index: Dict[int, List[UploadFile]], creator_id: int) -> Inward:
+    # --- SIMPLIFIED DRAFT MANAGEMENT ---
+    
+    async def get_user_drafts(self, user_id: int) -> List[DraftResponse]:
+        """Get all draft inward records for a user"""
+        try:
+            drafts = self.db.execute(
+                select(Inward).where(
+                    and_(
+                        Inward.created_by == user_id, 
+                        Inward.is_draft == True
+                    )
+                ).order_by(desc(Inward.draft_updated_at))
+            ).scalars().all()
+            
+            result = []
+            for draft in drafts:
+                draft_data = draft.draft_data if draft.draft_data else {}
+                
+                result.append(DraftResponse(
+                    inward_id=draft.inward_id,
+                    draft_updated_at=(draft.draft_updated_at or draft.created_at).isoformat(),
+                    customer_details=draft_data.get('customer_details') or draft.customer_details,
+                    draft_data=draft_data
+                ))
+            
+            return result
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve drafts: {str(e)}")
+
+    async def get_draft_by_id(self, draft_id: int, user_id: int) -> DraftResponse:
+        """Get a specific draft by its ID, ensuring it belongs to the user."""
+        try:
+            draft = self.db.execute(
+                select(Inward).where(
+                    and_(
+                        Inward.inward_id == draft_id,
+                        Inward.created_by == user_id,
+                        Inward.is_draft == True
+                    )
+                )
+            ).scalars().first()
+
+            if not draft:
+                raise HTTPException(status_code=404, detail="Draft not found or access denied")
+
+            draft_data = draft.draft_data if draft.draft_data else {}
+            
+            return DraftResponse(
+                inward_id=draft.inward_id,
+                draft_updated_at=(draft.draft_updated_at or draft.created_at).isoformat(),
+                customer_details=draft_data.get('customer_details') or draft.customer_details,
+                draft_data=draft_data
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve draft: {str(e)}")
+
+    async def update_draft(self, user_id: int, inward_id: Optional[int], draft_data: Dict[str, Any]) -> DraftResponse:
+        """Update or create draft with partial data"""
+        try:
+            current_time = datetime.now(timezone.utc)
+
+            if inward_id:
+                # Update existing draft
+                existing_draft = self.db.get(Inward, inward_id)
+                if not existing_draft or existing_draft.created_by != user_id:
+                    raise HTTPException(status_code=404, detail="Draft not found or access denied")
+                
+                if not existing_draft.is_draft:
+                    raise HTTPException(status_code=400, detail="Cannot update a finalized record as draft")
+                
+                # Merge new data with existing draft_data
+                current_draft_data = existing_draft.draft_data or {}
+                current_draft_data.update(draft_data)
+                
+                # Update the record
+                existing_draft.draft_data = current_draft_data
+                existing_draft.draft_updated_at = current_time
+                
+                # Update basic fields if provided in draft_data
+                if 'customer_details' in draft_data:
+                    existing_draft.customer_details = draft_data['customer_details']
+                
+                self.db.commit()
+                self.db.refresh(existing_draft)
+                
+                return DraftResponse(
+                    inward_id=existing_draft.inward_id,
+                    draft_updated_at=existing_draft.draft_updated_at.isoformat(),
+                    customer_details=existing_draft.customer_details,
+                    draft_data=existing_draft.draft_data
+                )
+            else:
+                # Create new draft or find existing one for this user
+                existing_draft = self.db.execute(
+                    select(Inward).where(
+                        and_(
+                            Inward.created_by == user_id,
+                            Inward.is_draft == True
+                        )
+                    ).order_by(desc(Inward.draft_updated_at))
+                ).scalars().first()
+                
+                if existing_draft:
+                    # Update existing draft
+                    current_draft_data = existing_draft.draft_data or {}
+                    current_draft_data.update(draft_data)
+                    
+                    existing_draft.draft_data = current_draft_data
+                    existing_draft.draft_updated_at = current_time
+                    
+                    if 'customer_details' in draft_data:
+                        existing_draft.customer_details = draft_data['customer_details']
+                    
+                    self.db.commit()
+                    self.db.refresh(existing_draft)
+                    
+                    return DraftResponse(
+                        inward_id=existing_draft.inward_id,
+                        draft_updated_at=existing_draft.draft_updated_at.isoformat(),
+                        customer_details=existing_draft.customer_details,
+                        draft_data=existing_draft.draft_data
+                    )
+                else:
+                    # Create new draft
+                    new_draft = Inward(
+                        srf_no=0,  # Temporary SRF, will be assigned on submission
+                        date=datetime.now(timezone.utc).date(),
+                        customer_dc_date=draft_data.get('customer_dc_date', ''),
+                        customer_details=draft_data.get('customer_details', ''),
+                        received_by=None,
+                        created_by=user_id,
+                        status='draft',
+                        is_draft=True,
+                        draft_data=draft_data,
+                        draft_updated_at=current_time
+                    )
+                    
+                    self.db.add(new_draft)
+                    self.db.commit()
+                    self.db.refresh(new_draft)
+                    
+                    return DraftResponse(
+                        inward_id=new_draft.inward_id,
+                        draft_updated_at=new_draft.draft_updated_at.isoformat(),
+                        customer_details=new_draft.customer_details,
+                        draft_data=new_draft.draft_data
+                    )
+                    
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to update draft: {str(e)}")
+
+    async def delete_draft(self, draft_id: int, user_id: int) -> bool:
+        """Delete a draft inward record"""
+        try:
+            draft = self.db.execute(
+                select(Inward).where(
+                    and_(
+                        Inward.inward_id == draft_id,
+                        Inward.created_by == user_id,
+                        Inward.is_draft == True
+                    )
+                )
+            ).scalars().first()
+            
+            if not draft:
+                return False
+            
+            # Delete the draft (cascade should handle equipment)
+            self.db.delete(draft)
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to delete draft: {str(e)}")
+
+    async def submit_inward(
+        self, 
+        inward_data: InwardCreate, 
+        files_by_index: Dict[int, List[UploadFile]], 
+        user_id: int,
+        draft_inward_id: Optional[int] = None
+    ) -> Inward:
+        """Submit/finalize inward form"""
         try:
             receiver_id = self._get_receiver_id(inward_data.receiver)
 
-            db_inward = Inward(
-                srf_no=inward_data.srf_no,
-                date=inward_data.date,
-                customer_dc_date=inward_data.customer_dc_date,
-                customer_details=inward_data.customer_details,
-                received_by=receiver_id,
-                created_by=creator_id,
-                status='created'
-            )
-            self.db.add(db_inward)
-            self.db.flush()
+            if draft_inward_id:
+                # Finalize existing draft
+                db_inward = self.db.get(Inward, draft_inward_id)
+                if not db_inward or db_inward.created_by != user_id or not db_inward.is_draft:
+                    raise HTTPException(status_code=404, detail="Draft not found or already finalized")
 
+                # Update with final data
+                db_inward.srf_no = inward_data.srf_no
+                db_inward.date = inward_data.date
+                db_inward.customer_dc_date = inward_data.customer_dc_date
+                db_inward.customer_details = inward_data.customer_details
+                db_inward.received_by = receiver_id
+                db_inward.status = 'created'
+                db_inward.is_draft = False
+                db_inward.draft_data = None  # Clear draft data
+                db_inward.draft_updated_at = None
+                db_inward.updated_by = user_id
+                db_inward.updated_at = datetime.now(timezone.utc)
+
+                # Clear old equipment and add new ones
+                self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == draft_inward_id).delete(synchronize_session=False)
+                self.db.flush()
+
+            else:
+                # Create new record
+                db_inward = Inward(
+                    srf_no=inward_data.srf_no,
+                    date=inward_data.date,
+                    customer_dc_date=inward_data.customer_dc_date,
+                    customer_details=inward_data.customer_details,
+                    received_by=receiver_id,
+                    created_by=user_id,
+                    status='created',
+                    is_draft=False
+                )
+                self.db.add(db_inward)
+                self.db.flush()
+
+            # Process equipment list with photos
             await self._process_equipment_list(db_inward.inward_id, inward_data.equipment_list, files_by_index)
             
             self.db.commit()
@@ -64,38 +285,130 @@ class InwardService:
             raise
         except Exception as e:
             self.db.rollback()
-            raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
+            print(f"ERROR in submit_inward: {e}")
+            raise HTTPException(status_code=500, detail="An internal server error occurred.")
+
+    # Keep all your existing methods like _process_equipment_list, get_all_inwards, etc.
+    # ... (rest of existing methods remain unchanged)
+
+    async def cleanup_old_drafts(self, user_id: int, days_old: int = 30) -> int:
+        """Clean up old draft records"""
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_old)
+            old_drafts = self.db.execute(
+                select(Inward).where(
+                    and_(
+                        Inward.created_by == user_id, 
+                        Inward.is_draft == True, 
+                        or_(
+                            Inward.draft_updated_at < cutoff_date,
+                            and_(Inward.draft_updated_at.is_(None), Inward.created_at < cutoff_date)
+                        )
+                    )
+                )
+            ).scalars().all()
+            
+            count = len(old_drafts)
+            if count > 0:
+                for draft in old_drafts:
+                    # Equipment will be deleted by cascade
+                    self.db.delete(draft)
+                self.db.commit()
+            
+            return count
+        except Exception as e:
+            self.db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to cleanup drafts: {str(e)}")
+
+    # --- INWARD CREATION & FINALIZATION ---
+
+    async def create_or_finalize_inward(
+        self, 
+        inward_data: InwardCreate, 
+        files_by_index: Dict[int, List[UploadFile]], 
+        creator_id: int,
+        draft_id: Optional[int] = None
+    ) -> Inward:
+        """
+        Creates a new inward record OR finalizes an existing draft by updating it in-place.
+        """
+        try:
+            receiver_id = self._get_receiver_id(inward_data.receiver)
+
+            if draft_id:
+                # --- FINALIZE AN EXISTING DRAFT ---
+                db_inward = self.db.get(Inward, draft_id)
+                if not db_inward or db_inward.created_by != creator_id or not db_inward.is_draft:
+                    raise HTTPException(status_code=404, detail="Draft to finalize not found or access denied.")
+
+                # Update the draft record with final values
+                db_inward.srf_no = inward_data.srf_no
+                db_inward.date = inward_data.date
+                db_inward.customer_dc_date = inward_data.customer_dc_date
+                db_inward.customer_details = inward_data.customer_details
+                db_inward.received_by = receiver_id
+                db_inward.status = 'created'
+                db_inward.is_draft = False  # Finalize the draft
+                db_inward.draft_updated_at = None  # Clear draft timestamp
+                db_inward.updated_by = creator_id
+                db_inward.updated_at = datetime.now(timezone.utc)
+
+                # Clear old equipment and add new ones
+                self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == draft_id).delete(synchronize_session=False)
+                self.db.flush()
+
+            else:
+                # --- CREATE A BRAND NEW RECORD ---
+                db_inward = Inward(
+                    srf_no=inward_data.srf_no,
+                    date=inward_data.date,
+                    customer_dc_date=inward_data.customer_dc_date,
+                    customer_details=inward_data.customer_details,
+                    received_by=receiver_id,
+                    created_by=creator_id,
+                    status='created',
+                    is_draft=False
+                )
+                self.db.add(db_inward)
+                self.db.flush()
+
+            # Process equipment list with photos
+            await self._process_equipment_list(db_inward.inward_id, inward_data.equipment_list, files_by_index)
+            
+            self.db.commit()
+            self.db.refresh(db_inward)
+            
+            return db_inward
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except Exception as e:
+            self.db.rollback()
+            print(f"ERROR in create_or_finalize_inward: {e}")
+            raise HTTPException(status_code=500, detail="An internal server error occurred.")
 
     async def update_inward_with_files(self, inward_id: int, inward_data: InwardUpdate, files_by_index: Dict[int, List[UploadFile]], updater_id: int) -> Inward:
         try:
-            # Get existing inward
             db_inward = self.db.get(Inward, inward_id)
             if not db_inward:
                 raise HTTPException(status_code=404, detail="Inward record not found.")
 
             receiver_id = self._get_receiver_id(inward_data.receiver)
 
-            # Update inward fields
             db_inward.srf_no = inward_data.srf_no
             db_inward.date = inward_data.date
             db_inward.customer_dc_date = inward_data.customer_dc_date
             db_inward.customer_details = inward_data.customer_details
             db_inward.received_by = receiver_id
-            db_inward.updated_by = updater_id  # Recommended to track who updated
+            db_inward.updated_by = updater_id
+            db_inward.updated_at = datetime.now(timezone.utc)
+            db_inward.is_draft = False
 
-            # --- THE FIX: Perform a bulk delete and FLUSH the session ---
-            # This is more efficient than fetching and then deleting one-by-one.
-            # It sends a single DELETE statement to the database for all matching equipment.
             self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete(synchronize_session=False)
-            
-            # This flush is CRITICAL. It forces the session to execute the pending DELETE
-            # statement above, clearing the unique constraint violation before we add the new items.
             self.db.flush()
 
-            # Add new/updated equipment list from the form
             await self._process_equipment_list(inward_id, inward_data.equipment_list, files_by_index)
             
-            # Commit the entire transaction (updates to Inward, deletion of old equipment, insertion of new equipment)
             self.db.commit()
             self.db.refresh(db_inward)
             
@@ -108,7 +421,6 @@ class InwardService:
             raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
 
     async def _process_equipment_list(self, inward_id: int, equipment_list: List, files_by_index: Dict[int, List[UploadFile]]):
-        """Process and save equipment list for both create and update operations."""
         equipment_models = []
         for index, eqp_model in enumerate(equipment_list):
             photo_paths = []
@@ -148,13 +460,18 @@ class InwardService:
         
         self.db.add_all(equipment_models)
 
-    def get_all_inwards(self) -> List[Inward]:
-        return self.db.execute(select(Inward).order_by(Inward.created_at.desc())).scalars().all()
+    async def get_all_inwards(self) -> List[Inward]:
+        """Get all finalized inward records (not drafts)"""
+        return self.db.execute(
+            select(Inward).where(Inward.is_draft.is_(False))
+            .order_by(Inward.created_at.desc())
+        ).scalars().all()
 
-    def get_inward_by_id(self, inward_id: int) -> Inward:
+    async def get_inward_by_id(self, inward_id: int) -> Inward:
+        """Get inward by ID (only finalized records)"""
         db_inward = self.db.get(Inward, inward_id)
-        if not db_inward:
-            raise HTTPException(status_code=404, detail="Inward record not found.")
+        if not db_inward or db_inward.is_draft:
+            raise HTTPException(status_code=404, detail="Inward record not found or is still a draft.")
         return db_inward
 
     def generate_temp_password(self, length: int = 10) -> str:
@@ -169,7 +486,7 @@ class InwardService:
         customer_email: Optional[str] = None,
         send_later: bool = False
     ):
-        db_inward = self.get_inward_by_id(inward_id)
+        db_inward = await self.get_inward_by_id(inward_id)
         if not db_inward.customer_details:
             raise HTTPException(status_code=400, detail="Inward is missing customer details.")
 
@@ -178,7 +495,7 @@ class InwardService:
 
         if send_later:
             delayed_service = DelayedEmailService(self.db)
-            delayed_service.schedule_delayed_email(
+            await delayed_service.schedule_delayed_email(
                 inward_id=inward_id,
                 recipient_email=customer_email,
                 creator_id=creator_id,
@@ -192,7 +509,6 @@ class InwardService:
         existing_user = self.db.scalars(select(User).where(User.email == customer_email)).first()
 
         if existing_user:
-            # --- SCENARIO 1: USER EXISTS ---
             if existing_user.role.lower() != 'customer':
                 raise HTTPException(status_code=400, detail="An internal staff account already exists with this email.")
             
@@ -214,7 +530,6 @@ class InwardService:
             else:
                 raise HTTPException(status_code=500, detail="Failed to queue notification email.")
         else:
-            # --- SCENARIO 2: NEW USER (Full Implementation) ---
             customer = self.db.scalars(select(Customer).where(Customer.customer_details == db_inward.customer_details)).first()
             if not customer:
                 customer = Customer(customer_details=db_inward.customer_details, email=customer_email)
@@ -263,7 +578,7 @@ class InwardService:
 
     async def send_scheduled_report_now(self, task_id: int, customer_email: str, background_tasks: BackgroundTasks) -> bool:
         delayed_service = DelayedEmailService(self.db)
-        task = delayed_service.get_task_by_id(task_id)
+        task = await delayed_service.get_task_by_id(task_id)
 
         if not task:
             raise HTTPException(status_code=404, detail="Scheduled task not found.")
@@ -281,5 +596,5 @@ class InwardService:
             send_later=False
         )
 
-        delayed_service.mark_task_as_sent(task_id)
+        await delayed_service.mark_task_as_sent(task_id)
         return True

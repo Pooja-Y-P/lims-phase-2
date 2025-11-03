@@ -1,14 +1,10 @@
-# backend/models/inward.py
-
 from datetime import date
-from sqlalchemy import Column, Integer, String, Date, TIMESTAMP, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Date, TIMESTAMP, ForeignKey, func, Boolean, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, Mapped
-from typing import List, TYPE_CHECKING # <-- Import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from backend.db import Base
 
-# --- THIS IS THE FIX ---
-# This block is only processed by type checkers, not at runtime,
-# which prevents the circular import error.
 if TYPE_CHECKING:
     from .users import User
     from .customers import Customer
@@ -36,7 +32,12 @@ class Inward(Base):
     updated_at = Column(TIMESTAMP(timezone=True))
     status = Column(String(50), default='created')
 
-    # Relationships are now correctly type-hinted
+    # 🆕 Added columns
+    draft_data = Column(JSONB, nullable=True, default=None)
+    is_draft = Column(Boolean, default=False)
+    draft_updated_at = Column(TIMESTAMP(timezone=True), nullable=True, default=None)
+
+    # Relationships
     customer: Mapped["Customer"] = relationship("Customer")
     receiver: Mapped["User"] = relationship("User", foreign_keys=[received_by], back_populates="inwards_received")
     creator: Mapped["User"] = relationship("User", foreign_keys=[created_by], back_populates="inwards_created")

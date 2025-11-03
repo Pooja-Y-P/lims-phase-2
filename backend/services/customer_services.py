@@ -8,7 +8,7 @@ from backend.models.users import User
 from backend.models.inward import Inward
 from backend.models.inward_equipments import InwardEquipment
 from backend.models.invitations import Invitation
-from backend.schemas.customer_schemas import RemarksSubmissionRequest
+from backend.schemas.customer_schemas import RemarksSubmissionRequest, InwardForCustomer
 from backend.core import security
 from passlib.context import CryptContext
 
@@ -65,7 +65,10 @@ class CustomerPortalService:
                 func.count(InwardEquipment.inward_eqp_id).label("equipment_count")
             )
             .join(Inward.equipments, isouter=True)
-            .where(Inward.customer_id == customer_id)
+            .where(
+                Inward.customer_id == customer_id,
+                Inward.is_draft.is_(False)  # Only show non-draft inwards
+            )
             .group_by(Inward.inward_id)
             .order_by(Inward.date.desc())
         )
@@ -80,7 +83,11 @@ class CustomerPortalService:
         stmt = (
             select(Inward)
             .options(selectinload(Inward.equipments))
-            .where(Inward.inward_id == inward_id, Inward.customer_id == customer_id)
+            .where(
+                Inward.inward_id == inward_id, 
+                Inward.customer_id == customer_id,
+                Inward.is_draft.is_(False)  # Only show non-draft inwards
+            )
         )
         inward = self.db.scalars(stmt).first()
 
@@ -88,6 +95,45 @@ class CustomerPortalService:
             raise HTTPException(status_code=404, detail="Inward record not found or access denied.")
             
         return inward
+
+    def get_inward_details_for_direct_access(self, inward_id: int) -> InwardForCustomer:
+        """
+        Retrieves inward details for direct link access (used in email links).
+        This bypasses the customer authorization check for direct access.
+        """
+        stmt = (
+            select(Inward)
+            .options(selectinload(Inward.equipments))
+            .where(
+                Inward.inward_id == inward_id,
+                Inward.is_draft.is_(False)  # Only show non-draft inwards
+            )
+        )
+        inward = self.db.scalars(stmt).first()
+
+        if not inward:
+            raise HTTPException(status_code=404, detail="Inward record not found.")
+        
+        # Convert to response format
+        equipment_list = []
+        for eq in inward.equipments:
+            equipment_list.append({
+                "inward_eqp_id": eq.inward_eqp_id,
+                "nepl_id": eq.nepl_id,
+                "material_description": eq.material_description,
+                "make": eq.make,
+                "model": eq.model,
+                "serial_no": eq.serial_no,
+                "remarks": eq.remarks
+            })
+        
+        return InwardForCustomer(
+            inward_id=inward.inward_id,
+            srf_no=inward.srf_no,
+            date=inward.date,
+            status=inward.status,
+            equipments=equipment_list
+        )
 
     def submit_equipment_remarks(self, inward_id: int, remarks_data: RemarksSubmissionRequest, customer_id: int):
         """

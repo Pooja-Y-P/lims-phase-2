@@ -7,7 +7,7 @@ interface DelayedTask {
   inward_id: number;
   srf_no: string;
   customer_details: string;
-  recipient_email: string | null; // Email can be null initially
+  recipient_email: string | null;
   scheduled_at: string;
   time_left_seconds: number;
   is_overdue: boolean;
@@ -31,28 +31,35 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
 
   useEffect(() => {
     fetchPendingTasks();
+    const pollInterval = setInterval(() => fetchPendingTasks(), 30000);
+    return () => clearInterval(pollInterval);
+  }, []);
 
+  useEffect(() => {
     const interval = setInterval(() => {
       setTimers(prev => {
         const newTimers = { ...prev };
-        setTasks(currentTasks => {
-          currentTasks.forEach(task => {
-            if (newTimers[task.id] > 0) {
-              newTimers[task.id] = Math.max(0, newTimers[task.id] - 1);
-            }
-          });
-          return currentTasks;
+        Object.keys(newTimers).forEach(taskIdStr => {
+          const taskId = Number(taskIdStr);
+          if (newTimers[taskId] > 0) {
+            newTimers[taskId] = Math.max(0, newTimers[taskId] - 1);
+          }
         });
         return newTimers;
       });
     }, 1000);
-
     return () => clearInterval(interval);
   }, []);
 
   const fetchPendingTasks = async () => {
     try {
-      const response = await api.get<PendingTasksResponse>(`${ENDPOINTS.INWARDS}/delayed-emails/pending`);
+      if (tasks.length === 0 && !loading) setLoading(true);
+      
+      // --- FIX: Removed the leading slash from the sub-path ---
+      // This correctly combines with the trailing slash in ENDPOINTS.INWARDS
+      // to prevent a double slash (//) in the final URL.
+      const response = await api.get<PendingTasksResponse>(`${ENDPOINTS.INWARDS}delayed-emails/pending`);
+      
       const pendingTasks = response.data.pending_tasks;
       setTasks(pendingTasks);
       
@@ -60,12 +67,12 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
       const initialEmails: { [key: number]: string } = {};
       pendingTasks.forEach((task: DelayedTask) => {
         initialTimers[task.id] = task.time_left_seconds;
-        if (task.recipient_email) {
+        if (task.recipient_email && !emailInputs[task.id]) {
             initialEmails[task.id] = task.recipient_email;
         }
       });
       setTimers(initialTimers);
-      setEmailInputs(initialEmails);
+      setEmailInputs(prev => ({...initialEmails, ...prev}));
     } catch (error) {
       console.error('Error fetching pending tasks:', error);
     } finally {
@@ -84,8 +91,9 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     }
     setActionState(prev => ({ ...prev, [taskId]: 'sending' }));
     try {
-      await api.post(`${ENDPOINTS.INWARDS}/delayed-emails/${taskId}/send`, { email });
-      setTasks(prev => prev.filter(task => task.id !== taskId));
+      // This line was already correct and works with the trailing slash
+      await api.post(`${ENDPOINTS.INWARDS}delayed-emails/${taskId}/send`, { email });
+      await fetchPendingTasks();
       alert(`First inspection report sent to ${email} successfully!`);
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to send email. Please try again.');
@@ -100,10 +108,11 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     }
     setActionState(prev => ({ ...prev, [taskId]: 'cancelling' }));
     try {
-      await api.delete(`${ENDPOINTS.INWARDS}/delayed-emails/${taskId}`);
-      setTasks(prev => prev.filter(task => task.id !== taskId));
+      // This line was already correct and works with the trailing slash
+      await api.delete(`${ENDPOINTS.INWARDS}delayed-emails/${taskId}`);
+      await fetchPendingTasks();
       alert('Delayed email task cancelled successfully.');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error cancelling task:', error);
       alert('Failed to cancel task');
     } finally {
@@ -113,12 +122,10 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
 
   const formatTimeRemaining = (seconds: number) => {
     if (seconds <= 0) return 'Overdue';
-    
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
     const pad = (num: number) => num.toString().padStart(2, '0');
-
     if (hours > 0) return `${pad(hours)}h ${pad(minutes)}m ${pad(remainingSeconds)}s`;
     if (minutes > 0) return `${pad(minutes)}m ${pad(remainingSeconds)}s`;
     return `${pad(remainingSeconds)}s`;
@@ -129,7 +136,7 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
         <div className="bg-white rounded-lg p-8">
           <div className="flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <Loader2 className="animate-spin h-6 w-6 text-blue-600" />
             <span>Loading scheduled tasks...</span>
           </div>
         </div>
@@ -160,7 +167,7 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
             </div>
           ) : (
             <div className="space-y-4">
-              {tasks.some(task => task.is_overdue || (timers[task.id] && timers[task.id] <= 0)) && (
+              {tasks.some(task => task.is_overdue || (timers[task.id] !== undefined && timers[task.id] <= 0)) && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
                   <div className="flex items-center space-x-2 text-red-800 font-semibold"><AlertTriangle size={20} /><span>URGENT: Some reports are overdue!</span></div>
                   <p className="text-red-700 text-sm mt-1">Please enter an email and send these reports immediately.</p>
@@ -220,7 +227,7 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
 
         <div className="sticky bottom-0 bg-gray-50 px-6 py-4 rounded-b-xl border-t">
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-600">{tasks.length > 0 ? `${tasks.filter(t => t.is_overdue || (timers[t.id] && timers[t.id] <= 0)).length} overdue, ${tasks.length} total` : 'All scheduled reports have been handled'}</p>
+            <p className="text-sm text-gray-600">{tasks.length > 0 ? `${tasks.filter(t => t.is_overdue || (timers[t.id] !== undefined && timers[t.id] <= 0)).length} overdue, ${tasks.length} total` : 'All scheduled reports have been handled'}</p>
             <button onClick={onClose} className="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors">Close</button>
           </div>
         </div>

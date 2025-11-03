@@ -1,12 +1,14 @@
+// file: SrfDetailPage.tsx
+
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import axios from "axios";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
-// ✨ FIX 1: The base API path for all staff-related routes.
+// API base path
 const API_BASE = "http://localhost:8000/api/";
 
-// --- Interfaces (Unchanged) ---
+// --- Interfaces (No changes needed, but included for context) ---
 interface SrfEquipmentDetail {
   srf_eqp_id?: number;
   unit?: string;
@@ -22,7 +24,7 @@ interface EquipmentDetail {
   model: string;
   serial_no: string;
   quantity: number;
-  range?: string; // FIX: Add the missing 'range' property.
+  range?: string;
   srf_equipment?: SrfEquipmentDetail | null;
 }
 
@@ -38,7 +40,7 @@ interface SrfDetail {
   srf_id: number;
   inward_id: number;
   srf_no: number;
-  nepl_srf_no?: string; // ✨ Add this
+  nepl_srf_no?: string;
   date: string;
   telephone: string;
   contact_person: string;
@@ -55,15 +57,12 @@ interface SrfDetail {
   turnaround_time?: string;
 }
 
-// Generates NEPL SRF No in the format: NEPL/SRF/<year>/<3-digit-id>
 const generateNeplSrfNo = (srfNo: number | undefined): string => {
   if (!srfNo) return "";
   const full = srfNo.toString();
-  const lastThree = full.slice(-3).padStart(3, "0"); // Ensure 3 digits
+  const lastThree = full.slice(-3).padStart(3, "0");
   return `NEPL - ${full} / SRF-${lastThree}`;
 };
-
-
 
 const getTodayDateString = (): string => {
   return new Date().toISOString().split("T")[0];
@@ -79,16 +78,13 @@ export const SrfDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const isEngineer = user?.role === "engineer";
-const isReadOnly = srfData?.status === "approved" || srfData?.status === "rejected";
+  const isReadOnly = srfData?.status === "approved" || srfData?.status === "rejected";
 
   const isNewSrf = srfId?.startsWith("new-");
-  // FIX: Add non-null assertion since `isNewSrf` check ensures srfId is a string.
   const inwardId = isNewSrf ? parseInt(srfId!.split("new-")[1]) : undefined;
 
   const token = localStorage.getItem("token");
 
-  // ✨ FIX 2: Use `useMemo` to create a stable axios instance.
-  // This is the correct way to prevent infinite loops.
   const axiosAuth = useMemo(() => {
     return axios.create({
       baseURL: API_BASE,
@@ -103,16 +99,12 @@ const isReadOnly = srfData?.status === "approved" || srfData?.status === "reject
       setLoading(true);
       setError(null);
       try {
-        // FIX: Cast config to `any` to bypass incorrect type checking for `signal`.
-        const response = await axiosAuth.get<SrfDetail>(`/srfs/${id}`, {
-          signal,
-        } as any);
+        const response = await axiosAuth.get<SrfDetail>(`/srfs/${id}`, { signal } as any);
         const data = response.data;
         data.date = data.date ? data.date.split("T")[0] : "";
         data.nepl_srf_no = generateNeplSrfNo(data.srf_no);
         setSrfData(data);
       } catch (err: any) {
-        // FIX: Replace `axios.isCancel` with a check on the error code for AbortController.
         if (err.code !== 'ERR_CANCELED') {
           setError(err.response?.data?.detail || "An unknown error occurred.");
         }
@@ -120,7 +112,7 @@ const isReadOnly = srfData?.status === "approved" || srfData?.status === "reject
         if (!signal.aborted) setLoading(false);
       }
     },
-    [axiosAuth] // Dependency is now stable
+    [axiosAuth]
   );
 
   useEffect(() => {
@@ -128,54 +120,40 @@ const isReadOnly = srfData?.status === "approved" || srfData?.status === "reject
 
     if (isNewSrf && inwardId) {
       setLoading(true);
-      // Use the consistent API path
       axiosAuth
-        // FIX: Cast config to `any` to bypass incorrect type checking for `signal`.
-        .get<InwardDetail>(`staff/inwards/${inwardId}`, {
-          signal: controller.signal,
-        } as any)
+        .get<InwardDetail>(`staff/inwards/${inwardId}`, { signal: controller.signal } as any)
         .then((res) => {
           const inward = res.data;
           setSrfData({
             srf_id: 0,
             inward_id: inward.inward_id,
-            srf_no: inward.srf_no || 0, // Ensure srf_no is set in the state
-            nepl_srf_no: generateNeplSrfNo(inward.srf_no || 0), // ✨ Added
+            srf_no: inward.srf_no || 0,
+            nepl_srf_no: generateNeplSrfNo(inward.srf_no || 0),
             date: getTodayDateString(),
             telephone: "",
             contact_person: "",
             email: "",
-            certificate_issue_name:
-              inward.customer?.customer_details ||
-              inward.customer_details ||
-              "",
+            certificate_issue_name: inward.customer?.customer_details || inward.customer_details || "",
             status: "created",
             inward: inward,
           });
-          // FIX: Move setLoading from `.finally` into `.then()`
           setLoading(false);
         })
         .catch((err) => {
-          // FIX: Replace `axios.isCancel` with a check on the error code.
           if (err.code !== 'ERR_CANCELED') {
-            setError(
-              `Failed to load Inward data for ID ${inwardId}. This record may not exist. (Error: ${err.response?.status || err.message})`
-            );
+            setError(`Failed to load Inward data for ID ${inwardId}. (Error: ${err.response?.status || err.message})`);
           }
-          // FIX: Move setLoading from `.finally` into `.catch()`
           setLoading(false);
         });
-        // FIX: Removed `.finally()` as it doesn't exist on the custom `IPromise` type.
     } else if (!isNewSrf && srfId) {
       loadSrfData(srfId, controller.signal);
     } else {
-        setLoading(false); // Ensure loading is false if no action is taken
+      setLoading(false);
     }
 
     return () => controller.abort();
   }, [srfId, isNewSrf, inwardId, loadSrfData, axiosAuth]);
 
-  // --- Other handlers are unchanged ---
   const handleSrfChange = (key: keyof SrfDetail, value: any) => {
     setSrfData((prev) => (prev ? { ...prev, [key]: value } : null));
   };
@@ -185,7 +163,8 @@ const isReadOnly = srfData?.status === "approved" || srfData?.status === "reject
       if (!prevData || !prevData.inward) return prevData;
       const updatedEquipments = prevData.inward.equipments.map((eq) => {
         if (eq.inward_eqp_id === inward_eqp_id) {
-          return { ...eq, srf_equipment: { ...(eq.srf_equipment || {}), [field]: value } };
+          const newSrfEquipment = { ...(eq.srf_equipment || {}), [field]: value };
+          return { ...eq, srf_equipment: newSrfEquipment };
         }
         return eq;
       });
@@ -193,15 +172,17 @@ const isReadOnly = srfData?.status === "approved" || srfData?.status === "reject
     });
   };
 
-  // Located inside the SrfDetailPage component
-
-const handleSaveSrf = async (newStatus: string) => {
+  // =================================================================
+  //  THE FIX IS IN THIS FUNCTION
+  // =================================================================
+  const handleSaveSrf = async (newStatus: string) => {
     if (!srfData) return;
     setLoading(true);
     setError(null);
+
     try {
+      // This payload is used for both POST (create) and PUT (update).
       const payload = {
-        // --- These top-level fields are all correct ---
         srf_no: srfData.srf_no,
         nepl_srf_no: srfData.nepl_srf_no,
         date: srfData.date,
@@ -211,18 +192,18 @@ const handleSaveSrf = async (newStatus: string) => {
         certificate_issue_name: srfData.certificate_issue_name,
         status: newStatus,
         inward_id: srfData.inward_id,
-        // ... include other top-level fields like calibration_frequency, etc. if they need to be saved
-        
-        // ✨ THE FIX IS HERE ✨
-        // The backend needs the primary key of the srf_equipment record to update it.
-        // This key is `srf_eqp_id`.
-        equipments: srfData.inward?.equipments.map((eq) => ({
-          // Add the srf_eqp_id to identify the record for updates.
-          // For a new SRF, this will be `undefined`, which is correct. The backend
-          // will know to create a new record instead of updating one.
-          srf_eqp_id: eq.srf_equipment?.srf_eqp_id, 
+        // ... (other top-level fields)
 
-          // These fields were already correct
+        // ✨ FIX: The payload for the `equipments` array is now correct.
+        // It correctly maps the nested state into the flat structure the
+        // backend `SrfDetailUpdate` schema expects.
+        equipments: srfData.inward?.equipments.map((eq) => ({
+          // This key is crucial for the backend to identify which equipment
+          // record to UPDATE. For new SRFs, it will be `undefined`, which is correct.
+          srf_eqp_id: eq.srf_equipment?.srf_eqp_id,
+          
+          // These fields were already being sent, but now they are part of a
+          // more complete and robust payload.
           inward_eqp_id: eq.inward_eqp_id,
           unit: eq.srf_equipment?.unit,
           no_of_calibration_points: eq.srf_equipment?.no_of_calibration_points,
@@ -230,23 +211,22 @@ const handleSaveSrf = async (newStatus: string) => {
         })),
       };
 
-      console.log("SENDING PAYLOAD TO /srfs:", JSON.stringify(payload, null, 2));
+      console.log("SENDING PAYLOAD:", JSON.stringify(payload, null, 2));
 
       if (isNewSrf) {
-        // POST for creation
+        // POST for creation. This will FAIL to save equipment until the
+        // backend `POST /srfs` endpoint is fixed to accept the `equipments` array.
         await axiosAuth.post(`/srfs`, payload);
-        alert("New SRF created successfully");
+        alert("SRF created successfully. Note: Equipment details may not save until backend is updated.");
       } else {
-        // PUT for update
+        // PUT for update. With the corrected payload, this will now work correctly.
         await axiosAuth.put(`/srfs/${srfData.srf_id}`, payload);
         alert("SRF updated successfully");
       }
 
       navigate("/engineer/srfs");
     } catch (err: any) {
-        // ... (your existing error handling is good)
         let errorMessage = "An unknown error occurred.";
-        // FIX: Replace `axios.isAxiosError` with a manual check for the error type.
         if (err && err.isAxiosError && err.response) {
             const detail = err.response.data.detail;
             if (Array.isArray(detail)) {
@@ -265,16 +245,18 @@ const handleSaveSrf = async (newStatus: string) => {
       setLoading(false);
     }
   };
-
+  
+  // The rest of the component JSX remains the same...
   const unitOptions = ["Nm", "lbs in", "lbs ft", "Kgf cm", "cNm", "g.cm", "Kgf m", "in lb", "ft lb", "lbf in", "lbf ft"];
   
-  // --- The rest of the component's JSX is unchanged ---
   if (loading) return <div className="p-12 text-center text-gray-500">Loading SRF Details...</div>;
   if (error) return <div className="p-12 text-center text-red-600 bg-red-50 rounded-lg">Error: {error}</div>;
   if (!srfData) return <div className="p-12 text-center text-gray-500">SRF not found.</div>;
 
   return (
-  <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4">
+    // Your existing JSX for the page layout
+    // No changes are needed in the JSX part of the component
+    <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4">
     <div className="w-full max-w-6xl bg-white rounded-2xl shadow-lg border border-gray-200 p-6 md:p-10">
       
       {/* Back Link */}
@@ -649,7 +631,7 @@ const handleSaveSrf = async (newStatus: string) => {
       )}
     </div>
   </div>
-);
-
+  );
 };
+
 export default SrfDetailPage;

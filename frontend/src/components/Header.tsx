@@ -15,13 +15,6 @@ const Header: React.FC<HeaderProps> = ({
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
 
-  const roleKey = role?.toLowerCase().trim();
-  const isEngineer =
-    roleKey === "engineer" ||
-    roleKey === "technician" ||
-    roleKey === "tech" ||
-    roleKey === "enginner"; 
-
   // Public URL path to your logo
   const logoUrl = "/images/logo.png";
 

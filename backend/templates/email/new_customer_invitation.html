@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        .header {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a237e;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #3949ab;
+            padding-bottom: 10px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 25px;
+            margin: 20px 10px 20px 0;
+            font-size: 16px;
+            font-weight: 500;
+            color: #ffffff;
+            background-color: #3949ab;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .button.secondary {
+            background-color: #666;
+            margin-left: 10px;
+        }
+        .credentials {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            font-size: 12px;
+            color: #777;
+            margin-top: 20px;
+        }
+        .highlight {
+            background-color: #e8f5e8;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="header">{{ title }}</h1>
+        <p>Welcome! Your LIMS customer account has been created for SRF No: <strong>{{ srf_no }}</strong>.</p>
+        
+        <div class="credentials">
+            <p><strong>Your Account Details:</strong></p>
+            <ul>
+                <li><strong>Email:</strong> {{ email }}</li>
+                <li><strong>Temporary Password:</strong> <code>{{ temporary_password }}</code></li>
+            </ul>
+        </div>
+
+        <div class="highlight">
+            <p><strong>Quick Access to Your Report:</strong></p>
+            <a href="{{ report_link }}" class="button">View Your Inspection Report</a>
+        </div>
+
+        <p><strong>To set up your permanent account:</strong></p>
+        <ol>
+            <li>Click the activation link below</li>
+            <li>Set your new password</li>
+            <li>Access your customer portal</li>
+        </ol>
+
+        <a href="{{ activation_link }}" class="button secondary">Activate Account</a>
+
+        <p><strong>Important:</strong> This invitation is valid for {{ valid_for_hours }} hours from the time it was sent.</p>
+
+        <p>Once your account is activated, you'll be able to:</p>
+        <ul>
+            <li>View all your inspection reports</li>
+            <li>Track the status of your equipment</li>
+            <li>Download certificates when ready</li>
+            <li>Submit feedback on our services</li>
+        </ul>
+
+        <p>If you have any questions, please contact our support team.</p>
+
+        <p>Best regards,<br><strong>Nextage Labs Team</strong></p>
+        <div class="footer">
+            <p>This account was created for SRF {{ srf_no }}. If you didn't request this, please ignore this email.</p>
+        </div>
+    </div>
+</body>
+</html>
