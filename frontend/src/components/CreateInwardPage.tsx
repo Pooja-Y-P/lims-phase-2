@@ -21,17 +21,29 @@ interface AvailableDraft {
 export const CreateInwardPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const draftId = searchParams.get('draft');
+  const draftId = searchParams.get('draft'); // This will be a string or null
   
   const [drafts, setDrafts] = useState<AvailableDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
-  const [showForm, setShowForm] = useState(Boolean(draftId));
+
+  // State to explicitly handle showing a "new" form vs a draft from the URL
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const showForm = Boolean(draftId) || isCreatingNew;
 
   useEffect(() => {
     loadDrafts();
   }, []);
+  
+  // This effect ensures that if the user navigates away from a draft URL,
+  // the 'isCreatingNew' flag is reset correctly.
+  useEffect(() => {
+    if (!draftId) {
+        setIsCreatingNew(false);
+    }
+  }, [draftId]);
+
 
   const loadDrafts = async () => {
     setLoading(true);
@@ -47,12 +59,12 @@ export const CreateInwardPage: React.FC = () => {
     }
   };
 
-  const deleteDraft = async (draftId: number) => {
+  const deleteDraft = async (id: number) => {
     if (!window.confirm('Are you sure you want to delete this draft?')) return;
     
     try {
-      setDeletingIds(prev => new Set(prev).add(draftId));
-      await api.delete(ENDPOINTS.STAFF.DRAFT_DELETE(draftId));
+      setDeletingIds(prev => new Set(prev).add(id));
+      await api.delete(ENDPOINTS.STAFF.DRAFT_DELETE(id));
       await loadDrafts();
     } catch (error: any) {
       console.error('Error deleting draft:', error);
@@ -60,20 +72,23 @@ export const CreateInwardPage: React.FC = () => {
     } finally {
       setDeletingIds(prev => {
         const newSet = new Set(prev);
-        newSet.delete(draftId);
+        newSet.delete(id);
         return newSet;
       });
     }
   };
 
-  const handleContinueDraft = (draftId: number) => {
-    setShowForm(true);
-    navigate(`/engineer/create-inward?draft=${draftId}`, { replace: true });
+  const handleContinueDraft = (id: number) => {
+    setIsCreatingNew(false);
+    // Just navigate. The component will re-render, and `showForm` will become true
+    // because `draftId` will be populated from the new URL.
+    navigate(`/engineer/create-inward?draft=${id}`);
   };
 
   const handleStartNew = () => {
-    setShowForm(true);
-    navigate('/engineer/create-inward', { replace: true });
+    // Clear any existing draft param from the URL and set the state to show a new form.
+    navigate('/engineer/create-inward');
+    setIsCreatingNew(true);
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -91,8 +106,14 @@ export const CreateInwardPage: React.FC = () => {
   };
 
   if (showForm) {
+    // Convert draftId from string to number | null
+    const initialDraftId = draftId ? Number(draftId) : null;
+
+    // We pass the draftId as a prop and use a `key`.
+    // The `key` ensures React creates a *new* instance of InwardForm
+    // when switching between drafts or to a new form, preventing stale state.
     return (
-      <InwardForm />
+      <InwardForm key={draftId || 'new'} initialDraftId={initialDraftId} />
     );
   }
 

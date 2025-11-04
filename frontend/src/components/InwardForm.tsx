@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Trash2, Eye, Barcode, Save, FileText, Loader2, ScanLine, X, Mail, ArrowLeft, Paperclip, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { InwardForm as InwardFormType, EquipmentDetail, InwardDetail } from '../types/inward';
 import { generateSRFNo, commitUsedSRFNo, generateBarcode, generateQRCode } from '../utils/idGenerators';
@@ -42,12 +42,14 @@ function isSimpleAxiosError(error: unknown): error is SimpleAxiosError {
   return typeof error === 'object' && error !== null && (error as any).isAxiosError === true;
 }
 
+type InwardFormProps = {
+  initialDraftId: number | null;
+};
+
 // --- COMPONENT ---
-export const InwardForm: React.FC = () => {
+export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
-  const draftParam = searchParams.get('draft');
   const isEditMode = Boolean(editId);
   
   // State management
@@ -62,7 +64,7 @@ export const InwardForm: React.FC = () => {
   const [equipmentList, setEquipmentList] = useState<EquipmentDetail[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(isEditMode || Boolean(draftParam));
+  const [isLoadingData, setIsLoadingData] = useState(isEditMode || Boolean(initialDraftId));
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showStickerSheet, setShowStickerSheet] = useState(false);
   const [loadingCodes, setLoadingCodes] = useState<{ [key: number]: boolean }>({});
@@ -76,7 +78,7 @@ export const InwardForm: React.FC = () => {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
-  const [currentDraftId, setCurrentDraftId] = useState<number | null>(null);
+  const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
 
   const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
@@ -89,8 +91,8 @@ export const InwardForm: React.FC = () => {
   useEffect(() => {
     if (isEditMode && editId) {
       loadInwardData(parseInt(editId));
-    } else if (draftParam) {
-      loadDraftData(parseInt(draftParam));
+    } else if (initialDraftId) {
+      loadDraftData(initialDraftId);
     } else {
       initializeForm();
     }
@@ -103,7 +105,7 @@ export const InwardForm: React.FC = () => {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isEditMode, editId, draftParam]);
+  }, [isEditMode, editId, initialDraftId]);
 
   // --- AUTO-SAVE SYSTEM (Every 2 seconds) ---
   useEffect(() => {
@@ -122,7 +124,7 @@ export const InwardForm: React.FC = () => {
         }, 2000);
       }
     }
-  }, [formData, equipmentList, isFormReady, hasFormData]);
+  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode]);
 
   const triggerAutoSave = async (dataToSave: string) => {
     if (!isFormReady || isEditMode) return;
@@ -140,10 +142,14 @@ export const InwardForm: React.FC = () => {
 
       const response = await api.patch<DraftSaveResponse>(ENDPOINTS.STAFF.DRAFT, draftPayload);
       
-      if (response.data) { // Assuming a successful response contains data
-        if (!currentDraftId && response.data.inward_id) {
-          setCurrentDraftId(response.data.inward_id);
+      if (response.data && response.data.inward_id) {
+        const newDraftId = response.data.inward_id;
+
+        if (!currentDraftId) {
+          setCurrentDraftId(newDraftId);
+          navigate(`/engineer/create-inward?draft=${newDraftId}`, { replace: true });
         }
+
         setDraftSaveStatus('saved');
         setLastAutoSaveTime(new Date());
         lastSavedDataRef.current = dataToSave;
@@ -231,7 +237,6 @@ export const InwardForm: React.FC = () => {
       const newEquipmentList = [{ nepl_id: `${srfNo}-1`, material_desc: '', make: '', model: '', qty: 1, calibration_by: 'In Lab' as const }];
       setFormData(newFormData);
       setEquipmentList(newEquipmentList);
-      lastSavedDataRef.current = JSON.stringify({ formData: newFormData, equipmentList: newEquipmentList });
     } catch (error: any) {
       showMessage('error', error.message || 'Failed to initialize form.');
       setFormData(prev => ({ ...prev, srf_no: 'Error!' }));
@@ -262,7 +267,7 @@ export const InwardForm: React.FC = () => {
           serial_no: eq.serial_no || '',
           qty: eq.quantity,
           inspe_notes: eq.visual_inspection_notes || '',
-          calibration_by: 'In Lab' as const, // Adjust if outsource data is available
+          calibration_by: 'In Lab' as const,
           remarks: eq.remarks || ''
         })) || [];
         setEquipmentList(equipmentData.length > 0 ? equipmentData : [{ nepl_id: `${inward.srf_no}-1`, material_desc: '', make: '', model: '', qty: 1, calibration_by: 'In Lab' as const }]);
@@ -286,8 +291,14 @@ export const InwardForm: React.FC = () => {
     if (isEditMode) {
       navigate('/engineer/view-inward');
     } else {
-      navigate('/engineer');
+      navigate('/engineer/create-inward');
     }
+  };
+
+  // <-- FIX: New function to handle closing the modal AND navigating away
+  const handleCloseEmailModalAndNavigate = () => {
+    setShowEmailModal(false);
+    navigate('/engineer/create-inward', { replace: true });
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -300,9 +311,9 @@ export const InwardForm: React.FC = () => {
       if (!updatedList[index]) return currentList;
       const currentEquipment = { ...updatedList[index], [field]: value };
       if (field === 'calibration_by' && value !== 'Outsource') {
-        delete currentEquipment.supplier;
-        delete currentEquipment.in_dc;
-        delete currentEquipment.out_dc;
+        delete (currentEquipment as any).supplier;
+        delete (currentEquipment as any).in_dc;
+        delete (currentEquipment as any).out_dc;
       }
       updatedList[index] = currentEquipment;
       return updatedList;
@@ -421,11 +432,14 @@ export const InwardForm: React.FC = () => {
         commitUsedSRFNo(response.data.srf_no.toString());
         showMessage('success', `Inward form SRF ${response.data.srf_no} finalized successfully!`);
         
+        // <-- FIX: Set state to show the modal, but DO NOT navigate away yet.
         setShowEmailModal(true);
         setLastSavedInwardId(response.data.inward_id);
         setLastSavedSrfNo(String(response.data.srf_no));
-        
-        await initializeForm();
+
+        // <-- FIX: The navigation is now handled by the modal's close function.
+        // await initializeForm(); // We don't need this anymore
+        // navigate('/engineer/create-inward', { replace: true }); // This was the problem line
       }
     } catch (error: unknown) {
       if (isSimpleAxiosError(error)) {
@@ -448,10 +462,11 @@ export const InwardForm: React.FC = () => {
     try {
       await api.post(ENDPOINTS.STAFF.INWARD_SEND_REPORT(lastSavedInwardId), { email: reportEmail, send_later: false });
       showMessage('success', `Report for SRF ${lastSavedSrfNo} sent to ${reportEmail}!`);
-      setShowEmailModal(false);
       setReportEmail('');
+      handleCloseEmailModalAndNavigate(); // <-- FIX: Use the new handler on success
     } catch (error: any) {
       showMessage('error', error.response?.data?.detail || 'Failed to send report.');
+      // Do not close modal on failure
     }
   };
 
@@ -460,9 +475,10 @@ export const InwardForm: React.FC = () => {
     try {
       await api.post(ENDPOINTS.STAFF.INWARD_SEND_REPORT(lastSavedInwardId), { send_later: true });
       showMessage('success', `Report for SRF ${lastSavedSrfNo} is scheduled.`);
-      setShowEmailModal(false);
+      handleCloseEmailModalAndNavigate(); // <-- FIX: Use the new handler on success
     } catch (error: any) {
       showMessage('error', error.response?.data?.detail || 'Failed to schedule email.');
+      // Do not close modal on failure
     }
   };
   
@@ -488,9 +504,10 @@ export const InwardForm: React.FC = () => {
   };
 
   const renderEmailModal = () => !showEmailModal ? null : (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={() => setShowEmailModal(false)}>
+    // <-- FIX: The close handlers now use the new navigation function
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={handleCloseEmailModalAndNavigate}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => setShowEmailModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button>
+        <button onClick={handleCloseEmailModalAndNavigate} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button>
         <div className="flex items-center space-x-4 mb-4"><Mail className="text-blue-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">Report Delivery</h2></div>
         <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> is finalized. Choose your delivery option.</p>
         <div className="space-y-6">
@@ -535,7 +552,7 @@ export const InwardForm: React.FC = () => {
             )}
             <button type="button" onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm">
               <ArrowLeft size={18} />
-              <span>{isEditMode ? 'Back to List' : 'Back to Portal'}</span>
+              <span>Back to Drafts</span>
             </button>
         </div>
       </div>
