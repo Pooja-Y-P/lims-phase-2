@@ -1,3 +1,5 @@
+// src/types/inward.ts
+
 // Base equipment interface for creating new equipment
 export interface EquipmentDetail {
   nepl_id: string;
@@ -7,8 +9,11 @@ export interface EquipmentDetail {
   range?: string;
   serial_no?: string;
   qty: number;
-  inspe_notes?: string;
-  calibration_by: string;
+  
+  // FIX: Allowing null to match backend data and prevent type errors
+  inspe_notes?: string | null; 
+  
+  calibration_by: 'In Lab' | 'Outsource' | 'Out Lab'; // Keep this specific for form logic
   supplier?: string;
   out_dc?: string;
   in_dc?: string;
@@ -18,10 +23,12 @@ export interface EquipmentDetail {
   barcode_image?: string;
   qrcode_image?: string;
   photos?: File[];
-  remarks?: string;
+  
+  // This field holds the customer's feedback
+  remarks_and_decision?: string | null;
 }
 
-// Interface for viewing equipment from API response
+// Interface for viewing equipment from the API response
 export interface ViewInwardEquipment {
   inward_eqp_id: number;
   nepl_id: string;
@@ -31,13 +38,15 @@ export interface ViewInwardEquipment {
   range?: string;
   serial_no?: string;
   quantity: number;
-  visual_inspection_notes?: string;
+  visual_inspection_notes?: string | null;
   photos?: string[];
-  remarks?: string;
   status?: string;
+
+  // FIX: Changed 'remarks' to 'remarks_and_decision' and allowed null
+  remarks_and_decision?: string | null;
 }
 
-// Interface for the main inward form
+// Interface for the main inward form's top-level data
 export interface InwardForm {
   srf_no: string;
   date: string;
@@ -47,7 +56,7 @@ export interface InwardForm {
   status: string;
 }
 
-// Interface for inward details from API response
+// Interface for the full inward object from the API
 export interface InwardDetail {
   inward_id: number;
   srf_no: number | string;
@@ -56,6 +65,8 @@ export interface InwardDetail {
   customer_details: string;
   status: string;
   receiver?: string;
+  
+  // This now uses the corrected ViewInwardEquipment type
   equipments: ViewInwardEquipment[];
 }
 

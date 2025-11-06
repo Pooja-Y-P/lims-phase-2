@@ -1,11 +1,14 @@
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, ConfigDict, field_validator, EmailStr
 
-# --- Inward Equipment Schemas ---
+# ====================================================================
+#  1. Schemas for Inward Equipment
+# ====================================================================
 
 class EquipmentCreate(BaseModel):
+    """Schema for creating a single equipment item within an inward."""
     nepl_id: str
     material_desc: str
     make: str
@@ -13,7 +16,7 @@ class EquipmentCreate(BaseModel):
     range: Optional[str] = None
     serial_no: Optional[str] = None
     qty: int
-    inspe_notes: Optional[str] = None
+    inspe_notes: Optional[str] = "OK"  # Default to "OK"
     calibration_by: str
     supplier: Optional[str] = None
     out_dc: Optional[str] = None
@@ -21,9 +24,10 @@ class EquipmentCreate(BaseModel):
     nextage_ref: Optional[str] = None
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
-    remarks: Optional[str] = None
+    remarks_and_decision: Optional[str] = None
 
 class InwardEquipmentResponse(BaseModel):
+    """Schema for responding with equipment details."""
     inward_eqp_id: int
     nepl_id: str
     material_description: str
@@ -34,43 +38,43 @@ class InwardEquipmentResponse(BaseModel):
     quantity: int
     visual_inspection_notes: Optional[str] = None
     photos: Optional[List[str]] = []
-    remarks: Optional[str] = None
+    remarks_and_decision: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
-# --- Draft Schemas ---
 
-class DraftData(BaseModel):
-    """Schema for draft data stored in JSONB field"""
-    srf_no: Optional[str] = None
-    date: Optional[str] = None  # stored as ISO string
-    customer_dc_date: Optional[str] = None
-    customer_details: Optional[str] = None
-    receiver: Optional[str] = None
-    equipment_list: Optional[List[EquipmentCreate]] = []
+# ====================================================================
+#  2. Schemas for Draft Management
+# ====================================================================
 
 class DraftUpdateRequest(BaseModel):
-    """Schema for PATCH /staff/inwards/draft"""
-    inward_id: Optional[int] = None  # If provided, updates existing draft
-    draft_data: Dict[str, Any]  # Partial data to merge
+    """Schema for PATCH /staff/inwards/draft to save/update a draft."""
+    inward_id: Optional[int] = None
+    draft_data: Dict[str, Any]
 
 class DraftResponse(BaseModel):
-    """Response schema for draft operations"""
+    """Response schema for draft operations (GET /drafts, PATCH /draft)."""
     inward_id: int
     draft_updated_at: str
     customer_details: Optional[str] = None
     draft_data: Dict[str, Any]
 
-# --- Inward Main Schemas ---
+
+# ====================================================================
+#  3. Schemas for Main Inward Form (Create, Update, Response)
+# ====================================================================
 
 class InwardCreate(BaseModel):
-    """Schema for creating/submitting an inward"""
-    srf_no: int
+    """
+    Schema for creating/submitting an inward. This is the main payload
+    from the frontend form.
+    """
+    srf_no: Optional[str] = None # SRF No can be optional as it can be auto-generated
     date: date
     customer_dc_date: str
     customer_details: str
     receiver: str
-    equipment_list: List[EquipmentCreate] 
+    equipment_list: List[EquipmentCreate]
 
     @field_validator('equipment_list', mode='before')
     @classmethod
@@ -82,14 +86,9 @@ class InwardCreate(BaseModel):
                 raise ValueError("equipment_list contains invalid JSON")
         return v
 
-class InwardSubmitRequest(BaseModel):
-    """Schema for POST /staff/inwards/submit"""
-    inward_id: Optional[int] = None  # If provided, finalizes existing draft
-    # Form data will be in multipart/form-data format
-    
 class InwardUpdate(BaseModel):
-    """Schema for updating an existing inward"""
-    srf_no: int
+    """Schema for updating an existing inward."""
+    srf_no: str
     date: date
     customer_dc_date: str
     customer_details: str
@@ -107,7 +106,7 @@ class InwardUpdate(BaseModel):
         return v
 
 class InwardResponse(BaseModel):
-    """Schema for the main Inward record response to the client"""
+    """Standard response schema for an Inward record, including its equipment."""
     inward_id: int
     srf_no: int
     date: date
@@ -117,13 +116,63 @@ class InwardResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# --- Email and Notification Schemas ---
+
+# ====================================================================
+#  4. Schemas for Specific Workflows (FIRs, Notifications)
+# ====================================================================
+
+class CustomerInfo(BaseModel):
+    """A minimal schema to represent nested customer data for responses."""
+    customer_details: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ReviewedFirResponse(BaseModel):
+    """Schema for the response of GET /staff/inwards/reviewed-firs."""
+    inward_id: int
+    srf_no: int
+    updated_at: Optional[datetime] = None
+    customer: Optional[CustomerInfo] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class SendReportRequest(BaseModel):
-    """Schema for POST /{inward_id}/send-report"""
+    """Schema for POST /{inward_id}/send-fir endpoint."""
     email: Optional[EmailStr] = None
     send_later: bool = False
 
 class RetryNotificationRequest(BaseModel):
-    """Schema for POST /notifications/{notification_id}/retry"""
+    """Schema for POST /notifications/{notification_id}/retry endpoint."""
     email: EmailStr
+
+
+# ====================================================================
+#  5. ADDED SCHEMAS for Delayed/Failed Notifications
+# ====================================================================
+
+class PendingEmailTask(BaseModel):
+    """Describes a single scheduled email for the frontend."""
+    task_id: int
+    inward_id: int
+    srf_no: str # Or int, depending on the service response
+    customer_details: str
+    scheduled_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class FailedNotificationItem(BaseModel):
+    """Describes a single failed email notification for the frontend."""
+    notification_id: int
+    inward_id: int
+    srf_no: str # Or int
+    recipient: str
+    status: str
+    error_message: Optional[str] = None
+    last_attempted_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class FailedNotificationsResponse(BaseModel):
+    """The complete response for the failed notifications endpoint."""
+    failed_notifications: List[FailedNotificationItem]
+    stats: Dict[str, int]

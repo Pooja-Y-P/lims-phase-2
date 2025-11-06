@@ -18,16 +18,16 @@ import {
   Wrench,
   ChevronLeft,
 } from "lucide-react";
-
+ 
 // --- FIX: Added interfaces for type safety ---
 type SrfStatus = 'approved' | 'rejected' | 'pending' | 'inward_completed';
-
+ 
 interface SrfEquipmentData {
   unit?: string;
   no_of_calibration_points?: number;
   mode_of_calibration?: string;
 }
-
+ 
 interface EquipmentData {
   inward_eqp_id: number;
   material_description?: string;
@@ -36,14 +36,14 @@ interface EquipmentData {
   range?: string;
   srf_equipment?: SrfEquipmentData;
 }
-
+ 
 interface InwardData {
   customer?: {
     customer_details: string;
   };
   equipments?: EquipmentData[];
 }
-
+ 
 interface SrfData {
   srf_id: number;
   date: string;
@@ -63,12 +63,12 @@ interface SrfData {
   ref_customer_requirement?: boolean;
   turnaround_time?: string;
 }
-
+ 
 // Props interface for the component
 interface Props {
   onStatusChange: (id: number, status: string) => void;
 }
-
+ 
 /**
  * A detailed view component for a single Service Request Form (SRF).
  * It handles fetching its own data, allows for minor edits, and provides
@@ -80,11 +80,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   const [srfData, setSrfData] = useState<SrfData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+ 
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+ 
   // --- Data Loading & Handlers ---
   const loadSrfData = useCallback(async () => {
     if (!srfId) return;
@@ -105,15 +105,15 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       setLoading(false);
     }
   }, [srfId]);
-
+ 
   useEffect(() => {
     loadSrfData();
   }, [loadSrfData]);
-
+ 
   const handleSrfChange = (key: keyof SrfData, value: any) => {
     setSrfData((prev: SrfData | null) => (prev ? { ...prev, [key]: value } : null));
   };
-
+ 
   const saveAndUpdateStatus = async (status: SrfStatus, remarks?: string) => {
     if (!srfData) return;
     setIsSubmitting(true);
@@ -145,11 +145,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         const errorData = await response.json();
         throw new Error(errorData.detail || `Failed to ${status} SRF`);
       }
-      
+     
       const updatedSrfData: SrfData = { ...srfData, status, ...(status === 'rejected' && { remarks }) };
       setSrfData(updatedSrfData);
       onStatusChange(srfData.srf_id, status); // Notify parent component of the change
-      
+     
       if (status === 'rejected') {
         setShowRejectionModal(false);
         setRejectionReason("");
@@ -161,7 +161,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       setIsSubmitting(false);
     }
   };
-
+ 
   const handleRejectSubmit = () => {
     if (!rejectionReason.trim()) {
       alert("Please provide a reason for rejection");
@@ -169,17 +169,17 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     }
     saveAndUpdateStatus("rejected", rejectionReason);
   };
-
+ 
   // --- UI State & Classes ---
   if (loading) return <div className="flex items-center justify-center h-96 text-slate-500">Loading SRF Details...</div>;
   if (error) return <div className="p-8 text-center text-red-700 bg-red-50 rounded-lg border border-red-200">{error}</div>;
   if (!srfData) return <div className="flex items-center justify-center h-96 text-slate-500">SRF not found.</div>;
-
+ 
   const isReadOnly = srfData.status === 'approved' || srfData.status === 'rejected';
-  
+ 
   const readOnlyInputClasses = "block w-full rounded-md bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed sm:text-sm focus:ring-0 focus:border-slate-200";
   const editableInputClasses = "block w-full rounded-md border-slate-300 shadow-sm sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-150";
-
+ 
   // FIX: The srfData.status is now correctly typed, resolving the implicit 'any' error.
   const statusInfo = ({
     approved: { label: "Approved", color: "bg-green-100 text-green-800", icon: <CheckCircle2 className="h-4 w-4" /> },
@@ -187,7 +187,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     pending: { label: "Pending Your Approval", color: "bg-yellow-100 text-yellow-800", icon: <Clock className="h-4 w-4" /> },
     inward_completed: { label: "Pending Your Approval", color: "bg-blue-100 text-blue-800", icon: <Clock className="h-4 w-4" /> },
   } as const)[srfData.status] || { label: srfData.status, color: "bg-slate-100 text-slate-800", icon: <FileText className="h-4 w-4" /> };
-
+ 
   return (
     <>
       <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10">
@@ -205,13 +205,13 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
           <h1 className="text-4xl font-bold text-slate-800">SRF Details</h1>
           <p className="text-slate-500 mt-2">Please review the details below. You can edit contact information and special instructions before approving.</p>
         </header>
-
+ 
         {srfData.status === 'rejected' && srfData.remarks && (
           <div className="p-4 bg-red-50 border-l-4 border-red-400">
             <div className="flex"><div className="flex-shrink-0"><XCircle className="h-5 w-5 text-red-500" /></div><div className="ml-3"><h3 className="text-sm font-medium text-red-800">Rejection Reason</h3><p className="mt-1 text-sm text-red-700">{srfData.remarks}</p></div></div>
           </div>
         )}
-        
+       
         {/* --- Section Cards --- */}
         <section className="border border-slate-200 rounded-xl">
           <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><UserCircle className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Customer Details</h3></div></div>
@@ -222,7 +222,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Telephone</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.telephone || ""} onChange={(e) => handleSrfChange("telephone", e.target.value)} placeholder="Phone number" readOnly={isReadOnly} /></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Contact Person</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.contact_person || ""} onChange={(e) => handleSrfChange("contact_person", e.target.value)} placeholder="Contact person" readOnly={isReadOnly} /></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label><input type="email" className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.email || ""} onChange={(e) => handleSrfChange("email", e.target.value)} placeholder="Email address" readOnly={isReadOnly} /></div>
-        
+       
             <div className="md:col-span-3">
                 <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-md mb-4">
                     <div className="flex">
@@ -243,11 +243,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                     </div>
                 </div>
             </div>
-
+ 
             <div className="md:col-span-3"><label className="block text-sm font-medium text-slate-700 mb-1.5">Certificate Issue Name</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.certificate_issue_name || ""} onChange={(e) => handleSrfChange("certificate_issue_name", e.target.value)} placeholder="Leave blank to use default company name" readOnly={isReadOnly} /></div>
           </div>
         </section>
-
+ 
         {/* --- Special Instructions Section etc. --- */}
         <section className="border border-slate-200 rounded-xl">
             <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><BookOpen className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Special Instructions</h3></div></div>
@@ -257,7 +257,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                 <div><strong className="text-slate-900 text-base font-semibold">3. Turnaround time:</strong><input className={`mt-2 w-full max-w-sm ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`} value={srfData.turnaround_time || ""} onChange={e => handleSrfChange("turnaround_time", e.target.value)} placeholder="e.g., 7 business days" readOnly={isReadOnly} /></div>
             </div>
         </section>
-
+ 
         <section className="border border-slate-200 rounded-xl">
             <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><Wrench className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Equipment Details</h3></div></div>
             <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-slate-600 uppercase bg-slate-100 font-semibold">
@@ -274,7 +274,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                 </tr>))}
             </tbody></table></div>
         </section>
-
+ 
         {!isReadOnly && (
           <footer className="flex justify-end items-center gap-4 pt-8 border-t border-slate-200">
             <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => setShowRejectionModal(true)} disabled={isSubmitting}><X className="h-5 w-5" /> Reject</button>
@@ -282,12 +282,13 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
           </footer>
         )}
       </div>
-
+ 
       {showRejectionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 transition-opacity"><div className="bg-white rounded-lg shadow-xl max-w-md w-full"><div className="p-6"><div className="flex items-center gap-3 mb-4"><div className="p-2 bg-red-100 rounded-full"><XCircle className="h-6 w-6 text-red-600" /></div><h3 className="text-xl font-semibold text-slate-900">Confirm Rejection</h3></div><p className="text-slate-600 mb-4">Please provide a clear reason for rejecting this SRF. This will be sent to our team to make the necessary corrections.</p><div><label htmlFor="rejection-reason" className="block text-sm font-medium text-slate-700 mb-1.5">Reason for Rejection <span className="text-red-500">*</span></label><textarea id="rejection-reason" className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" rows={4} placeholder="e.g., 'The calibration points for the torque wrench are incorrect...'" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} maxLength={500} /><p className="text-xs text-slate-500 mt-1 text-right">{rejectionReason.length}/500 characters</p></div><div className="flex gap-3 justify-end mt-6"><button className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors" onClick={() => setShowRejectionModal(false)} disabled={isSubmitting}>Cancel</button><button className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleRejectSubmit} disabled={isSubmitting || !rejectionReason.trim()}>{isSubmitting ? "Submitting..." : "Confirm Rejection"}</button></div></div></div></div>
       )}
     </>
   );
 };
-
+ 
 export default CustomerSrfDetailView;
+ 

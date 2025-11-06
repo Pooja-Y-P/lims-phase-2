@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, ENDPOINTS } from "../api/config";
 import { InwardDetail, ViewInwardEquipment } from "../types/inward";
-import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit, Printer } from "lucide-react";
+import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit } from "lucide-react";
 import { StickerSheet } from "./StickerSheet";
 
 export const ViewInward: React.FC = () => {

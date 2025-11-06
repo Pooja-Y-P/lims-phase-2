@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import date
 
 # --- Request Schemas ---
 
@@ -12,10 +12,12 @@ class AccountActivationRequest(BaseModel):
 class EquipmentRemarkUpdate(BaseModel):
     """Schema for a single equipment remark update."""
     inward_eqp_id: int
-    remarks: Optional[str] = ""
+    # --- FIX: Change field name from 'remarks' to 'remarks_and_decision' ---
+    remarks_and_decision: Optional[str] = ""
 
 class RemarksSubmissionRequest(BaseModel):
     """Schema for submitting a list of remarks for an inward."""
+    # This now correctly uses the updated EquipmentRemarkUpdate schema
     remarks: List[EquipmentRemarkUpdate]
 
 # --- Response Schemas ---
@@ -28,7 +30,10 @@ class EquipmentForCustomer(BaseModel):
     make: Optional[str]
     model: Optional[str]
     serial_no: Optional[str]
-    remarks: Optional[str]
+    # --- FIX: Change field name from 'remarks' to 'remarks_and_decision' ---
+    # Also add visual_inspection_notes so the frontend knows what is deviated
+    visual_inspection_notes: Optional[str] = None
+    remarks_and_decision: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 

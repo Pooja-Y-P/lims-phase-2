@@ -1,17 +1,15 @@
-# backend/routes/user_routes.py
-
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import List
-# --- FIX 1: Import 'timezone' from the datetime module ---
 from datetime import datetime, timedelta, timezone
 
 from backend.schemas.user_schemas import (
     UserResponse,
     CurrentUserResponse,
-    UserListResponse
+    UserListResponse,
+    Token # Assuming Token schema is also in user_schemas
 )
 from backend.services.user_services import (
     authenticate_user,
@@ -49,20 +47,23 @@ def login(
     # Check if this is the user's first login
     is_first_login = (
         user.created_at and 
-        # --- FIX 2: Use datetime.now(timezone.utc) to create a timezone-aware object ---
         user.created_at > datetime.now(timezone.utc) - timedelta(days=1) and
         user.updated_at is None
     )
 
-    access_token = security.create_access_token(
-        data={
-            "user_id": user.user_id,
-            "sub": str(user.user_id),
-            "email": user.email,
-            "role": user.role,
-        }
-    )
+    # --- THIS IS THE CRUCIAL FIX ---
+    # The data payload for the token now includes the customer_id
+    access_token_data = {
+        "user_id": user.user_id,
+        "sub": str(user.user_id), # 'sub' (subject) is often the user_id or username
+        "email": user.email,
+        "role": user.role,
+        "customer_id": user.customer_id # ADDED
+    }
 
+    access_token = security.create_access_token(data=access_token_data)
+
+    # The response body for the user object
     user_response = UserResponse.from_orm(user)
     user_response.token = access_token
 
@@ -74,7 +75,6 @@ def login(
             role=user.role
         )
         
-        # --- FIX 3: Also use a timezone-aware object for the update ---
         user.updated_at = datetime.now(timezone.utc)
         db.commit()
 
@@ -84,7 +84,8 @@ def login(
 @router.get("/me", response_model=CurrentUserResponse)
 def read_current_user(current_user: UserResponse = Depends(get_current_user)):
     """Returns currently authenticated user details."""
-    current_user.token = None
+    # We set token to None in the response so it's not sent back again.
+    current_user.token = None 
     return current_user
 
 

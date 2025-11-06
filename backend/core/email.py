@@ -88,7 +88,6 @@ async def send_email_with_logging(
     """Send email with comprehensive logging to notifications table."""
     notification_id = None
     
-    # Always log the attempt first
     if db:
         body_text = f"Template: {template_name}, Data: {str(template_body)}"
         notification_id = log_notification_to_db(
@@ -106,7 +105,6 @@ async def send_email_with_logging(
     if not template_path.exists():
         error_msg = f"Template '{template_name}' not found in {conf.TEMPLATE_FOLDER}"
         print(f"ERROR: {error_msg}")
-        
         if db and notification_id:
             update_notification_status(db, notification_id, "failed", error_msg)
         return False
@@ -120,7 +118,6 @@ async def send_email_with_logging(
         )
         fm = FastMail(conf)
         
-        # Add background task with success/failure callback
         background_tasks.add_task(
             send_email_task, 
             fm, 
@@ -137,7 +134,6 @@ async def send_email_with_logging(
     except Exception as e:
         error_msg = f"Failed to queue email to {recipient}. Error: {e}"
         print(f"ERROR: {error_msg}")
-        
         if db and notification_id:
             update_notification_status(db, notification_id, "failed", error_msg)
         return False
@@ -147,14 +143,12 @@ async def send_email_task(fm: FastMail, message: MessageSchema, template_name: s
     try:
         await fm.send_message(message, template_name=template_name)
         print(f"SUCCESS: Email sent to {recipient}")
-        
         if db and notification_id:
             update_notification_status(db, notification_id, "success")
             
     except Exception as e:
         error_msg = f"Failed to send email to {recipient}: {str(e)}"
         print(f"ERROR: {error_msg}")
-        
         if db and notification_id:
             update_notification_status(db, notification_id, "failed", error_msg)
 
@@ -173,22 +167,7 @@ def update_notification_status(db: Session, notification_id: int, status: str, e
     except Exception as e:
         print(f"ERROR: Failed to update notification status: {e}")
 
-# --- 4. Legacy send_email function for backward compatibility ---
-async def send_email(
-    background_tasks: BackgroundTasks,
-    subject: str,
-    recipient: EmailStr,
-    template_name: str,
-    template_body: Dict[str, Any]
-):
-    """Legacy function - queues an email sending task in the background."""
-    return await send_email_with_logging(
-        background_tasks=background_tasks,
-        subject=subject,
-        recipient=recipient,
-        template_name=template_name,
-        template_body=template_body
-    )
+# --- 4. Application-Specific Email Functions ---
 
 async def send_new_user_invitation_email(
     background_tasks: BackgroundTasks,
@@ -196,17 +175,19 @@ async def send_new_user_invitation_email(
     token: str,
     srf_no: str,
     temp_password: str,
-    frontend_url: str = "http://localhost:5173",
+    frontend_url: str = settings.FRONTEND_URL,
     db: Session = None,
     inward_id: int = None,
     created_by: str = "system"
 ):
-    """Legacy invitation email for a new customer."""
-    subject = f"Your LIMS Account for SRF No: {srf_no} Has Been Created"
-    activation_link = f"{frontend_url}/portal/activate?token={token}"
+    """Sends an invitation email to a new customer with the correct FIR link."""
+    subject = f"Welcome to LIMS & Action Required for SRF No: {srf_no}"
+    activation_link = f"{frontend_url}/activate-account?token={token}"
     
-    # UPDATED: Include direct report access link in template
-    report_link = f"{frontend_url}/report/inward/{inward_id}?token={token}" if inward_id else activation_link
+    # === THE FIX IS HERE ===
+    # Corrected the path from /report/inward/ to /customer/fir-remarks/
+    direct_fir_link = f"{frontend_url}/customer/fir-remarks/{inward_id}" if inward_id else activation_link
+    # =======================
 
     template_body = {
         "title": "Welcome! Please Activate Your Account",
@@ -214,7 +195,8 @@ async def send_new_user_invitation_email(
         "email": recipient_email,
         "temporary_password": temp_password,
         "activation_link": activation_link,
-        "report_link": report_link,  # NEW: Direct link to report
+        # This variable name 'direct_link' must match your HTML template's placeholder {{ direct_link }}
+        "direct_link": direct_fir_link,
         "valid_for_hours": 48
     }
 
@@ -234,46 +216,49 @@ async def send_existing_user_notification_email(
     recipient_email: EmailStr,
     inward_id: int,
     srf_no: str,
-    frontend_url: str = "http://localhost:5173",
+    frontend_url: str = settings.FRONTEND_URL,
     db: Session = None,
     created_by: str = "system"
 ):
-    """Notification email for an existing customer about a new report."""
-    subject = f"Inspection Report Ready for SRF No: {srf_no}"
+    """Sends a notification email to an existing customer with the correct FIR link."""
+    subject = f"Action Required: First Inspection Report Ready for SRF No: {srf_no}"
     
-    # UPDATED: Use direct report access link
-    direct_report_link = f"{frontend_url}/report/inward/{inward_id}"
+    # === THE FIX IS HERE ===
+    # Corrected the path from /report/inward/ to /customer/fir-remarks/
+    direct_fir_link = f"{frontend_url}/customer/fir-remarks/{inward_id}"
+    # =======================
     
-    # Fallback login link with redirect
-    redirect_path = f"/portal/inwards/{inward_id}"
-    query_params = urlencode({"redirect": redirect_path})
-    login_redirect_link = f"{frontend_url}/login?{query_params}"
+    # This can be a fallback link to the general customer portal login
+    login_link = f"{frontend_url}/login"
 
     template_body = {
         "title": "New Inspection Report Available",
         "srf_no": srf_no,
-        "direct_link": direct_report_link,  # NEW: Direct access link
-        "login_link": login_redirect_link,   # Fallback login link
+        # This variable name 'direct_link' must match your HTML template's placeholder {{ direct_link }}
+        "direct_link": direct_fir_link,
+        "login_link": login_link,
     }
 
     return await send_email_with_logging(
         background_tasks=background_tasks,
         subject=subject,
         recipient=recipient_email,
-        template_name="inward_notification.html",
+        # This template name should match the one you sent earlier for the FIR
+        template_name="inward_notification.html", 
         template_body=template_body,
         db=db,
         inward_id=inward_id,
         created_by=created_by
     )
 
-# --- Rest of the functions remain unchanged ---
+# --- Other Email Functions ---
+
 async def send_welcome_email(
     background_tasks: BackgroundTasks,
     email: EmailStr,
     name: str,
     role: UserRole,
-    frontend_url: str = "http://localhost:5173",
+    frontend_url: str = settings.FRONTEND_URL,
     db: Session = None,
     inward_id: int = None,
     created_by: str = "system"

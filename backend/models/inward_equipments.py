@@ -25,13 +25,11 @@ class InwardEquipment(Base):
     in_dc = Column(String(255))
     nextage_contract_reference = Column(String(255))
     
-    # --- START: THE FIX ---
     qr_code = Column(Text)
     barcode = Column(Text)
-    # --- END: THE FIX ---
     
-    # ✅ Newly added column
-    remarks = Column(Text)
+    # ✅ Renamed column
+    remarks_and_decision = Column(Text)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True))

@@ -47,3 +47,5 @@ class Inward(Base):
     srf: Mapped["Srf"] = relationship("Srf", back_populates="inward", uselist=False, cascade="all, delete-orphan")
     notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="inward", cascade="all, delete-orphan")
     delayed_tasks: Mapped[List["DelayedEmailTask"]] = relationship("DelayedEmailTask", back_populates="inward", cascade="all, delete-orphan")
+
+    customer: Mapped["Customer"] = relationship("Customer")

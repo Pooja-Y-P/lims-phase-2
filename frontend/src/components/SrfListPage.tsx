@@ -40,7 +40,7 @@ export const SrfListPage: React.FC = () => {
       setError(null);
       try {
         const [inwardsResponse, srfsResponse] = await Promise.all([
-          api.get<CreatedInward[]>(`${ENDPOINTS.INWARDS}?status=created`),
+          api.get<CreatedInward[]>(`${ENDPOINTS.STAFF.INWARDS}?status=created`),
           api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`),
         ]);
 

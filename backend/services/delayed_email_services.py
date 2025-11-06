@@ -9,7 +9,7 @@ from fastapi import BackgroundTasks
 from backend.models.delayed_email_tasks import DelayedEmailTask
 from backend.models.inward import Inward
 from backend.models.users import User
-from backend.core.email import get_reminder_email_template, send_email
+from backend.core.email import get_reminder_email_template, send_email_task
 
 class DelayedEmailService:
     def __init__(self, db: Session):
@@ -140,7 +140,7 @@ class DelayedEmailService:
                     "portal_link": "http://localhost:5173/engineer"
                 })
                 
-                await send_email(
+                await send_email_task(
                     background_tasks=background_tasks,
                     subject=template_data["subject"],
                     recipient=creator.email,

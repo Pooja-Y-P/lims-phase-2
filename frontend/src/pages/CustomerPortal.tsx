@@ -1,628 +1,317 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Routes, Route, useNavigate, Link, useParams } from "react-router-dom";
+import { Routes, Route, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { Srf, DashboardProps } from "../types";
 import {
   AlertCircle,
   Award,
-  PlusCircle,
   ClipboardList,
   Activity,
   CheckCircle2,
   XCircle,
   Clock,
-  FileText,
-  UserCircle,
-  BookOpen,
-  Check,
-  X,
-  Lightbulb,
-  Wrench,
   ChevronLeft,
+  FileText,
+  AlertTriangle,
 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { api } from '../api/config';
+import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
+import CustomerSrfDetailView from "../components/CustomerSrfDetailView"; // Import the detail view
 
-// Define the DashboardStats type locally if it's not in the shared types file
+// --- LOCAL TYPE DEFINITIONS ---
+interface FirForReview {
+  inward_id: number;
+  srf_no: string;
+  date: string;
+  status: string;
+}
+
 interface DashboardStats {
   totalSrfs: number;
   activeDeviations: number;
   readyCertificates: number;
   draftSrfs: number;
+  firsForReview: number;
 }
 
-// --- FIX: Add specific types for the detail view to resolve 'any' type error ---
-type SrfStatus = 'approved' | 'rejected' | 'pending' | 'inward_completed';
-
-interface SrfDetailData {
-  srf_id: number;
-  date: string;
-  status: SrfStatus;
-  nepl_srf_no: string;
-  telephone: string | null;
-  email: string | null;
-  contact_person: string | null;
-  certificate_issue_name: string | null;
-  calibration_frequency: string;
-  specified_frequency?: string;
-  statement_of_conformity: boolean;
-  ref_iso_is_doc?: boolean;
-  ref_manufacturer_manual?: boolean;
-  ref_customer_requirement?: boolean;
-  turnaround_time?: string;
-  remarks?: string;
-  inward?: {
-    customer?: {
-      customer_details: string;
-    };
-    equipments?: any[];
-  };
+interface SrfApiResponse {
+  pending: Srf[];
+  approved: Srf[];
+  rejected: Srf[];
 }
 
-// --- Integrated SRF List View Component ---
-const CustomerSrfListView: React.FC<{ srfs: Srf[] }> = ({ srfs }) => {
-  const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
-
-  const filteredSrfs = srfs.filter((srf) => {
-    const isMatch =
-      (activeTab === "pending" && (srf.status === "inward_completed" || srf.status === "pending")) ||
-      (activeTab === "approved" && srf.status === "approved") ||
-      (activeTab === "rejected" && srf.status === "rejected");
-    return isMatch;
-  });
-
-  return (
-    <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-3xl font-bold text-slate-800">View SRFs</h2>
-        <Link
-          to="/customer"
-          className="text-indigo-600 hover:text-indigo-800 font-semibold text-sm flex items-center gap-1 transition-colors"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back to Dashboard
-        </Link>
-      </div>
-
-      <div className="flex gap-1 border-b border-slate-200 mb-6">
-        {[
-          { key: "pending", label: "Pending SRFs", icon: <Clock className="h-5 w-5" /> },
-          { key: "approved", label: "Approved SRFs", icon: <CheckCircle2 className="h-5 w-5" /> },
-          { key: "rejected", label: "Rejected SRFs", icon: <XCircle className="h-5 w-5" /> },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            className={`flex items-center gap-2 px-4 py-3 rounded-t-lg border-b-2 -mb-px transition-all duration-150 ${
-              activeTab === tab.key
-                ? "border-indigo-600 text-indigo-600 font-semibold bg-indigo-50"
-                : "border-transparent text-slate-600 hover:text-indigo-600 hover:bg-slate-50"
-            }`}
-            onClick={() => setActiveTab(tab.key as any)}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-100 text-slate-600 text-sm">
-            <tr>
-              <th className="p-4 font-semibold">Ref</th>
-              <th className="p-4 font-semibold">Current Status</th>
-              <th className="p-4 font-semibold">Creation Date</th>
-              <th className="p-4 font-semibold">Customer Contact</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {filteredSrfs.length > 0 ? (
-              filteredSrfs.map((srf) => (
-                <tr key={srf.srf_id} className="hover:bg-slate-50 transition-colors duration-150">
-                  <td className="p-4 align-top">
-                    <Link
-                      to={`../srfs/${srf.srf_id}`}
-                      className="text-indigo-600 font-medium hover:underline"
-                    >
-                      {srf.nepl_srf_no}
-                    </Link>
-                  </td>
-                  <td className="p-4 align-top capitalize text-slate-700">
-                    {srf.status.replace("_", " ")}
-                  </td>
-                  <td className="p-4 align-top text-slate-600">
-                    {/* FIX: Changed `srf.created_at` to `srf.date` to match the Srf type. */}
-                    {new Date(srf.date).toLocaleDateString()}
-                  </td>
-                  <td className="p-4 align-top text-slate-600">{srf.contact_person}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={4} className="p-12 text-slate-500 text-center">
-                  No {activeTab} SRFs found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-// --- Integrated SRF Detail View Component ---
-const CustomerSrfDetailView: React.FC<{ onStatusChange: (id: number, status: string) => void }> = ({ onStatusChange }) => {
-  const { srfId } = useParams<{ srfId: string }>();
-  // FIX: Applied the specific SrfDetailData type instead of `any`.
-  const [srfData, setSrfData] = useState<SrfDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showRejectionModal, setShowRejectionModal] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // --- Data Loading & Handlers ---
-  const loadSrfData = useCallback(async () => {
-    if (!srfId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`http://localhost:8000/api/srfs/${srfId}`);
-      if (!response.ok) throw new Error("Failed to fetch SRF details");
-      const data: SrfDetailData = await response.json();
-      data.date = data.date ? data.date.split("T")[0] : "";
-      data.calibration_frequency = data.calibration_frequency ?? "As per Standard";
-      data.statement_of_conformity = typeof data.statement_of_conformity === "boolean" ? data.statement_of_conformity : false;
-      setSrfData(data);
-    } catch (err: any) {
-      setError(err.message || "Error loading SRF details");
-    } finally {
-      setLoading(false);
-    }
-  }, [srfId]);
-
-  useEffect(() => {
-    loadSrfData();
-  }, [loadSrfData]);
-
-  const handleSrfChange = (key: keyof SrfDetailData, value: any) => {
-    setSrfData((prev: SrfDetailData | null) => (prev ? { ...prev, [key]: value } : null));
-  };
-
-  const saveAndUpdateStatus = async (status: SrfStatus, remarks?: string) => {
-    if (!srfData) return;
-    setIsSubmitting(true);
-    try {
-      const payload: Partial<SrfDetailData> = {
-        status,
-        telephone: srfData.telephone,
-        email: srfData.email,
-        contact_person: srfData.contact_person,
-        certificate_issue_name: srfData.certificate_issue_name,
-        calibration_frequency: srfData.calibration_frequency,
-        specified_frequency: srfData.specified_frequency,
-        statement_of_conformity: srfData.statement_of_conformity,
-        ref_iso_is_doc: srfData.ref_iso_is_doc,
-        ref_manufacturer_manual: srfData.ref_manufacturer_manual,
-        ref_customer_requirement: srfData.ref_customer_requirement,
-        turnaround_time: srfData.turnaround_time,
-      };
-
-      if (status === 'rejected' && remarks) {
-        payload.remarks = remarks;
-      }
-
-      const response = await fetch(`http://localhost:8000/api/srfs/${srfData.srf_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `Failed to ${status} SRF`);
-      }
-
-      const updatedSrfData = { ...srfData, status, ...(status === 'rejected' && { remarks }) };
-      setSrfData(updatedSrfData as SrfDetailData);
-      onStatusChange(srfData.srf_id, status);
-
-      if (status === 'rejected') {
-        setShowRejectionModal(false);
-        setRejectionReason("");
-      }
-
-      alert(`SRF ${status} successfully!`);
-    } catch (err: any) {
-      alert(err.message || "Error updating SRF");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleRejectSubmit = () => {
-    if (!rejectionReason.trim()) {
-      alert("Please provide a reason for rejection");
-      return;
-    }
-    saveAndUpdateStatus("rejected", rejectionReason);
-  };
-
-  // --- UI State & Classes ---
-  if (loading) return <div className="flex items-center justify-center h-96 text-slate-500">Loading SRF Details...</div>;
-  if (error) return <div className="p-8 text-center text-red-700 bg-red-50 rounded-lg border border-red-200">{error}</div>;
-  if (!srfData) return <div className="flex items-center justify-center h-96 text-slate-500">SRF not found.</div>;
-
-  const isReadOnly = srfData.status === 'approved' || srfData.status === 'rejected';
-
-  const readOnlyInputClasses = "block w-full rounded-md bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed sm:text-sm focus:ring-0 focus:border-slate-200";
-  const editableInputClasses = "block w-full rounded-md border-slate-300 shadow-sm sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-150";
-
-  // FIX: The `srfData.status` is now correctly typed, resolving the implicit 'any' error.
-  const statusInfo = ({
-    approved: { label: "Approved", color: "bg-green-100 text-green-800", icon: <CheckCircle2 className="h-4 w-4" /> },
-    rejected: { label: "Rejected", color: "bg-red-100 text-red-800", icon: <XCircle className="h-4 w-4" /> },
-    pending: { label: "Pending Your Approval", color: "bg-yellow-100 text-yellow-800", icon: <Clock className="h-4 w-4" /> },
-    inward_completed: { label: "Pending Your Approval", color: "bg-blue-100 text-blue-800", icon: <Clock className="h-4 w-4" /> },
-  } as const)[srfData.status] || { label: srfData.status, color: "bg-slate-100 text-slate-800", icon: <FileText className="h-4 w-4" /> };
-
-  return (
-    <>
-      <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10">
-        <header className="border-b border-slate-200 pb-6">
-          <div className="flex justify-between items-center mb-2">
-            <Link to="/customer/view-srf" className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors flex items-center gap-1">
-              <ChevronLeft className="h-4 w-4" /> Back to SRF List
-            </Link>
-            <div className={`flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-full ${statusInfo.color}`}>
-              {statusInfo.icon}
-              {statusInfo.label}
+// --- FIR List View Component ---
+const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
+    return (
+        <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+                    <FileText className="h-8 w-8 text-orange-600" />
+                    First Inspection Reports (FIRs)
+                </h2>
+                <Link to="/customer" className="text-indigo-600 hover:text-indigo-800 font-semibold text-sm flex items-center gap-1 transition-colors">
+                    <ChevronLeft className="h-4 w-4" /> Back to Dashboard
+                </Link>
             </div>
-          </div>
-          <h1 className="text-4xl font-bold text-slate-800">SRF Details</h1>
-          <p className="text-slate-500 mt-2">Please review the details below. You can edit contact information and special instructions before approving.</p>
-        </header>
-
-        {srfData.status === 'rejected' && srfData.remarks && (
-          <div className="p-4 bg-red-50 border-l-4 border-red-400">
-            <div className="flex"><div className="flex-shrink-0"><XCircle className="h-5 w-5 text-red-500" /></div><div className="ml-3"><h3 className="text-sm font-medium text-red-800">Rejection Reason</h3><p className="mt-1 text-sm text-red-700">{srfData.remarks}</p></div></div>
-          </div>
-        )}
-
-        <section className="border border-slate-200 rounded-xl">
-          <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><UserCircle className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Customer Details</h3></div></div>
-          <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-5">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Ref</label><input className={readOnlyInputClasses} readOnly value={srfData.nepl_srf_no} /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Dated</label><input type="date" className={readOnlyInputClasses} readOnly value={srfData.date} /></div>
-            <div className="md:col-span-3"><label className="block text-sm font-medium text-slate-700 mb-1.5">Company Name & Address</label><textarea rows={3} className={readOnlyInputClasses} readOnly value={srfData.inward?.customer?.customer_details || ""} /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Telephone</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.telephone || ""} onChange={(e) => handleSrfChange("telephone", e.target.value)} placeholder="Phone number" readOnly={isReadOnly} /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Contact Person</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.contact_person || ""} onChange={(e) => handleSrfChange("contact_person", e.target.value)} placeholder="Contact person" readOnly={isReadOnly} /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label><input type="email" className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.email || ""} onChange={(e) => handleSrfChange("email", e.target.value)} placeholder="Email address" readOnly={isReadOnly} /></div>
-            <div className="md:col-span-3">
-                <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-md mb-4">
-                    <div className="flex"><div className="flex-shrink-0"><Lightbulb className="h-5 w-5 text-blue-500" /></div><div className="ml-3"><p className="text-sm font-medium text-blue-800">Important Note:</p><div className="mt-1 text-sm text-blue-700">The Certificate will be issued by default in the name of <strong className="font-semibold text-blue-900">"{srfData.inward?.customer?.customer_details || 'the organization mentioned above'}"</strong>.<br/>If a different name is required, please enter it in the field below.</div></div></div>
+            <div className="mb-6 p-4 bg-orange-50 border-l-4 border-orange-400 rounded-r-lg">
+                <div className="flex items-start">
+                    <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 mr-3" />
+                    <div>
+                        <h3 className="text-sm font-medium text-orange-800">Action Required</h3>
+                        <p className="mt-1 text-sm text-orange-700">The following inwards have completed first inspection. Please review and provide your feedback.</p>
+                    </div>
                 </div>
             </div>
-            <div className="md:col-span-3"><label className="block text-sm font-medium text-slate-700 mb-1.5">Certificate Issue Name</label><input className={isReadOnly ? readOnlyInputClasses : editableInputClasses} value={srfData.certificate_issue_name || ""} onChange={(e) => handleSrfChange("certificate_issue_name", e.target.value)} placeholder="Leave blank to use default company name" readOnly={isReadOnly} /></div>
-          </div>
-        </section>
-
-        <section className="border border-slate-200 rounded-xl">
-            <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><BookOpen className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Special Instructions</h3></div></div>
-            <div className="p-6 space-y-8">
-                <div><strong className="text-slate-900 text-base font-semibold">1. Calibration Frequency:</strong><div className="flex flex-col gap-3 mt-3 text-slate-700"><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="radio" name="freq" checked={srfData.calibration_frequency === "As per Standard"} onChange={() => handleSrfChange("calibration_frequency", "As per Standard")} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> As per Standard</label><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="radio" name="freq" checked={srfData.calibration_frequency !== "As per Standard"} onChange={() => !isReadOnly && srfData.calibration_frequency === "As per Standard" && handleSrfChange("calibration_frequency", "")} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> Specify</label>{srfData.calibration_frequency !== "As per Standard" && (<input type="text" className={`mt-1 w-full max-w-sm ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`} value={srfData.calibration_frequency || ""} onChange={(e) => handleSrfChange("calibration_frequency", e.target.value)} placeholder="e.g., 12 Months" readOnly={isReadOnly} />)}</div></div>
-                <div><strong className="text-slate-900 text-base font-semibold">2. Statement of conformity required?</strong><div className="flex gap-6 mt-3 text-slate-700"><label className="flex items-center gap-3 cursor-pointer"><input type="radio" checked={srfData.statement_of_conformity === true} onChange={() => handleSrfChange("statement_of_conformity", true)} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> YES</label><label className="flex items-center gap-3 cursor-pointer"><input type="radio" checked={srfData.statement_of_conformity === false} onChange={() => handleSrfChange("statement_of_conformity", false)} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> NO</label></div>{srfData.statement_of_conformity && (<div className="mt-4 pl-6 border-l-2 border-slate-200"><strong className="text-slate-800 text-base font-semibold">2.1 Decision Rule:</strong><div className="flex flex-col gap-3 mt-3 text-slate-700"><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_iso_is_doc} onChange={e => handleSrfChange("ref_iso_is_doc", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. ISO/IS Doc. Standard</label><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_manufacturer_manual} onChange={e => handleSrfChange("ref_manufacturer_manual", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. manufacturer Manual</label><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_customer_requirement} onChange={e => handleSrfChange("ref_customer_requirement", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. Customer Requirement</label></div></div>)}</div>
-                <div><strong className="text-slate-900 text-base font-semibold">3. Turnaround time:</strong><input className={`mt-2 w-full max-w-sm ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`} value={srfData.turnaround_time || ""} onChange={e => handleSrfChange("turnaround_time", e.target.value)} placeholder="e.g., 7 business days" readOnly={isReadOnly} /></div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-100 text-slate-600 text-sm">
+                        <tr>
+                            <th className="p-4 font-semibold border-b">SRF No.</th>
+                            <th className="p-4 font-semibold border-b">Status</th>
+                            <th className="p-4 font-semibold border-b">Inspection Date</th>
+                            <th className="p-4 font-semibold border-b">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                        {firs.length > 0 ? (firs.map((fir) => (
+                            <tr key={fir.inward_id} className="hover:bg-slate-50 transition-colors duration-150">
+                                <td className="p-4 align-top font-medium text-slate-800">{fir.srf_no}</td>
+                                <td className="p-4 align-top">
+                                    <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 w-fit">
+                                        <AlertTriangle className="h-3 w-3" /> Requires Your Review
+                                    </span>
+                                </td>
+                                <td className="p-4 align-top text-slate-600">{new Date(fir.date).toLocaleDateString()}</td>
+                                <td className="p-4 align-top">
+                                    <Link to={`/customer/fir-remarks/${fir.inward_id}`} className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm transition-colors">
+                                        <FileText className="h-4 w-4" /> Review & Add Remarks
+                                    </Link>
+                                </td>
+                            </tr>
+                        ))) : (
+                            <tr>
+                                <td colSpan={4} className="p-12 text-slate-500 text-center">
+                                    <div className="flex flex-col items-center gap-3">
+                                        <CheckCircle2 className="h-12 w-12 text-green-400" />
+                                        <h3 className="text-lg font-medium">All Caught Up!</h3>
+                                        <p className="text-sm">No FIRs are currently waiting for your remarks.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
             </div>
-        </section>
-
-        <section className="border border-slate-200 rounded-xl">
-            <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><Wrench className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Equipment Details</h3></div></div>
-            <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-slate-600 uppercase bg-slate-100 font-semibold">
-                <tr><th className="px-3 py-3">Instrument</th><th className="px-3 py-3">Model</th><th className="px-3 py-3">Serial No</th><th className="px-3 py-3">Range</th><th className="px-3 py-3">Unit</th><th className="px-3 py-3">Cal. Points</th><th className="px-3 py-3">Mode of Cal.</th></tr>
-            </thead><tbody className="divide-y divide-slate-200">
-                {srfData.inward?.equipments?.map((eq: any) => (<tr key={eq.inward_eqp_id} className="even:bg-slate-50/50">
-                    <td className="px-2 py-2 w-1/5"><input type="text" className={readOnlyInputClasses} readOnly value={eq.material_description || ""} /></td>
-                    <td className="px-2 py-2 w-1/6"><input type="text" className={readOnlyInputClasses} readOnly value={eq.model || ""} /></td>
-                    <td className="px-2 py-2 w-1/6"><input type="text" className={readOnlyInputClasses} readOnly value={eq.serial_no || ""} /></td>
-                    <td className="px-2 py-2 w-1/6"><input type="text" className={readOnlyInputClasses} readOnly value={eq.range || ""} /></td>
-                    <td className="px-2 py-2"><input type="text" className={readOnlyInputClasses} readOnly value={eq.srf_equipment?.unit || ""} /></td>
-                    <td className="px-2 py-2"><input type="number" className={readOnlyInputClasses} readOnly value={eq.srf_equipment?.no_of_calibration_points || ""} /></td>
-                    <td className="px-2 py-2"><input type="text" className={readOnlyInputClasses} readOnly value={eq.srf_equipment?.mode_of_calibration || ""} /></td>
-                </tr>))}
-            </tbody></table></div>
-        </section>
-
-        {!isReadOnly && (
-          <footer className="flex justify-end items-center gap-4 pt-8 border-t border-slate-200">
-            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => setShowRejectionModal(true)} disabled={isSubmitting}><X className="h-5 w-5" /> Reject</button>
-            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => saveAndUpdateStatus("approved")} disabled={isSubmitting}><Check className="h-5 w-5" /> Approve</button>
-          </footer>
-        )}
-      </div>
-
-      {showRejectionModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 transition-opacity"><div className="bg-white rounded-lg shadow-xl max-w-md w-full"><div className="p-6"><div className="flex items-center gap-3 mb-4"><div className="p-2 bg-red-100 rounded-full"><XCircle className="h-6 w-6 text-red-600" /></div><h3 className="text-xl font-semibold text-slate-900">Confirm Rejection</h3></div><p className="text-slate-600 mb-4">Please provide a clear reason for rejecting this SRF. This will be sent to our team to make the necessary corrections.</p><div><label htmlFor="rejection-reason" className="block text-sm font-medium text-slate-700 mb-1.5">Reason for Rejection <span className="text-red-500">*</span></label><textarea id="rejection-reason" className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500" rows={4} placeholder="e.g., 'The calibration points for the torque wrench are incorrect...'" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} maxLength={500} /><p className="text-xs text-slate-500 mt-1 text-right">{rejectionReason.length}/500 characters</p></div><div className="flex gap-3 justify-end mt-6"><button className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors" onClick={() => setShowRejectionModal(false)} disabled={isSubmitting}>Cancel</button><button className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" onClick={handleRejectSubmit} disabled={isSubmitting || !rejectionReason.trim()}>{isSubmitting ? "Submitting..." : "Confirm Rejection"}</button></div></div></div></div>
-      )}
-    </>
-  );
+        </div>
+    );
 };
 
-// --- API Fetch Function ---
-const apiFetchCustomerSrfs = async (id: number): Promise<Srf[]> => {
-  const response = await fetch(`http://localhost:8000/api/srfs/customer/srfs/${id}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch SRFs");
-  }
-  return response.json();
+// --- SRF List View Component ---
+const CustomerSrfListView: React.FC<{ srfs: Srf[] }> = ({ srfs }) => {
+    const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+    const filteredSrfs = srfs.filter((srf) => {
+        const status = srf.status.toLowerCase();
+        return (
+            (activeTab === "pending" && (status.includes("inward") || status.includes("pending") || status.includes("reviewed") || status.includes("updated"))) ||
+            (activeTab === "approved" && status === "approved") ||
+            (activeTab === "rejected" && status === "rejected")
+        );
+    });
+    return (
+        <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-slate-800">View Service Request Forms (SRFs)</h2>
+                <Link to="/customer" className="text-indigo-600 hover:text-indigo-800 font-semibold text-sm flex items-center gap-1">
+                    <ChevronLeft className="h-4 w-4" /> Back to Dashboard
+                </Link>
+            </div>
+            <div className="flex gap-1 border-b border-slate-200 mb-6">
+                {[{ key: "pending", label: "Pending for Approval", icon: <Clock className="h-5 w-5" /> }, { key: "approved", label: "Approved SRFs", icon: <CheckCircle2 className="h-5 w-5" /> }, { key: "rejected", label: "Rejected SRFs", icon: <XCircle className="h-5 w-5" /> }].map((tab) => (
+                    <button key={tab.key} className={`flex items-center gap-2 px-4 py-3 rounded-t-lg border-b-2 -mb-px transition-all ${activeTab === tab.key ? "border-indigo-600 text-indigo-600 font-semibold bg-indigo-50" : "border-transparent text-slate-600 hover:text-indigo-600 hover:bg-slate-50"}`} onClick={() => setActiveTab(tab.key as any)}>
+                        {tab.icon} {tab.label}
+                    </button>
+                ))}
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-slate-100 text-slate-600 text-sm">
+                        <tr><th className="p-4 font-semibold">Ref</th><th className="p-4 font-semibold">Status</th><th className="p-4 font-semibold">Date</th><th className="p-4 font-semibold">Action</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                        {filteredSrfs.length > 0 ? (filteredSrfs.map((srf) => (
+                            <tr key={srf.srf_id} className="hover:bg-slate-50">
+                                <td className="p-4 align-top font-medium text-slate-800">{srf.nepl_srf_no}</td>
+                                <td className="p-4 align-top capitalize text-slate-700">{srf.status.replace(/_/g, " ")}</td>
+                                <td className="p-4 align-top text-slate-600">{new Date(srf.date).toLocaleDateString()}</td>
+                                <td className="p-4 align-top">
+                                    <Link to={`/customer/srfs/${srf.srf_id}`} className="text-indigo-600 font-semibold hover:underline">View & Approve</Link>
+                                </td>
+                            </tr>
+                        ))) : (<tr><td colSpan={4} className="p-12 text-slate-500 text-center">No {activeTab} SRFs found.</td></tr>)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 };
 
 // --- Sub-pages ---
-const ViewDeviationsPage = () => (
-  <div className="p-8 bg-white rounded-2xl shadow-md">
-    <h2 className="text-3xl font-semibold text-gray-800 mb-4">View Deviations</h2>
-    <p className="text-gray-600 mb-6">List of deviations requiring your attention.</p>
-    <Link to="/customer" className="text-blue-600 hover:underline">
-      &larr; Back to Dashboard
-    </Link>
-  </div>
+const ViewDeviationsPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">View Deviations</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
+const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">Certificates</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
+
+// --- Dashboard UI Components (IMPLEMENTED) ---
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; description: string; gradient: string; bgGradient: string; }> = ({ icon, label, value, description, gradient, bgGradient }) => ( 
+    <div className={`relative bg-white rounded-2xl p-8 shadow-lg border border-gray-100 hover:shadow-xl group`}> 
+        <div className={`absolute inset-0 bg-gradient-to-r ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity`} /> 
+        <div className="relative z-10"> 
+            <div className="flex items-start justify-between mb-6"> 
+                <div className={`p-4 bg-gradient-to-r ${gradient} rounded-xl text-white shadow-lg`}>{icon}</div> 
+                <div className="text-4xl font-bold text-gray-900 group-hover:text-white">{value}</div> 
+            </div> 
+            <div> 
+                <h3 className="text-xl font-semibold text-gray-900 group-hover:text-white">{label}</h3> 
+                <p className="text-gray-600 group-hover:text-gray-100 text-sm">{description}</p> 
+            </div> 
+        </div> 
+    </div> 
 );
 
-const CertificatesPage = () => (
-  <div className="p-8 bg-white rounded-2xl shadow-md">
-    <h2 className="text-3xl font-semibold text-gray-800 mb-4">Certificates</h2>
-    <p className="text-gray-600 mb-6">Certificates section coming soon.</p>
-    <Link to="/customer" className="text-blue-600 hover:underline">
-      &larr; Back to Dashboard
-    </Link>
-  </div>
+const ActionButton: React.FC<{ color: string; label: string; description: string; icon: React.ReactNode; onClick: () => void; badgeCount?: number; }> = ({ color, label, description, icon, onClick, badgeCount }) => ( 
+    <button onClick={onClick} className="relative group bg-white border rounded-xl p-6 hover:shadow-lg text-left transition-all"> 
+        <div className={`inline-flex p-3 bg-gradient-to-r ${color} rounded-xl text-white mb-4`}>{icon}</div> 
+        <h3 className="font-semibold text-lg">{label}</h3> 
+        <p className="text-sm">{description}</p> 
+        {badgeCount && badgeCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 text-xs font-bold">{badgeCount}</span>} 
+    </button> 
 );
 
-// --- Reusable Dashboard Components ---
-const StatCard: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  description: string;
-  gradient: string;
-  bgGradient: string;
-}> = ({ icon, label, value, description, gradient, bgGradient }) => (
-  <div
-    className={`relative bg-white rounded-2xl p-8 shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-300 group overflow-hidden`}
-  >
-    <div
-      className={`absolute inset-0 bg-gradient-to-r ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`}
-    />
-    <div className="relative z-10">
-      <div className="flex items-start justify-between mb-6">
-        <div className={`p-4 bg-gradient-to-r ${gradient} rounded-xl text-white shadow-lg`}>
-          {icon}
+const QuickActions: React.FC<{ onSelect: (path: string) => void; stats: DashboardStats }> = ({ onSelect, stats }) => (
+    <div className="bg-white rounded-2xl shadow-lg border">
+        <div className="px-8 py-6 bg-gradient-to-r from-indigo-600 to-blue-600"> 
+            <h2 className="text-2xl font-bold text-white">Quick Actions</h2> 
+            <p className="text-indigo-100 mt-1">Choose an action</p> 
         </div>
-        <div className="text-right">
-          <div className="text-4xl font-bold text-gray-900 group-hover:text-white transition-colors duration-300">
-            {value}
-          </div>
+        <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <ActionButton color="from-orange-500 to-red-500" label="Review FIRs" description="Add remarks to inspection reports" icon={<FileText className="h-8 w-8" />} onClick={() => onSelect("/customer/view-firs")} badgeCount={stats.firsForReview} />
+            <ActionButton color="from-blue-500 to-indigo-600" label="View SRFs" description="Approve or reject SRFs" icon={<ClipboardList className="h-8 w-8" />} badgeCount={stats.draftSrfs} onClick={() => onSelect("/customer/view-srf")} />
+            <ActionButton color="from-yellow-500 to-amber-500" label="View Deviations" description="Track active issues" icon={<AlertCircle className="h-8 w-8" />} badgeCount={stats.activeDeviations} onClick={() => onSelect("/customer/deviations")} />
+            <ActionButton color="from-green-500 to-emerald-600" label="Certificates" description="Download certificates" icon={<Award className="h-8 w-8" />} badgeCount={stats.readyCertificates} onClick={() => onSelect("/customer/certificates")} />
         </div>
-      </div>
-      <div>
-        <h3 className="text-xl font-semibold text-gray-900 group-hover:text-white transition-colors duration-300 mb-2">
-          {label}
-        </h3>
-        <p className="text-gray-600 group-hover:text-gray-100 transition-colors duration-300 text-sm">
-          {description}
-        </p>
-      </div>
     </div>
-  </div>
 );
 
-const ActionButton: React.FC<{
-  color: string;
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-  badgeCount?: number;
-}> = ({ color, label, description, icon, onClick, badgeCount }) => (
-  <button
-    onClick={onClick}
-    className="relative group bg-white border border-gray-200 rounded-xl p-6 hover:border-gray-300 hover:shadow-lg transition-all duration-200 text-left"
-  >
-    <div
-      className={`inline-flex p-3 bg-gradient-to-r ${color} rounded-xl text-white mb-4 group-hover:scale-110 transition-transform duration-200`}
-    >
-      {icon}
-    </div>
-    <h3 className="font-semibold text-gray-900 text-lg mb-1">{label}</h3>
-    <p className="text-gray-600 text-sm">{description}</p>
-    {typeof badgeCount === "number" && badgeCount > 0 && (
-      <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 py-1 text-xs font-semibold shadow-lg">
-        {badgeCount}
-      </span>
-    )}
-  </button>
-);
-
-const QuickActions: React.FC<{ onSelect: (path: string) => void; stats: DashboardStats }> = ({
-  onSelect,
-  stats,
-}) => (
-  <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-    <div className="px-8 py-6 bg-gradient-to-r from-indigo-600 to-blue-600">
-      <h2 className="text-2xl font-bold text-white">Quick Actions</h2>
-      <p className="text-indigo-100 mt-1">Choose an action to get started</p>
-    </div>
-    <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-      <ActionButton
-        color="from-green-500 to-emerald-600"
-        label="View SRFs"
-        description="View pending, approved, and rejected SRFs"
-        icon={<ClipboardList className="h-8 w-8" />}
-        onClick={() => onSelect("/customer/view-srf")}
-      />
-      <ActionButton
-        color="from-blue-500 to-indigo-600"
-        label="Review Pending"
-        description="Approve or reject SRFs"
-        icon={<PlusCircle className="h-8 w-8" />}
-        badgeCount={stats.draftSrfs}
-        onClick={() => onSelect("/customer/view-srf")}
-      />
-      <ActionButton
-        color="from-orange-500 to-red-500"
-        label="View Deviations"
-        description="Track active issues"
-        icon={<AlertCircle className="h-8 w-8" />}
-        badgeCount={stats.activeDeviations}
-        onClick={() => onSelect("/customer/deviations")}
-      />
-      <ActionButton
-        color="from-purple-500 to-indigo-600"
-        label="Certificates"
-        description="Download certificates"
-        icon={<Award className="h-8 w-8" />}
-        badgeCount={stats.readyCertificates}
-        onClick={() => onSelect("/customer/certificates")}
-      />
-    </div>
-  </div>
-);
-
-// --- Dashboard Home ---
 const CustomerDashboardHome: React.FC<{ stats: DashboardStats }> = ({ stats }) => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-
-  return (
-    <div className="min-h-full bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-12">
-          <div className="flex-1">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="p-3 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-2xl shadow-lg">
-                <ClipboardList className="h-10 w-10 text-white" />
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold text-gray-900">Customer Portal</h1>
-                <p className="text-lg text-gray-600 mt-1">
-                  Welcome back, {user?.full_name || "Customer"}
-                </p>
-              </div>
-            </div>
-            <p className="text-gray-600 max-w-2xl leading-relaxed">
-              Manage your calibration service requests, track progress, and access certificates all
-              in one place. Our streamlined platform makes it easy to submit new requests and
-              monitor existing ones.
-            </p>
-          </div>
-        </div>
-
-        {stats.draftSrfs > 0 && (
-          <div className="mb-6 p-4 bg-yellow-100 border border-yellow-300 text-yellow-800 rounded-lg shadow-sm flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-yellow-600" />
-            <p>
-              You have <span className="font-semibold">{stats.draftSrfs}</span> pending service
-              request(s) that require your approval.
-            </p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <StatCard
-            icon={<Activity className="h-10 w-10" />}
-            label="Total Service Requests"
-            value={stats.totalSrfs}
-            description="Submitted SRFs in system"
-            gradient="from-blue-500 to-blue-600"
-            bgGradient="from-blue-50 to-blue-100"
-          />
-          <StatCard
-            icon={<AlertCircle className="h-10 w-10" />}
-            label="Active Deviations"
-            value={stats.activeDeviations}
-            description="Issues requiring attention"
-            gradient="from-orange-500 to-red-500"
-            bgGradient="from-orange-50 to-red-50"
-          />
-          <StatCard
-            icon={<Award className="h-10 w-10" />}
-            label="Ready Certificates"
-            value={stats.readyCertificates}
-            description="Available for download"
-            gradient="from-green-500 to-emerald-600"
-            bgGradient="from-green-50 to-emerald-50"
-          />
-        </div>
-
-        <QuickActions onSelect={navigate} stats={stats} />
-      </div>
-    </div>
-  );
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    return ( 
+        <div className="min-h-full bg-gradient-to-br from-blue-50 via-white to-indigo-50"> 
+            <div className="max-w-7xl mx-auto py-8 px-4"> 
+                <div className="flex items-center gap-6 mb-12"> 
+                    <div className="p-3 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-2xl shadow-lg"><ClipboardList className="h-10 w-10 text-white" /></div> 
+                    <div><h1 className="text-4xl font-bold">Customer Portal</h1> <p className="text-lg text-gray-600 mt-1">Welcome back, {user?.full_name || "Customer"}</p></div> 
+                </div> 
+                {stats.firsForReview > 0 && (
+                    <div className="mb-6 p-4 bg-orange-100 text-orange-800 rounded-lg flex items-center gap-3 border border-orange-200">
+                        <AlertTriangle className="h-6 w-6 text-orange-600" /> 
+                        <div>
+                            <p className="font-semibold">Action Required: You have <span className="font-bold">{stats.firsForReview}</span> First Inspection Report(s) awaiting your review.</p>
+                            <p className="text-sm">Please review and provide remarks for equipment with deviations to proceed with calibration.</p>
+                        </div>
+                    </div>
+                )}
+                {stats.draftSrfs > 0 && (
+                    <div className="mb-6 p-4 bg-yellow-100 text-yellow-800 rounded-lg flex items-center gap-3 border border-yellow-200">
+                        <Clock className="h-6 w-6" /> 
+                        <p>You have <span className="font-semibold">{stats.draftSrfs}</span> pending Service Request Form(s) for approval.</p>
+                    </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12"> 
+                    <StatCard icon={<Activity className="h-10 w-10" />} label="Total Service Requests" value={stats.totalSrfs} description="Submitted SRFs" gradient="from-blue-500 to-blue-600" bgGradient="from-blue-50 to-blue-100" /> 
+                    <StatCard icon={<AlertCircle className="h-10 w-10" />} label="Active Deviations" value={stats.activeDeviations} description="Issues requiring attention" gradient="from-orange-500 to-red-500" bgGradient="from-orange-50 to-red-50" /> 
+                    <StatCard icon={<Award className="h-10 w-10" />} label="Ready Certificates" value={stats.readyCertificates} description="Available for download" gradient="from-green-500 to-emerald-600" bgGradient="from-green-50 to-emerald-50" /> 
+                </div> 
+                <QuickActions onSelect={navigate} stats={stats} /> 
+            </div> 
+        </div> 
+    );
 };
 
 // --- Customer Portal Main Container ---
 const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
-  const { user } = useAuth();
-  const [srfs, setSrfs] = useState<Srf[]>([]);
-  const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+    const [srfs, setSrfs] = useState<Srf[]>([]);
+    const [firs, setFirs] = useState<FirForReview[]>([]);
+    const [loading, setLoading] = useState(true);
 
-  const fetchSrfs = useCallback(async () => {
-    if (!user?.user_id) {
-      console.error("[CustomerPortal] ABORTING FETCH: The user object does not have a 'user_id'.", user);
-      setLoading(false);
-      return;
-    }
+    const fetchSrfs = useCallback(async () => {
+        if (!user?.user_id) return;
+        try {
+            const response = await api.get<SrfApiResponse>('/portal/srfs');
+            setSrfs([...(response.data.pending || []), ...(response.data.approved || []), ...(response.data.rejected || [])]);
+        } catch (err) {
+            console.error("[CustomerPortal] Failed to fetch SRFs:", err);
+        }
+    }, [user]);
 
-    try {
-      const data = await apiFetchCustomerSrfs(user.user_id);
-      console.log("[CustomerPortal] API call successful. Received data:", data);
-      setSrfs(data);
-    } catch (err) {
-      console.error("[CustomerPortal] API call failed with an error:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+    const fetchFirsForReview = useCallback(async () => {
+        if (!user?.user_id) return;
+        try {
+            const response = await api.get<FirForReview[]>('/portal/firs-for-review');
+            setFirs(response.data);
+        } catch (err) {
+            console.error("[CustomerPortal] Failed to fetch FIRs for review:", err);
+        }
+    }, [user]);
 
-  useEffect(() => {
-    fetchSrfs();
-  }, [fetchSrfs]);
+    useEffect(() => {
+        const initialLoad = async () => {
+            setLoading(true);
+            await Promise.all([fetchSrfs(), fetchFirsForReview()]);
+            setLoading(false);
+        };
+        initialLoad();
+        const srfInterval = setInterval(fetchSrfs, 30000);
+        const firInterval = setInterval(fetchFirsForReview, 30000);
+        return () => {
+            clearInterval(srfInterval);
+            clearInterval(firInterval);
+        };
+    }, [fetchSrfs, fetchFirsForReview]);
 
-  const handleStatusChange = (srfId: number, status: string) => {
-    setSrfs((prev) => prev.map((srf) => (srf.srf_id === srfId ? { ...srf, status } as Srf : srf)));
-  };
+    const handleStatusChange = (srfId: number, status: string) => {
+        setSrfs((prev) => prev.map((srf) => (srf.srf_id === srfId ? { ...srf, status } as Srf : srf)));
+    };
 
-  const dashboardStats: DashboardStats = {
-    totalSrfs: srfs.length,
-    activeDeviations: 0, // Mocked
-    readyCertificates: 0, // Mocked
-    draftSrfs: srfs.filter(
-      (srf) => srf.status === "inward_completed" || srf.status === "pending"
-    ).length,
-  };
+    const dashboardStats: DashboardStats = {
+        totalSrfs: srfs.length,
+        activeDeviations: 0,
+        readyCertificates: 0,
+        draftSrfs: srfs.filter((srf) => srf.status === "inward_completed" || srf.status === "pending").length,
+        firsForReview: firs.length,
+    };
 
-  if (loading)
-    return <div className="p-8 text-lg text-center text-gray-600">Loading Customer Data...</div>;
+    if (loading) return <div className="p-8 text-lg text-center">Loading...</div>;
 
-  return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      <Header
-        onLogout={onLogout}
-        username={user?.full_name || user?.username || "Customer"}
-        role="Customer"
-      />
-      <main className="flex-1 p-4 sm:p-6 lg:p-8">
-        <Routes>
-          <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
-          <Route path="view-srf" element={<CustomerSrfListView srfs={srfs} />} />
-          <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
-          <Route path="deviations" element={<ViewDeviationsPage />} />
-          <Route path="certificates" element={<CertificatesPage />} />
-        </Routes>
-      </main>
-      <Footer />
-    </div>
-  );
+    return (
+        <div className="flex flex-col min-h-screen bg-gray-50">
+            <Header onLogout={onLogout} username={user?.full_name || user?.username || "Customer"} role="Customer" />
+            <main className="flex-1 p-4 sm:p-6 lg:p-8">
+                <Routes>
+                    <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
+                    <Route path="view-srf" element={<CustomerSrfListView srfs={srfs} />} />
+                    {/* Correctly import and use the detail view component */}
+                    <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
+                    <Route path="view-firs" element={<FirListView firs={firs} />} />
+                    <Route path="fir-remarks/:inwardId" element={<CustomerRemarksPortal />} />
+                    <Route path="deviations" element={<ViewDeviationsPage />} />
+                    <Route path="certificates" element={<CertificatesPage />} />
+                </Routes>
+            </main>
+            <Footer />
+        </div>
+    );
 };
 
 export default CustomerPortal;

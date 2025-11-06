@@ -23,3 +23,4 @@ class Notification(Base):
     # --- Relationships ---
     recipient = relationship("User", back_populates="notifications")
     inward = relationship("Inward", back_populates="notifications")
+    

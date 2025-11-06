@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, Clock, XCircle, CreditCard as Edit3, Users, Save, CheckCircle2 } from "lucide-react";
+import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, FileCheck } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { User } from "../types";
@@ -16,6 +16,7 @@ import EnhancedSrfManagement from "../components/EnhancedSrfManagement";
 import { SrfDetailPage } from "../components/SrfDetailPage"; 
 import { DelayedEmailManager } from "../components/DelayedEmailManager";
 import { FailedNotificationsManager } from "../components/FailedNotificationManager";
+import { ReviewedFirsPage } from "../components/ReviewedFirsPage";
 
 const CertificatesPage = () => (
   <div className="p-8 bg-white rounded-2xl shadow-lg">Certificates Page Content</div>
@@ -30,29 +31,23 @@ interface EngineerPortalProps {
   onLogout: () => void;
 }
 
+// Interface for API responses
 interface PendingEmailResponse {
   pending_tasks: any[];
 }
-
 interface FailedNotificationsResponse {
   failed_notifications: any[];
-  stats: {
-    total: number;
-    pending: number;
-    success: number;
-    failed: number;
-  };
+  stats: { total: number; pending: number; success: number; failed: number; };
 }
-
 interface AvailableDraft {
   inward_id: number;
   draft_updated_at: string;
   created_at: string;
   customer_details: string;
-  draft_data: {
-    customer_details?: string;
-    equipment_list?: any[];
-  };
+  draft_data: { customer_details?: string; equipment_list?: any[]; };
+}
+interface ReviewedFir {
+  inward_id: number;
 }
 
 const ActionButton: React.FC<{
@@ -72,7 +67,7 @@ const ActionButton: React.FC<{
         className={`p-3 rounded-xl text-white mr-4 shadow-lg ${colorClasses} group-hover:shadow-2xl transition-shadow duration-300 relative`}
       >
         {icon}
-        {badge && badge > 0 && (
+        {badge != null && badge > 0 && (
           <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold">
             {badge > 99 ? '99+' : badge}
           </span>
@@ -94,57 +89,38 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
   const [showDelayedEmails, setShowDelayedEmails] = useState(false);
   const [showFailedNotifications, setShowFailedNotifications] = useState(false);
   const [availableDrafts, setAvailableDrafts] = useState<AvailableDraft[]>([]);
+  const [reviewedFirCount, setReviewedFirCount] = useState(0);
 
-  useEffect(() => {
-    fetchPendingEmailCount();
-    fetchFailedNotificationCount();
-    fetchAvailableDrafts();
-    
-    const interval = setInterval(() => {
-      fetchPendingEmailCount();
-      fetchFailedNotificationCount();
-      fetchAvailableDrafts();
-    }, 30000);
-    
-    return () => clearInterval(interval);
+  // Centralized fetch function
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      const [
+        pendingEmailsRes,
+        failedNotifsRes,
+        draftsRes,
+        reviewedFirsRes
+      ] = await Promise.allSettled([
+        api.get<PendingEmailResponse>(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`),
+        api.get<FailedNotificationsResponse>(`${ENDPOINTS.STAFF.INWARDS}/notifications/failed`),
+        api.get<AvailableDraft[]>(ENDPOINTS.STAFF.DRAFTS),
+        api.get<ReviewedFir[]>(`${ENDPOINTS.STAFF.INWARDS}/reviewed-firs`)
+      ]);
+
+      if (pendingEmailsRes.status === 'fulfilled') setPendingEmailCount(pendingEmailsRes.value.data.pending_tasks.length);
+      if (failedNotifsRes.status === 'fulfilled') setFailedNotificationCount(failedNotifsRes.value.data.failed_notifications.length);
+      if (draftsRes.status === 'fulfilled') setAvailableDrafts(draftsRes.value.data || []);
+      if (reviewedFirsRes.status === 'fulfilled') setReviewedFirCount(reviewedFirsRes.value.data.length);
+
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    }
   }, []);
 
-  const fetchPendingEmailCount = async () => {
-    try {
-      const response = await api.get<PendingEmailResponse>(
-        `${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`
-      );
-      setPendingEmailCount(response.data.pending_tasks.length);
-    } catch (error: any) {
-      console.error("Error fetching pending email count:", error);
-      if (error.response?.status === 404) {
-        setPendingEmailCount(0);
-      }
-    }
-  };
-
-  const fetchFailedNotificationCount = async () => {
-    try {
-      const response = await api.get<FailedNotificationsResponse>(
-        `${ENDPOINTS.STAFF.INWARDS}/notifications/failed`
-      );
-      setFailedNotificationCount(response.data.failed_notifications.length);
-    } catch (error: any) {
-      console.error("Error fetching failed notification count:", error);
-      if (error.response?.status === 404) {
-        setFailedNotificationCount(0);
-      }
-    }
-  };
-
-  const fetchAvailableDrafts = async () => {
-    try {
-      const response = await api.get<AvailableDraft[]>(ENDPOINTS.STAFF.DRAFTS);
-      setAvailableDrafts(response.data || []);
-    } catch (error) {
-      console.error('Error loading drafts:', error);
-    }
-  };
+  useEffect(() => {
+    fetchDashboardData();
+    const interval = setInterval(fetchDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, [fetchDashboardData]);
 
   const EngineerDashboard = () => {
     const navigate = useNavigate();
@@ -156,10 +132,19 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         icon: <ClipboardList className="h-8 w-8" />,
         route: "create-inward",
         colorClasses: "bg-gradient-to-r from-blue-500 to-indigo-600",
+        badge: availableDrafts.length
+      },
+      {
+        label: "Reviewed FIRs",
+        description: "View customer feedback and update inwards",
+        icon: <FileCheck className="h-8 w-8" />,
+        route: "reviewed-firs",
+        colorClasses: "bg-gradient-to-r from-teal-500 to-cyan-600",
+        badge: reviewedFirCount
       },
       {
         label: "View & Update Inward",
-        description: "View, update, and manage existing inward entries",
+        description: "Manage existing inward entries and SRFs",
         icon: <Wrench className="h-8 w-8" />,
         route: "view-inward",
         colorClasses: "bg-gradient-to-r from-cyan-500 to-blue-600",
@@ -201,65 +186,47 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           </div>
         </div>
 
-
-
-        {/* Scheduled Email Notifications */}
+        {/* Banners for scheduled and failed emails */}
         {pendingEmailCount > 0 && (
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 mb-6 shadow-lg">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full">
-                  <Clock className="h-6 w-6 text-orange-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-orange-900">
-                    Scheduled Inspection Reports
-                  </h3>
-                  <p className="text-orange-700">
-                    You have{" "}
-                    <span className="font-bold">{pendingEmailCount}</span>{" "}
-                    report{pendingEmailCount > 1 ? "s" : ""} scheduled to be sent
-                    later.
-                  </p>
-                </div>
+            <div className="flex items-start gap-4">
+              <Mail className="h-6 w-6 text-orange-600 mt-1 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-orange-900 mb-2">
+                  Scheduled Email Reminders ({pendingEmailCount})
+                </h3>
+                <p className="text-orange-800 text-sm mb-3">
+                  You have {pendingEmailCount} email(s) scheduled to be sent later. You can manage or send them immediately from here.
+                </p>
+                <button
+                  onClick={() => setShowDelayedEmails(true)}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-700 transition-colors text-sm"
+                >
+                  Manage Scheduled Emails
+                </button>
               </div>
-              <button
-                onClick={() => setShowDelayedEmails(true)}
-                className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md"
-              >
-                <Mail className="h-5 w-5" />
-                <span>Manage Scheduled Reports</span>
-              </button>
             </div>
           </div>
         )}
 
-        {/* Failed Email Notifications */}
         {failedNotificationCount > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6 shadow-lg">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full">
-                  <XCircle className="h-6 w-6 text-red-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-red-900">
-                    Failed Email Notifications
-                  </h3>
-                  <p className="text-red-700">
-                    <span className="font-bold">{failedNotificationCount}</span>{" "}
-                    email{failedNotificationCount > 1 ? "s" : ""} failed to send due to server issues.
-                    Manual retry required.
-                  </p>
-                </div>
+            <div className="flex items-start gap-4">
+              <AlertTriangle className="h-6 w-6 text-red-600 mt-1 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-red-900 mb-2">
+                  Failed Email Notifications ({failedNotificationCount})
+                </h3>
+                <p className="text-red-800 text-sm mb-3">
+                  Some email notifications failed to send. Please review and retry them to ensure customers receive important updates.
+                </p>
+                <button
+                  onClick={() => setShowFailedNotifications(true)}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors text-sm"
+                >
+                  Review Failed Emails
+                </button>
               </div>
-              <button
-                onClick={() => setShowFailedNotifications(true)}
-                className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-3 rounded-lg transition-colors shadow-md"
-              >
-                <AlertTriangle className="h-5 w-5" />
-                <span>Handle Failed Emails</span>
-              </button>
             </div>
           </div>
         )}
@@ -277,7 +244,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
                 icon={action.icon}
                 onClick={() => navigate(action.route)}
                 colorClasses={action.colorClasses}
-                badge={action.label === "Create Inward" ? availableDrafts.length : undefined}
+                badge={action.badge}
               />
             ))}
           </div>
@@ -295,12 +262,13 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           <Route path="create-inward" element={<CreateInwardPage />} />
           <Route path="view-inward" element={<ViewUpdateInward />} />
           <Route path="view-inward/:id" element={<ViewInward />} />
-          <Route path="edit-inward/:id" element={<InwardForm />} />
+          <Route path="edit-inward/:id" element={<InwardForm initialDraftId={null} />} />
           <Route path="print-stickers/:id" element={<PrintStickers />} />
           
-          {/* SRF Routes */}
           <Route path="srfs" element={<EnhancedSrfManagement />} />
           <Route path="srfs/:srfId" element={<SrfDetailPage />} />
+          
+          <Route path="reviewed-firs" element={<ReviewedFirsPage />} />
           
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="deviations" element={<DeviationPage />} />
@@ -311,7 +279,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         <DelayedEmailManager
           onClose={() => {
             setShowDelayedEmails(false);
-            fetchPendingEmailCount();
+            fetchDashboardData();
           }}
         />
       )}
@@ -320,7 +288,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         <FailedNotificationsManager
           onClose={() => {
             setShowFailedNotifications(false);
-            fetchFailedNotificationCount();
+            fetchDashboardData();
           }}
         />
       )}

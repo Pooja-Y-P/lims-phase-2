@@ -2,10 +2,6 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Define the environment file (.env) where your secrets are stored
-# NOTE: The keys below MUST match the keys in your provided environment block.
-# JWT_SECRET and REFRESH_TOKEN_SECRET are critical here.
-
 class Settings(BaseSettings):
     """
     Configuration settings for the application, loaded from environment variables.
@@ -25,15 +21,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:root@localhost:5432/lims_phase1"
 
     # --- JWT/Security Settings ---
-    # These must be non-empty strings for python-jose to work correctly.
-    # The aliases are not strictly needed if the variable names match, 
-    # but explicitly defining the type 'str' is essential.
     JWT_SECRET: str
     REFRESH_TOKEN_SECRET: str
     ALGORITHM: str = "HS256" # Default algorithm for JWT
-
-    # Access Token Lifetime (e.g., 15 minutes)
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Refresh Token Lifetime (e.g., 7 days)
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7 
 
     # --- SMTP/Email Settings ---
@@ -42,6 +33,12 @@ class Settings(BaseSettings):
     SMTP_USER: str
     SMTP_PASSWORD: str
     FROM_EMAIL: str
+
+    # === THIS IS THE MISSING SETTING THAT NEEDS TO BE ADDED ===
+    # --- Frontend URL ---
+    # This is the URL for your React/Vue/Svelte frontend application.
+    FRONTEND_URL: str = "http://localhost:5173"
+    # ==========================================================
 
 
 # Create an instance of the settings for import throughout the application

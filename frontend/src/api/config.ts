@@ -55,6 +55,14 @@ export const ENDPOINTS = {
   DEVIATIONS: `/deviations`,
   NOTIFICATIONS: `/notifications`,
   SRFS: `/srfs/`,
+
+  // NEW: SRF Draft endpoints
+  SRF_DRAFTS: {
+    SAVE: (id: number) => `/srfs/draft/${id}`,      // PATCH - save existing as draft
+    CREATE: `/srfs/draft`,                          // POST - create new draft
+    RESTORE: (id: number) => `/srfs/draft/${id}/restore`, // GET - restore draft data
+    CLEAR: (id: number) => `/srfs/draft/${id}`,     // DELETE - clear draft data
+  }
 } as const;
 
 // Create axios instance with default configuration
