@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api/config';
-import { Save, ArrowLeft, User, Calendar, AlertTriangle } from 'lucide-react';
+import { Save, ArrowLeft, CheckCircle, AlertTriangle, FileText, Calendar, Package, ChevronRight, Building, MessageSquare } from 'lucide-react';
 
-// --- UPDATED Interfaces to match the backend workflow ---
+// --- Interfaces are unchanged ---
 interface EquipmentForRemarks {
   inward_eqp_id: number;
   nepl_id: string;
@@ -11,8 +11,8 @@ interface EquipmentForRemarks {
   make: string;
   model: string;
   serial_no: string;
-  visual_inspection_notes: string | null; // Engineer's notes
-  remarks_and_decision: string | null;      // Customer's feedback
+  visual_inspection_notes: string | null;
+  remarks_and_decision: string | null;
 }
 
 interface InwardForRemarks {
@@ -28,7 +28,21 @@ interface Props {
   accessToken?: string;
 }
 
+// Sub-components
+const InfoCard: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode; color: string }> = ({ icon, label, value, color }) => (
+  <div className="bg-white p-4 rounded-lg border flex items-center gap-4">
+    <div className={`flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center ${color}`}>
+      {icon}
+    </div>
+    <div>
+      <p className="text-xs text-gray-500 font-medium">{label}</p>
+      <p className="text-sm font-semibold text-gray-800">{value}</p>
+    </div>
+  </div>
+);
+
 export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, accessToken }) => {
+  // --- All state and logic functions are unchanged ---
   const { inwardId } = useParams<{ inwardId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -45,23 +59,10 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     try {
       setLoading(true);
       setError(null);
-
-      let response;
-      if (directAccess || token) {
-        // Direct access via email link
-        const url = token ? 
-          `/portal/direct-fir/${inwardId}?token=${token}` : 
-          `/portal/direct-fir/${inwardId}`;
-        response = await api.get<InwardForRemarks>(url);
-      } else {
-        // Authenticated customer access
-        response = await api.get<InwardForRemarks>(`/portal/firs/${inwardId}`);
-      }
-
+      const url = token ? `/portal/direct-fir/${inwardId}?token=${token}` : `/portal/firs/${inwardId}`;
+      const response = await api.get<InwardForRemarks>(url);
       const data = response.data;
       setInwardDetails(data);
-      
-      // Initialize remarks state only for deviated items
       const initialRemarks: { [key: number]: string } = {};
       data.equipments.forEach((eq) => {
         if (eq.visual_inspection_notes !== 'OK') {
@@ -69,18 +70,10 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
         }
       });
       setCustomerRemarks(initialRemarks);
-      
     } catch (error: any) {
       console.error('Error fetching FIR details:', error);
-      if (error.response?.status === 400 && error.response?.data?.detail) {
-        setError(error.response.data.detail);
-      } else {
-        setError('Failed to load First Inspection Report details.');
-      }
-      
-      if (!directAccess && !token) {
-        navigate('/customer');
-      }
+      setError(error.response?.data?.detail || 'Failed to load First Inspection Report details.');
+      if (!directAccess && !token) navigate('/customer');
     } finally {
       setLoading(false);
     }
@@ -91,52 +84,32 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
   }, [fetchInwardDetails]);
 
   const handleRemarksChange = (equipmentId: number, value: string) => {
-    setCustomerRemarks(prev => ({
-      ...prev,
-      [equipmentId]: value
-    }));
+    setCustomerRemarks(prev => ({ ...prev, [equipmentId]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-
     try {
-      // Construct the payload with remarks only for deviated equipment
       const remarksArray = Object.entries(customerRemarks)
-        .filter(([, remark]) => remark.trim() !== '') // Only submit non-empty remarks
+        .filter(([, remark]) => remark.trim() !== '')
         .map(([equipmentId, remark]) => ({
           inward_eqp_id: parseInt(equipmentId),
           remarks_and_decision: remark
         }));
 
-      let response;
-      if (directAccess || token) {
-        // Direct access submission
-        const url = token ? 
-          `/portal/direct-fir/${inwardId}/remarks?token=${token}` : 
-          `/portal/direct-fir/${inwardId}/remarks`;
-        response = await api.post(url, { remarks: remarksArray });
-      } else {
-        // Authenticated submission
-        response = await api.post(`/portal/firs/${inwardId}/remarks`, {
-          remarks: remarksArray
-        });
-      }
+      const url = token ? `/portal/direct-fir/${inwardId}/remarks?token=${token}` : `/portal/firs/${inwardId}/remarks`;
+      await api.post(url, { remarks: remarksArray });
 
       alert('Remarks submitted successfully! Our engineering team will review your feedback and proceed with the next steps.');
-      
       if (!directAccess && !token) {
         navigate('/customer');
       } else {
-        // For direct access, show success message and disable form
         setInwardDetails(prev => prev ? { ...prev, status: 'customer_reviewed' } : null);
       }
-      
     } catch (error: any) {
       console.error('Error submitting remarks:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to submit remarks. Please try again.';
-      alert(errorMessage);
+      alert(error.response?.data?.detail || 'Failed to submit remarks. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -144,8 +117,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
 
   const handleBackNavigation = () => {
     if (directAccess || token) {
-      // For direct access, show a simple message
-      alert('Thank you for visiting. You can close this page.');
+      alert('Thank you. You may now close this page.');
     } else {
       navigate('/customer');
     }
@@ -153,10 +125,10 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading First Inspection Report...</p>
+          <p className="mt-4 text-slate-600">Loading First Inspection Report...</p>
         </div>
       </div>
     );
@@ -164,227 +136,220 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8 max-w-md">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <AlertTriangle className="h-12 w-12 text-red-600 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Access Error</h2>
-            <p className="text-red-700">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-5" />
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Access Denied</h2>
+            <p className="text-slate-600 mb-6">{error}</p>
             <button
               onClick={handleBackNavigation}
-              className="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700"
+              className="w-full bg-red-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-700 transition-colors"
             >
-              {directAccess || token ? 'Close' : 'Back to Dashboard'}
+              {directAccess || token ? 'Close Page' : 'Back to Dashboard'}
             </button>
-          </div>
         </div>
       </div>
     );
   }
 
-  if (!inwardDetails) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center p-8">
-          <p className="text-red-600 font-semibold text-lg">Failed to load report details.</p>
-          <button
-            onClick={handleBackNavigation}
-            className="mt-4 bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700"
-          >
-            {directAccess || token ? 'Close' : 'Back to Dashboard'}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  if (!inwardDetails) return null;
 
-  // Check if customer has already reviewed
   const isAlreadyReviewed = inwardDetails.status === 'customer_reviewed';
-  
-  // Get deviated equipment count
   const deviatedEquipment = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK');
   const nonDeviatedEquipment = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes === 'OK');
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-blue-700 px-6 py-4">
+    <div className="min-h-screen bg-slate-100 py-12 sm:py-16">
+      <div className="max-w-6xl mx-auto px-4">
+        
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden">
+          
+          <header className="bg-slate-800 px-6 py-5 sm:px-8">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <User className="h-8 w-8 text-white" />
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-700 p-2 rounded-lg">
+                  <Building className="h-7 w-7 text-indigo-400" />
+                </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-white">First Inspection Report (FIR)</h1>
-                  <p className="text-indigo-100">For SRF {inwardDetails.srf_no}</p>
+                  <h1 className="text-2xl font-bold text-white">First Inspection Report</h1>
+                  <p className="text-sm text-slate-300">Official review document for your equipment.</p>
                 </div>
               </div>
               {!directAccess && !token && (
                 <button
                   onClick={handleBackNavigation}
-                  className="flex items-center space-x-2 bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg transition-colors"
+                  className="hidden sm:flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-colors"
                 >
-                  <ArrowLeft size={20} />
-                  <span>Back</span>
+                  <ArrowLeft size={18} />
+                  <span>Back to Dashboard</span>
                 </button>
               )}
             </div>
-          </div>
+          </header>
 
-          {/* Status Banner */}
-          {isAlreadyReviewed && (
-            <div className="bg-green-50 border-b border-green-200 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 bg-green-500 rounded-full flex items-center justify-center">
-                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-green-800">Review Complete</h3>
-                  <p className="text-sm text-green-700">Thank you for your feedback. Our engineering team will proceed with the next steps.</p>
-                </div>
-              </div>
-            </div>
-          )}
+          <section className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-slate-50 border-b border-slate-200">
+            <InfoCard icon={<FileText size={20} className="text-indigo-800" />} label="SRF Number" value={inwardDetails.srf_no} color="bg-indigo-100" />
+            <InfoCard icon={<Calendar size={20} className="text-sky-800" />} label="Report Date" value={new Date(inwardDetails.date).toLocaleDateString()} color="bg-sky-100" />
+            <InfoCard icon={<Package size={20} className="text-slate-800" />} label="Total Items" value={inwardDetails.equipments.length} color="bg-slate-200" />
+            <InfoCard icon={<AlertTriangle size={20} className="text-orange-800" />} label="Items with Deviations" value={deviatedEquipment.length} color="bg-orange-100" />
+          </section>
 
-          {/* Inward Info */}
-          <div className="bg-gray-50 border-b px-6 py-4">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
-              <div className="flex items-center space-x-2">
-                <Calendar size={16} />
-                <span>Date: {new Date(inwardDetails.date).toLocaleDateString()}</span>
-              </div>
-              <span>•</span>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">Status:</span>
-                <span className={`capitalize px-2 py-0.5 rounded-full font-medium text-xs ${
-                  isAlreadyReviewed 
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-orange-100 text-orange-800'
-                }`}>
-                  {inwardDetails.status.replace(/_/g, " ")}
-                </span>
-              </div>
-              <span>•</span>
-              <span>{inwardDetails.equipments.length} Equipment Item(s)</span>
-              {deviatedEquipment.length > 0 && (
-                <>
-                  <span>•</span>
-                  <span className="text-orange-600 font-medium">
-                    {deviatedEquipment.length} Item(s) require attention
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6">
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-2">Equipment Inspection Review</h2>
-              <p className="text-gray-600">
-                Items with deviations are listed first and require your feedback. Items without deviations are shown below for reference.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {/* Deviated Equipment First */}
-              {deviatedEquipment.map((equipment, index) => (
-                <div key={equipment.inward_eqp_id} className="border-2 border-orange-300 bg-orange-50/50 rounded-xl p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                    {/* Equipment Details Column */}
-                    <div>
-                      <h3 className="text-lg font-semibold text-indigo-700 mb-3 flex items-center gap-2">
-                        <AlertTriangle className="h-5 w-5 text-orange-600" />
-                        #{index + 1}: {equipment.material_description}
-                      </h3>
-                      <div className="space-y-2 text-sm">
-                        <p><span className="font-medium text-gray-500 w-20 inline-block">NEPL ID:</span> {equipment.nepl_id}</p>
-                        <p><span className="font-medium text-gray-500 w-20 inline-block">Make:</span> {equipment.make}</p>
-                        <p><span className="font-medium text-gray-500 w-20 inline-block">Model:</span> {equipment.model}</p>
-                        <p><span className="font-medium text-gray-500 w-20 inline-block">Serial No:</span> {equipment.serial_no || 'N/A'}</p>
-                      </div>
-                    </div>
-                    
-                    {/* Deviation & Remarks Column */}
-                    <div className="space-y-4">
-                      <div className="p-4 bg-orange-100 border border-orange-200 rounded-lg">
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <h4 className="font-semibold text-orange-900">Deviation Noted by Engineer</h4>
-                            <p className="text-sm text-orange-800 mt-1">{equipment.visual_inspection_notes}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label htmlFor={`remarks-${equipment.inward_eqp_id}`} className="block text-sm font-medium text-gray-800 mb-1">
-                          Your Remarks / Decision: <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                          id={`remarks-${equipment.inward_eqp_id}`}
-                          value={customerRemarks[equipment.inward_eqp_id] || ''}
-                          onChange={(e) => handleRemarksChange(equipment.inward_eqp_id, e.target.value)}
-                          placeholder="e.g., 'Sending missing part via courier', 'Equipment was not damaged during transport, please return for recalibration', etc."
-                          rows={3}
-                          disabled={isAlreadyReviewed}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Non-deviated Equipment (Reference Only) */}
-              {nonDeviatedEquipment.length > 0 && (
-                <div className="mt-8">
-                  <h3 className="text-lg font-semibold text-gray-700 mb-4">Equipment Without Deviations (Reference Only)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {nonDeviatedEquipment.map((equipment) => (
-                      <div key={equipment.inward_eqp_id} className="border border-gray-200 bg-gray-50 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-800 mb-2">{equipment.material_description}</h4>
-                        <div className="space-y-1 text-sm text-gray-600">
-                          <p><span className="font-medium">NEPL ID:</span> {equipment.nepl_id}</p>
-                          <p><span className="font-medium">Make/Model:</span> {equipment.make} / {equipment.model}</p>
-                          <p><span className="font-medium">Status:</span> <span className="text-green-600 font-medium">No Issues</span></p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Submit Button */}
-            {!isAlreadyReviewed && deviatedEquipment.length > 0 && (
-              <div className="mt-8 flex justify-end">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg transition-colors shadow-md"
-                >
-                  <Save size={20} />
-                  <span>{saving ? 'Submitting...' : 'Submit Review'}</span>
-                </button>
-              </div>
-            )}
-
-            <div className="mt-4 text-center text-sm text-gray-600">
+          <main className="p-6 sm:p-8">
+            <form onSubmit={handleSubmit}>
+              {/* Status Banner */}
               {isAlreadyReviewed ? (
-                <p>Your feedback has been submitted and is being processed by our engineering team.</p>
-              ) : deviatedEquipment.length === 0 ? (
-                <p>All equipment items passed inspection without any deviations. No customer action required.</p>
+                <div className="bg-green-50 border-l-4 border-green-500 text-green-800 p-4 rounded-r-lg mb-8">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-6 w-6" />
+                    <div>
+                      <h3 className="font-bold">Review Complete</h3>
+                      <p className="text-sm">Thank you for your feedback. No further action is required on this page.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : deviatedEquipment.length > 0 ? (
+                 <div className="bg-orange-50 border-l-4 border-orange-500 text-orange-800 p-4 rounded-r-lg mb-8">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-6 w-6" />
+                    <div>
+                      <h3 className="font-bold">Action Required</h3>
+                      <p className="text-sm">Please review the items with deviations below and provide your remarks.</p>
+                    </div>
+                  </div>
+                </div>
               ) : (
-                <p>After submitting, our engineers will be notified to proceed with the next steps based on your feedback.</p>
+                <div className="bg-green-50 border-l-4 border-green-500 text-green-800 p-4 rounded-r-lg mb-8">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle className="h-6 w-6" />
+                        <div>
+                            <h3 className="font-bold">No Deviations Found</h3>
+                            <p className="text-sm">All equipment passed visual inspection. No action is required from you.</p>
+                        </div>
+                    </div>
+                </div>
               )}
-            </div>
-          </form>
+              
+              <div className="space-y-8">
+
+                {/* === MODIFIED SECTION: Row View for "Action Required" Equipment === */}
+                {deviatedEquipment.length > 0 && (
+                  <div>
+                    <h3 className="text-xl font-semibold text-slate-800 mb-4">Items Requiring Your Attention</h3>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th scope="col" className="w-2/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Description</th>
+                              <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NEPL ID</th>
+                              <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Make / Model</th>
+                              <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-200">
+                            {deviatedEquipment.map((equipment) => (
+                              <React.Fragment key={equipment.inward_eqp_id}>
+                                <tr>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 border-l-4 border-orange-500">{equipment.material_description}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{equipment.nepl_id}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden sm:table-cell">{equipment.make} / {equipment.model}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                      <AlertTriangle size={14} />
+                                      Deviation Noted
+                                    </span>
+                                  </td>
+                                </tr>
+                                <tr className="bg-slate-50/50">
+                                  <td colSpan={4} className="p-4 sm:p-6 border-l-4 border-orange-500">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                      <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                                        <h4 className="font-semibold text-amber-900 text-sm flex items-center gap-2">
+                                          <MessageSquare size={16} /> Engineer's Note
+                                        </h4>
+                                        <p className="text-amber-800 text-sm mt-2">{equipment.visual_inspection_notes}</p>
+                                      </div>
+                                      <div>
+                                        <label htmlFor={`remarks-${equipment.inward_eqp_id}`} className="block text-sm font-medium text-slate-700 mb-1.5">
+                                          Your Remarks / Decision <span className="text-red-500">*</span>
+                                        </label>
+                                        <textarea
+                                          id={`remarks-${equipment.inward_eqp_id}`}
+                                          value={customerRemarks[equipment.inward_eqp_id] || ''}
+                                          onChange={(e) => handleRemarksChange(equipment.inward_eqp_id, e.target.value)}
+                                          placeholder="e.g., 'Proceed with calibration.' or 'Return this item.'"
+                                          rows={3}
+                                          disabled={isAlreadyReviewed}
+                                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                                          required
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </React.Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* === END OF MODIFIED SECTION === */}
+
+                {nonDeviatedEquipment.length > 0 && (
+                  <details className="group" open>
+                    <summary className="list-none flex items-center justify-between cursor-pointer p-4 bg-slate-50 hover:bg-slate-100 rounded-lg">
+                      <h4 className="text-lg font-semibold text-slate-700">Items Without Deviations ({nonDeviatedEquipment.length})</h4>
+                      <ChevronRight className="h-5 w-5 text-slate-500 transition-transform duration-200 group-open:rotate-90" />
+                    </summary>
+                    <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Description</th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NEPL ID</th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Make / Model</th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-200">
+                            {nonDeviatedEquipment.map((equipment) => (
+                              <tr key={equipment.inward_eqp_id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{equipment.material_description}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{equipment.nepl_id}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden sm:table-cell">{equipment.make} / {equipment.model}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <CheckCircle size={14} />
+                                    No Issues
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+                )}
+              </div>
+
+              {!isAlreadyReviewed && deviatedEquipment.length > 0 && (
+                <div className="mt-10 pt-6 border-t border-slate-200 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-bold text-lg px-8 py-3 rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  >
+                    <Save size={22} />
+                    <span>{saving ? 'Submitting...' : 'Submit Final Review'}</span>
+                  </button>
+                </div>
+              )}
+            </form>
+          </main>
         </div>
       </div>
     </div>

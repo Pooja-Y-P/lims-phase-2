@@ -413,7 +413,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     e.preventDefault();
     if (!reportEmail || !lastSavedInwardId) return;
     try {
-      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-fir`, { email: reportEmail, send_later: false });
+      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { email: reportEmail, send_later: false });
       showMessage('success', `FIR for SRF ${lastSavedSrfNo} sent to ${reportEmail}!`);
       setReportEmail('');
       handleCloseEmailModalAndNavigate();
@@ -425,7 +425,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const handleScheduleFir = async () => {
     if (!lastSavedInwardId) return;
     try {
-      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-fir`, { send_later: true });
+      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { send_later: true });
       showMessage('success', `FIR for SRF ${lastSavedSrfNo} is scheduled.`);
       handleCloseEmailModalAndNavigate();
     } catch (error: any) {

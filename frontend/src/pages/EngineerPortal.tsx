@@ -31,13 +31,12 @@ interface EngineerPortalProps {
   onLogout: () => void;
 }
 
-// Interface for API responses
-interface PendingEmailResponse {
-  pending_tasks: any[];
+// Define the shape of data from the API
+interface DelayedTask {
+  task_id: number;
 }
-interface FailedNotificationsResponse {
-  failed_notifications: any[];
-  stats: { total: number; pending: number; success: number; failed: number; };
+interface FailedNotification {
+  id: number;
 }
 interface AvailableDraft {
   inward_id: number;
@@ -49,6 +48,12 @@ interface AvailableDraft {
 interface ReviewedFir {
   inward_id: number;
 }
+interface FailedNotificationsResponse {
+  failed_notifications: FailedNotification[];
+  stats: { total: number; pending: number; success: number; failed: number; };
+}
+
+// NOTE: The wrapper interface 'PendingEmailResponse' has been removed.
 
 const ActionButton: React.FC<{
   label: string;
@@ -91,7 +96,6 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
   const [availableDrafts, setAvailableDrafts] = useState<AvailableDraft[]>([]);
   const [reviewedFirCount, setReviewedFirCount] = useState(0);
 
-  // Centralized fetch function
   const fetchDashboardData = useCallback(async () => {
     try {
       const [
@@ -100,16 +104,26 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         draftsRes,
         reviewedFirsRes
       ] = await Promise.allSettled([
-        api.get<PendingEmailResponse>(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`),
+        // FIX: Expect a direct array of DelayedTask objects
+        api.get<DelayedTask[]>(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`),
         api.get<FailedNotificationsResponse>(`${ENDPOINTS.STAFF.INWARDS}/notifications/failed`),
-        api.get<AvailableDraft[]>(ENDPOINTS.STAFF.DRAFTS),
+        api.get<AvailableDraft[]>(`${ENDPOINTS.STAFF.INWARDS}/drafts`), // Corrected endpoint for drafts
         api.get<ReviewedFir[]>(`${ENDPOINTS.STAFF.INWARDS}/reviewed-firs`)
       ]);
 
-      if (pendingEmailsRes.status === 'fulfilled') setPendingEmailCount(pendingEmailsRes.value.data.pending_tasks.length);
-      if (failedNotifsRes.status === 'fulfilled') setFailedNotificationCount(failedNotifsRes.value.data.failed_notifications.length);
-      if (draftsRes.status === 'fulfilled') setAvailableDrafts(draftsRes.value.data || []);
-      if (reviewedFirsRes.status === 'fulfilled') setReviewedFirCount(reviewedFirsRes.value.data.length);
+      // FIX: Use .data.length directly on the response
+      if (pendingEmailsRes.status === 'fulfilled') {
+        setPendingEmailCount(pendingEmailsRes.value.data.length);
+      }
+      if (failedNotifsRes.status === 'fulfilled') {
+        setFailedNotificationCount(failedNotifsRes.value.data.failed_notifications.length);
+      }
+      if (draftsRes.status === 'fulfilled') {
+        setAvailableDrafts(draftsRes.value.data || []);
+      }
+      if (reviewedFirsRes.status === 'fulfilled') {
+        setReviewedFirCount(reviewedFirsRes.value.data.length);
+      }
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
@@ -186,7 +200,6 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           </div>
         </div>
 
-        {/* Banners for scheduled and failed emails */}
         {pendingEmailCount > 0 && (
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 mb-6 shadow-lg">
             <div className="flex items-start gap-4">

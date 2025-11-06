@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Mail, X, AlertTriangle, Send, Trash2, Loader2 } from 'lucide-react';
 import { api, ENDPOINTS } from '../api/config';
 
+// === FIX 1: The interface must match the JSON response from the backend, which now sends 'id' ===
 interface DelayedTask {
   id: number;
   inward_id: number;
@@ -12,10 +13,6 @@ interface DelayedTask {
   time_left_seconds: number;
   is_overdue: boolean;
   created_at: string;
-}
-
-interface PendingTasksResponse {
-  pending_tasks: DelayedTask[];
 }
 
 interface DelayedEmailManagerProps {
@@ -31,20 +28,19 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
 
   useEffect(() => {
     fetchPendingTasks();
-    const pollInterval = setInterval(() => fetchPendingTasks(), 30000);
+    const pollInterval = setInterval(fetchPendingTasks, 30000);
     return () => clearInterval(pollInterval);
   }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setTimers(prev => {
-        const newTimers = { ...prev };
-        Object.keys(newTimers).forEach(taskIdStr => {
-          const taskId = Number(taskIdStr);
+      setTimers(prevTimers => {
+        const newTimers = { ...prevTimers };
+        for (const taskId in newTimers) {
           if (newTimers[taskId] > 0) {
-            newTimers[taskId] = Math.max(0, newTimers[taskId] - 1);
+            newTimers[taskId]--;
           }
-        });
+        }
         return newTimers;
       });
     }, 1000);
@@ -55,24 +51,24 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     try {
       if (tasks.length === 0 && !loading) setLoading(true);
       
-      // --- FIX: Removed the leading slash from the sub-path ---
-      // This correctly combines with the trailing slash in ENDPOINTS.INWARDS
-      // to prevent a double slash (//) in the final URL.
-      const response = await api.get<PendingTasksResponse>(`${ENDPOINTS.INWARDS}delayed-emails/pending`);
-      
-      const pendingTasks = response.data.pending_tasks;
+      const response = await api.get<DelayedTask[]>(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`);
+      const pendingTasks = response.data;
       setTasks(pendingTasks);
       
       const initialTimers: { [key: number]: number } = {};
       const initialEmails: { [key: number]: string } = {};
-      pendingTasks.forEach((task: DelayedTask) => {
+      
+      // === FIX 2: Use task.id consistently ===
+      pendingTasks.forEach((task) => {
         initialTimers[task.id] = task.time_left_seconds;
         if (task.recipient_email && !emailInputs[task.id]) {
             initialEmails[task.id] = task.recipient_email;
         }
       });
+      
       setTimers(initialTimers);
       setEmailInputs(prev => ({...initialEmails, ...prev}));
+
     } catch (error) {
       console.error('Error fetching pending tasks:', error);
     } finally {
@@ -91,8 +87,7 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     }
     setActionState(prev => ({ ...prev, [taskId]: 'sending' }));
     try {
-      // This line was already correct and works with the trailing slash
-      await api.post(`${ENDPOINTS.INWARDS}delayed-emails/${taskId}/send`, { email });
+      await api.post(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/${taskId}/send`, { email });
       await fetchPendingTasks();
       alert(`First inspection report sent to ${email} successfully!`);
     } catch (error: any) {
@@ -108,24 +103,28 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     }
     setActionState(prev => ({ ...prev, [taskId]: 'cancelling' }));
     try {
-      // This line was already correct and works with the trailing slash
-      await api.delete(`${ENDPOINTS.INWARDS}delayed-emails/${taskId}`);
+      await api.delete(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/${taskId}`);
       await fetchPendingTasks();
       alert('Delayed email task cancelled successfully.');
     } catch (error: any) {
       console.error('Error cancelling task:', error);
-      alert('Failed to cancel task');
+      alert(error.response?.data?.detail || 'Failed to cancel task');
     } finally {
       setActionState(prev => ({ ...prev, [taskId]: null }));
     }
   };
 
   const formatTimeRemaining = (seconds: number) => {
+    if (typeof seconds !== 'number' || isNaN(seconds)) {
+      return '00s';
+    }
     if (seconds <= 0) return 'Overdue';
+
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     const remainingSeconds = seconds % 60;
     const pad = (num: number) => num.toString().padStart(2, '0');
+
     if (hours > 0) return `${pad(hours)}h ${pad(minutes)}m ${pad(remainingSeconds)}s`;
     if (minutes > 0) return `${pad(minutes)}m ${pad(remainingSeconds)}s`;
     return `${pad(remainingSeconds)}s`;
@@ -175,12 +174,13 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
               )}
 
               {tasks.map((task) => {
-                const timeLeft = timers[task.id] ?? 0;
+                const timeLeft = timers[task.id] ?? task.time_left_seconds;
                 const isOverdue = task.is_overdue || timeLeft <= 0;
                 const isUrgent = timeLeft > 0 && timeLeft < 3600;
                 const currentAction = actionState[task.id];
                 const emailForTask = emailInputs[task.id] || '';
-
+                
+                // === FIX 3: Use task.id consistently in the JSX ===
                 return (
                   <div key={task.id} className={`border rounded-lg p-6 transition-all duration-200 ${isOverdue ? 'border-red-300 bg-red-50' : isUrgent ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-white'}`}>
                     <div className="flex justify-between items-start mb-4">

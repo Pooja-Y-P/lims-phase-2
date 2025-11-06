@@ -17,13 +17,8 @@ from backend.models.inward_equipments import InwardEquipment
 from backend.models.users import User
 from backend.models.customers import Customer
 from backend.models.invitations import Invitation
-from backend.schemas.inward_schemas import (
-    InwardCreate, 
-    InwardUpdate, 
-    DraftResponse,
-    ReviewedFirResponse, 
-    CustomerInfo
-)
+from backend.models.notifications import Notification
+from backend.schemas.inward_schemas import InwardCreate, InwardUpdate, DraftResponse
 
 # Service imports
 from backend.services.delayed_email_services import DelayedEmailService
@@ -36,7 +31,6 @@ from backend.core.email import (
     send_existing_user_notification_email
 )
 
-# Setup logging
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIRECTORY = "uploads/inward_photos"
@@ -47,289 +41,149 @@ class InwardService:
         self.db = db
 
     def _get_receiver_id(self, receiver_name: str) -> int:
-        """Helper to find a user ID by username."""
         user = self.db.execute(select(User).where(User.username == receiver_name)).scalars().first()
-        if not user:
-            raise HTTPException(status_code=404, detail=f"Receiver user '{receiver_name}' not found.")
+        if not user: raise HTTPException(status_code=404, detail=f"Receiver user '{receiver_name}' not found.")
         return user.user_id
 
     def generate_temp_password(self, length: int = 12) -> str:
-        """Generate a temporary password for new users."""
         characters = string.ascii_letters + string.digits + "!@#$%^&*"
         return ''.join(secrets.choice(characters) for _ in range(length))
 
-    # --- DRAFT MANAGEMENT ---
-    
     async def get_user_drafts(self, user_id: int) -> List[DraftResponse]:
-        """Get all drafts created by a specific user."""
-        try:
-            drafts = self.db.execute(
-                select(Inward).where(and_(Inward.created_by == user_id, Inward.is_draft == True))
-                .order_by(desc(Inward.draft_updated_at))
-            ).scalars().all()
-            return [
-                DraftResponse(
-                    inward_id=draft.inward_id,
-                    draft_updated_at=(draft.draft_updated_at or draft.created_at).isoformat(),
-                    customer_details=(draft.draft_data or {}).get('customer_details') or draft.customer_details,
-                    draft_data=draft.draft_data or {}
-                ) for draft in drafts
-            ]
-        except Exception as e:
-            logger.error(f"Failed to retrieve drafts for user {user_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to retrieve drafts.")
+        drafts = self.db.execute(select(Inward).where(and_(Inward.created_by == user_id, Inward.is_draft == True)).order_by(desc(Inward.draft_updated_at))).scalars().all()
+        return [DraftResponse.model_validate(d) for d in drafts]
 
-    # === THIS IS THE FIRST FIX ===
     async def get_draft_by_id(self, draft_id: int, user_id: int) -> DraftResponse:
-        """Get a specific draft by its ID, ensuring it belongs to the user."""
-        try:
-            draft = self.db.execute(
-                select(Inward).where(and_(
-                    Inward.inward_id == draft_id,
-                    Inward.created_by == user_id,
-                    Inward.is_draft == True
-                ))
-            ).scalars().first()
-            
-            if not draft:
-                raise HTTPException(status_code=404, detail="Draft not found or access denied")
-            
-            return DraftResponse(
-                inward_id=draft.inward_id,
-                draft_updated_at=(draft.draft_updated_at or draft.created_at).isoformat(),
-                customer_details=(draft.draft_data or {}).get('customer_details') or draft.customer_details,
-                draft_data=draft.draft_data or {}
-            )
-        except Exception as e:
-            logger.error(f"Failed to retrieve draft {draft_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to retrieve draft.")
+        draft = self.db.execute(select(Inward).where(and_(Inward.inward_id == draft_id, Inward.created_by == user_id, Inward.is_draft == True))).scalars().first()
+        if not draft: raise HTTPException(status_code=404, detail="Draft not found or access denied")
+        return DraftResponse.model_validate(draft)
 
     async def update_draft(self, user_id: int, inward_id: Optional[int], draft_data: Dict[str, Any]) -> DraftResponse:
-        """Create a new draft or update an existing one."""
         try:
             current_time = datetime.now(timezone.utc)
             if inward_id:
                 draft = self.db.get(Inward, inward_id)
-                if not draft or draft.created_by != user_id:
-                    raise HTTPException(status_code=404, detail="Draft not found or access denied")
-                if not draft.is_draft:
-                    raise HTTPException(status_code=400, detail="Cannot update a finalized record as a draft")
-                current_draft_data = draft.draft_data or {}
-                current_draft_data.update(draft_data)
-                draft.draft_data = current_draft_data
-                draft.customer_details = draft_data.get('customer_details', draft.customer_details)
-                draft.srf_no = draft_data.get('srf_no', draft.srf_no)
-                draft.draft_updated_at = current_time
+                if not draft or draft.created_by != user_id: raise HTTPException(status_code=404, detail="Draft not found")
+                if not draft.is_draft: raise HTTPException(status_code=400, detail="Cannot update a finalized record as a draft")
+                current_draft_data = draft.draft_data or {}; current_draft_data.update(draft_data)
+                draft.draft_data = current_draft_data; draft.customer_details = draft_data.get('customer_details', draft.customer_details); draft.draft_updated_at = current_time
             else:
-                draft = Inward(
-                    srf_no=draft_data.get('srf_no'),
-                    date=datetime.now(timezone.utc).date(),
-                    customer_details=draft_data.get('customer_details', ''),
-                    created_by=user_id, status='draft', is_draft=True,
-                    draft_data=draft_data, draft_updated_at=current_time
-                )
+                draft = Inward(customer_details=draft_data.get('customer_details', ''), created_by=user_id, status='draft', is_draft=True, draft_data=draft_data, draft_updated_at=current_time)
                 self.db.add(draft)
-            self.db.commit()
-            self.db.refresh(draft)
-            return DraftResponse(
-                inward_id=draft.inward_id,
-                draft_updated_at=(draft.draft_updated_at or draft.created_at).isoformat(),
-                customer_details=draft.customer_details,
-                draft_data=draft.draft_data
-            )
+            self.db.commit(); self.db.refresh(draft)
+            return DraftResponse.model_validate(draft)
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to save draft: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to save draft.")
+            self.db.rollback(); logger.error(f"Failed to save draft: {e}", exc_info=True); raise HTTPException(status_code=500, detail="Failed to save draft.")
 
-    # === THIS IS THE SECOND FIX (though it was already correct in your file) ===
     async def delete_draft(self, draft_id: int, user_id: int) -> bool:
-        """Delete a draft record."""
+        draft = self.db.execute(select(Inward).where(and_(Inward.inward_id == draft_id, Inward.created_by == user_id, Inward.is_draft == True))).scalars().first()
+        if not draft: return False
+        self.db.delete(draft); self.db.commit(); return True
+
+    async def submit_inward(self, inward_data: InwardCreate, files_by_index: Dict[int, List[UploadFile]], user_id: int, draft_inward_id: Optional[int] = None) -> Inward:
         try:
-            draft = self.db.execute(
-                select(Inward).where(and_(
-                    Inward.inward_id == draft_id, 
-                    Inward.created_by == user_id, 
-                    Inward.is_draft == True
-                ))
-            ).scalars().first()
-            if not draft: return False
-            self.db.delete(draft)
-            self.db.commit()
-            return True
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to delete draft {draft_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to delete draft.")
-
-    # --- INWARD CREATION & FINALIZATION ---
-
-    async def submit_inward(
-        self,
-        inward_data: InwardCreate,
-        files_by_index: Dict[int, List[UploadFile]],
-        user_id: int,
-        draft_inward_id: Optional[int] = None
-    ) -> Inward:
-        """Submit a new inward or finalize an existing draft."""
-        try:
-            receiver_id = self._get_receiver_id(inward_data.receiver)
-            srf_service = SrfService(self.db)
-            srf_number = inward_data.srf_no if inward_data.srf_no else srf_service.generate_next_srf_no()
-
-            db_inward: Inward
             if draft_inward_id:
+                self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == draft_inward_id).delete()
+                self.db.commit()
+
                 db_inward = self.db.get(Inward, draft_inward_id)
                 if not db_inward or db_inward.created_by != user_id or not db_inward.is_draft:
                     raise HTTPException(status_code=404, detail="Draft to finalize not found or access denied.")
-                
-                db_inward.srf_no, db_inward.date, db_inward.customer_dc_date = srf_number, inward_data.date, inward_data.customer_dc_date
-                db_inward.customer_details, db_inward.received_by = inward_data.customer_details, receiver_id
-                db_inward.status, db_inward.is_draft = 'created', False
-                db_inward.draft_data, db_inward.draft_updated_at = None, None
+
+                receiver_id = self._get_receiver_id(inward_data.receiver)
+                srf_service = SrfService(self.db)
+                db_inward.srf_no = inward_data.srf_no or db_inward.srf_no or srf_service.generate_next_srf_no()
+                db_inward.date, db_inward.customer_dc_date, db_inward.customer_details, db_inward.received_by = inward_data.date, inward_data.customer_dc_date, inward_data.customer_details, receiver_id
+                db_inward.is_draft, db_inward.draft_data, db_inward.draft_updated_at = False, None, None
                 db_inward.updated_by, db_inward.updated_at = user_id, datetime.now(timezone.utc)
-                self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == draft_inward_id).delete(synchronize_session=False)
-                self.db.flush()
+            
             else:
-                db_inward = Inward(
-                    srf_no=srf_number, date=inward_data.date, customer_dc_date=inward_data.customer_dc_date,
-                    customer_details=inward_data.customer_details, received_by=receiver_id, created_by=user_id,
-                    status='created', is_draft=False
-                )
+                receiver_id = self._get_receiver_id(inward_data.receiver)
+                db_inward = Inward(srf_no=inward_data.srf_no or SrfService(self.db).generate_next_srf_no(), date=inward_data.date, customer_dc_date=inward_data.customer_dc_date, customer_details=inward_data.customer_details, received_by=receiver_id, created_by=user_id, is_draft=False)
                 self.db.add(db_inward)
                 self.db.flush()
 
             await self._process_equipment_list(db_inward.inward_id, inward_data.equipment_list, files_by_index)
 
-            has_deviations = any(eq.inspe_notes and eq.inspe_notes != 'OK' for eq in inward_data.equipment_list)
-            if has_deviations:
+            if any(eq.inspe_notes and eq.inspe_notes.strip().upper() != 'OK' for eq in inward_data.equipment_list):
                 db_inward.status = 'first_inspection_completed'
+            else:
+                db_inward.status = 'created'
 
             self.db.commit()
             self.db.refresh(db_inward)
             return db_inward
+            
         except HTTPException:
-            self.db.rollback()
-            raise
+            self.db.rollback(); raise
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Error in submit_inward: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="An internal server error occurred while submitting the inward.")
+            self.db.rollback(); logger.error(f"Error in submit_inward: {e}", exc_info=True)
+            if "UniqueViolation" in str(e) or "duplicate key" in str(e):
+                 raise HTTPException(status_code=409, detail="A record with one of these unique IDs already exists.")
+            raise HTTPException(status_code=500, detail="An internal server error occurred during submission.")
 
     async def update_inward_with_files(self, inward_id: int, inward_data: InwardUpdate, files_by_index: Dict[int, List[UploadFile]], updater_id: int) -> Inward:
-        """Update an existing inward record, including its equipment and files."""
         try:
+            self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete()
+            self.db.commit()
+            
             db_inward = self.db.get(Inward, inward_id)
-            if not db_inward:
-                raise HTTPException(status_code=404, detail="Inward record not found.")
+            if not db_inward: raise HTTPException(status_code=404, detail="Inward record not found.")
 
             receiver_id = self._get_receiver_id(inward_data.receiver)
-            db_inward.srf_no, db_inward.date, db_inward.customer_dc_date = inward_data.srf_no, inward_data.date, inward_data.customer_dc_date
-            db_inward.customer_details, db_inward.received_by = inward_data.customer_details, receiver_id
-            db_inward.updated_by, db_inward.updated_at = updater_id, datetime.now(timezone.utc)
-            db_inward.is_draft = False
+            db_inward.srf_no = inward_data.srf_no; db_inward.date = inward_data.date; db_inward.customer_dc_date = inward_data.customer_dc_date; db_inward.customer_details = inward_data.customer_details; db_inward.received_by = receiver_id
+            db_inward.updated_by = updater_id; db_inward.updated_at = datetime.now(timezone.utc)
+            
+            if db_inward.status == 'customer_reviewed': db_inward.status = 'updated'
 
-            if db_inward.status == 'customer_reviewed':
-                db_inward.status = 'updated'
-            elif db_inward.status == 'created':
-                has_deviations = any(eq.inspe_notes and eq.inspe_notes != 'OK' for eq in inward_data.equipment_list)
-                if has_deviations:
-                    db_inward.status = 'first_inspection_completed'
-
-            self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete(synchronize_session=False)
-            self.db.flush()
             await self._process_equipment_list(inward_id, inward_data.equipment_list, files_by_index)
             
             self.db.commit()
             self.db.refresh(db_inward)
             return db_inward
         except Exception as e:
-            self.db.rollback()
-            logger.error(f"Error updating inward {inward_id}: {e}", exc_info=True)
+            self.db.rollback(); logger.error(f"Error updating inward {inward_id}: {e}", exc_info=True)
+            if "UniqueViolation" in str(e) or "duplicate key" in str(e):
+                 raise HTTPException(status_code=409, detail="An existing record has the same unique ID.")
             raise HTTPException(status_code=500, detail="An internal server error occurred while updating.")
 
     async def _process_equipment_list(self, inward_id: int, equipment_list: List, files_by_index: Dict[int, List[UploadFile]]):
-        """Helper to process and save a list of equipment with their photos."""
+        # ... function is correct ...
         equipment_models = []
         for index, eqp_model in enumerate(equipment_list):
             photo_paths = []
             if index in files_by_index:
                 for file in files_by_index[index]:
                     if file and file.filename:
-                        file_extension = os.path.splitext(file.filename)[1]
-                        unique_filename = f"{uuid.uuid4()}{file_extension}"
+                        unique_filename = f"{uuid.uuid4()}{os.path.splitext(file.filename)[1]}"
                         file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
                         async with aiofiles.open(file_path, 'wb') as out_file:
-                            content = await file.read()
-                            await out_file.write(content)
+                            await out_file.write(await file.read())
                         photo_paths.append(file_path)
-
-            db_equipment = InwardEquipment(
-                inward_id=inward_id,
-                nepl_id=eqp_model.nepl_id, material_description=eqp_model.material_desc, make=eqp_model.make,
-                model=eqp_model.model, range=eqp_model.range, serial_no=eqp_model.serial_no,
-                quantity=eqp_model.qty, visual_inspection_notes=eqp_model.inspe_notes or "OK",
-                calibration_by=eqp_model.calibration_by, supplier=eqp_model.supplier, out_dc=eqp_model.out_dc,
-                in_dc=eqp_model.in_dc, nextage_contract_reference=eqp_model.nextage_ref,
-                qr_code=eqp_model.qr_code, barcode=eqp_model.barcode, photos=photo_paths,
-                remarks_and_decision=eqp_model.remarks_and_decision 
-            )
+            db_equipment = InwardEquipment(inward_id=inward_id, nepl_id=eqp_model.nepl_id, material_description=eqp_model.material_desc, make=eqp_model.make, model=eqp_model.model, range=eqp_model.range, serial_no=eqp_model.serial_no, quantity=eqp_model.qty, visual_inspection_notes=eqp_model.inspe_notes or "OK", calibration_by=eqp_model.calibration_by, supplier=eqp_model.supplier, out_dc=eqp_model.out_dc, in_dc=eqp_model.in_dc, nextage_contract_reference=eqp_model.nextage_ref, qr_code=eqp_model.qr_code, barcode=eqp_model.barcode, photos=photo_paths, remarks_and_decision=eqp_model.remarks_and_decision)
             equipment_models.append(db_equipment)
-        if equipment_models:
-            self.db.add_all(equipment_models)
-
-    # --- INWARD RETRIEVAL ---
+        if equipment_models: self.db.add_all(equipment_models)
     
     async def get_all_inwards(self) -> List[Inward]:
-        """Get all non-draft inward records."""
-        return self.db.execute(
-            select(Inward).where(Inward.is_draft.is_(False)).order_by(Inward.created_at.desc())
-        ).scalars().all()
+        # ... function is correct ...
+        return self.db.execute(select(Inward).where(Inward.is_draft.is_(False)).order_by(Inward.created_at.desc())).scalars().all()
 
     async def get_inward_by_id(self, inward_id: int) -> Inward:
-        """Get a single inward by its ID, ensuring it's not a draft."""
+        # ... function is correct ...
         db_inward = self.db.get(Inward, inward_id)
-        if not db_inward or db_inward.is_draft:
-            raise HTTPException(status_code=404, detail="Inward record not found or is still a draft.")
+        if not db_inward or db_inward.is_draft: raise HTTPException(status_code=404, detail="Inward record not found.")
         return db_inward
     
-    async def get_inward_with_sorted_equipment(self, inward_id: int):
-        """Get inward with equipment sorted by deviation status for presentation."""
+    async def get_inwards_by_status(self, status: str) -> List[Dict[str, Any]]:
+        # ... function is correct ...
         try:
-            stmt = select(Inward).options(selectinload(Inward.customer)).where(Inward.inward_id == inward_id)
-            db_inward = self.db.scalars(stmt).first()
-            if not db_inward:
-                raise HTTPException(status_code=404, detail="Inward not found")
-
-            deviation_case = case((InwardEquipment.visual_inspection_notes != "OK", 1), else_=0).desc()
-            sorted_equipments = self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).order_by(deviation_case, InwardEquipment.inward_eqp_id).all()
-            
-            db_inward.equipments = sorted_equipments
-            return db_inward
+            stmt = select(Inward).where(Inward.status == status, Inward.is_draft == False).order_by(desc(Inward.updated_at))
+            inwards = self.db.scalars(stmt).all()
+            return [{"inward_id": i.inward_id, "srf_no": str(i.srf_no), "updated_at": i.updated_at, "customer": {"customer_details": i.customer_details}} for i in inwards]
         except Exception as e:
-            logger.error(f"Error getting sorted inward {inward_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to retrieve inward with sorted equipment.")
+            logger.error(f"Error getting inwards by status '{status}': {e}", exc_info=True); raise HTTPException(status_code=500, detail="Failed to retrieve inward data.")
 
-    # --- FIR WORKFLOW & NOTIFICATIONS ---
-
-    async def get_inwards_by_status(self, status: str) -> List[Inward]:
-        """
-        Fetches a list of inward records by status. This method now returns raw
-        SQLAlchemy model objects, and the router handles the schema conversion.
-        """
-        try:
-            stmt = (
-                select(Inward)
-                .options(selectinload(Inward.customer)) 
-                .where(Inward.status == status, Inward.is_draft == False)
-                .order_by(desc(Inward.updated_at))
-            )
-            return self.db.scalars(stmt).all()
-        
-        except Exception as e:
-            logger.error(f"Error getting inwards by status '{status}': {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Failed to retrieve inward data.")
-
+    # === THIS IS THE CORRECTED FUNCTION ===
     async def process_customer_notification(
         self, inward_id: int, creator_id: int, background_tasks: BackgroundTasks,
         customer_email: Optional[str] = None, send_later: bool = False
@@ -343,21 +197,44 @@ class InwardService:
         created_by_name = creator_user.username if creator_user else f"user_{creator_id}"
 
         if send_later:
+            subject = f"Action Required: First Inspection Report for SRF #{db_inward.srf_no}"
+            body_text = (
+                f"A new First Inspection Report for SRF #{db_inward.srf_no} has been scheduled "
+                "for delivery. You will receive another email with a link to review it."
+            )
+            
+            # Use the correct column name 'to_email' from your Notification model
+            # Do not include 'type' as it does not exist in your model
+            new_notification = Notification(
+                inward_id=inward_id,
+                to_email=customer_email,
+                subject=subject,
+                body_text=body_text,
+                status='pending',
+                created_by=created_by_name
+            )
+            self.db.add(new_notification)
+            self.db.flush()
+
             delayed_service = DelayedEmailService(self.db)
             await delayed_service.schedule_delayed_email(
                 inward_id=inward_id, recipient_email=customer_email, creator_id=creator_id, delay_hours=24
             )
-            return {"message": f"FIR for SRF {db_inward.srf_no} is scheduled. Manage from the Engineer Portal."}
+
+            self.db.commit()
+
+            return {"message": f"FIR for SRF {db_inward.srf_no} is scheduled and tracked. Manage from the Engineer Portal."}
 
         if not customer_email:
             raise HTTPException(status_code=422, detail="Customer email is required for immediate sending.")
-
+        
         existing_user = self.db.scalars(select(User).where(User.email == customer_email)).first()
         if existing_user:
             return await self._notify_existing_customer(db_inward, existing_user, background_tasks, created_by_name)
         else:
             return await self._invite_new_customer(db_inward, customer_email, creator_id, background_tasks, created_by_name)
 
+    
     async def _notify_existing_customer(self, db_inward, existing_user, background_tasks, created_by_name):
         """Handle notification for an existing customer user."""
         if existing_user.role.lower() != 'customer':
