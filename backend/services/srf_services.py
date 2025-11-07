@@ -1,10 +1,6 @@
-# file: backend/services/srf_services.py
- 
-# <-- FIX 1: Import the standard datetime library -->
 from datetime import datetime
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session, selectinload
-# <-- FIX 2: Import 'func' from SQLAlchemy -->
 from sqlalchemy import select, func
  
 from fastapi import HTTPException, status
@@ -21,19 +17,15 @@ class SrfService:
    
     def get_pending_srf_inwards(self, current_user: UserSchema) -> List[Dict[str, Any]]:
         """
-        Gets inwards that are ready for SRF creation, filtered by the
-        customer assigned to the currently logged-in staff member.
+        Gets inwards that are ready for SRF creation.
+        This version now includes inwards that have completed first inspection.
         """
-        if not current_user.customer_id:
-            return []
- 
+        # === FIX 1: Allow more statuses to be selected for SRF creation ===
+        allowed_statuses = ['created', 'first_inspection_completed']
         stmt = (
             select(Inward)
             .options(selectinload(Inward.equipments))
-            .where(
-                Inward.status == 'created',
-                Inward.customer_id == current_user.customer_id
-            )
+            .where(Inward.status.in_(allowed_statuses))
             .order_by(Inward.updated_at.desc())
         )
        
@@ -70,12 +62,18 @@ class SrfService:
         if not inward:
             raise HTTPException(status_code=404, detail="Inward not found")
        
-        if inward.status != 'created':
-            raise HTTPException(status_code=400, detail="An SRF can only be created from an inward with 'created' status.")
+        # === FIX 2: Allow SRF creation for 'created' OR 'first_inspection_completed' ===
+        allowed_statuses = ['created', 'first_inspection_completed']
+        if inward.status not in allowed_statuses:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"An SRF can only be created from an inward with status: {', '.join(allowed_statuses)}."
+            )
            
         existing_srf = self.db.scalars(select(Srf).where(Srf.inward_id == inward_id)).first()
         if existing_srf:
-            raise HTTPException(status_code=400, detail="SRF already exists for this inward. Please refresh the list.")
+            # Using 409 Conflict is more specific for "already exists" errors
+            raise HTTPException(status_code=409, detail="SRF already exists for this inward. Please refresh the list.")
        
         new_srf = Srf(
             inward_id=inward_id,
@@ -94,15 +92,18 @@ class SrfService:
             select(InwardEquipment).where(InwardEquipment.inward_id == inward_id)
         ).all()
        
-        equipment_details_payload = srf_data.get('equipment_details', {})
+        # Correctly handle the equipment list from the frontend
+        equipment_payload_list = srf_data.get('equipments', [])
         for inward_eq in inward_equipments:
-            eq_payload = equipment_details_payload.get(str(inward_eq.inward_eqp_id), {})
+            # Find the corresponding payload for the current equipment item
+            eq_payload = next((item for item in equipment_payload_list if item.get('inward_eqp_id') == inward_eq.inward_eqp_id), {})
+            
             srf_eq = SrfEquipment(
                 srf_id=new_srf.srf_id,
                 inward_eqp_id=inward_eq.inward_eqp_id,
                 unit=eq_payload.get('unit'),
-                no_of_calibration_points=eq_payload.get('calibration_points'),
-                mode_of_calibration=eq_payload.get('calibration_mode')
+                no_of_calibration_points=eq_payload.get('no_of_calibration_points'),
+                mode_of_calibration=eq_payload.get('mode_of_calibration')
             )
             self.db.add(srf_eq)
            
@@ -131,7 +132,6 @@ class SrfService:
                 "srf_eqp_id": srf_eq.srf_eqp_id,
                 "inward_eqp_id": srf_eq.inward_eqp_id,
                 "nepl_id": inward_eq.nepl_id,
-                # Note: 'material_.description' looks like a typo. It should probably be 'material_description'
                 "material_description": inward_eq.material_description,
                 "make": inward_eq.make,
                 "model": inward_eq.model,
@@ -175,13 +175,15 @@ class SrfService:
                     select(SrfEquipment).where(SrfEquipment.srf_id == srf_id)
                 ).all()
             }
-            for inward_eqp_id_str, details in equipment_details_payload.items():
-                inward_eqp_id = int(inward_eqp_id_str)
+            for details in equipment_details_payload:
+                inward_eqp_id = details.get("inward_eqp_id")
+                if inward_eqp_id is None: continue
+                
                 srf_eq = srf_equipments_map.get(inward_eqp_id)
                 if srf_eq:
                     srf_eq.unit = details.get('unit', srf_eq.unit)
-                    srf_eq.no_of_calibration_points = details.get('calibration_points', srf_eq.no_of_calibration_points)
-                    srf_eq.mode_of_calibration = details.get('calibration_mode', srf_eq.mode_of_calibration)
+                    srf_eq.no_of_calibration_points = details.get('no_of_calibration_points', srf_eq.no_of_calibration_points)
+                    srf_eq.mode_of_calibration = details.get('mode_of_calibration', srf_eq.mode_of_calibration)
        
         self.db.commit()
         self.db.refresh(srf)
@@ -190,39 +192,29 @@ class SrfService:
     def generate_next_srf_no(self) -> int:
         """
         Generate the next SRF number following the format: YYNNN
-        Where YY = last 2 digits of current year
-        NNN = 3-digit sequence number starting from 001
         """
-        # The 'datetime' object is now available because of the import
         current_year = datetime.now().year
-        year_suffix = current_year % 100
+        year_prefix = current_year % 100
        
-        year_start = year_suffix * 1000 + 1
-        year_end = year_suffix * 1000 + 999
+        year_start = int(f"{year_prefix:02d}001")
+        year_end = int(f"{year_prefix:02d}999")
        
-        # The 'func' object is now available because of the import
-        highest_srf = self.db.execute(
+        # Assuming SRF numbers are stored as strings in the database
+        highest_srf_str = self.db.execute(
             select(func.max(Inward.srf_no))
-            .where(Inward.srf_no.between(year_start, year_end))
-        ).scalar()
+            .where(Inward.srf_no.between(str(year_start), str(year_end)))
+        ).scalar_one_or_none()
        
-        if highest_srf is None:
+        if highest_srf_str is None:
             return year_start
         else:
-            next_srf = highest_srf + 1
+            next_srf = int(highest_srf_str) + 1
             if next_srf > year_end:
-                raise ValueError(f"SRF number limit exceeded for year {current_year}. Maximum is {year_end}")
+                raise ValueError(f"SRF number limit exceeded for year {current_year}.")
             return next_srf
    
     def format_srf_display(self, srf_no: int) -> str:
         return str(srf_no)
    
     def validate_srf_format(self, srf_no: int) -> bool:
-        if not isinstance(srf_no, int) or srf_no < 10001 or srf_no > 99999:
-            return False
-       
-        year_part = srf_no // 1000
-        sequence_part = srf_no % 1000
-       
-        return 0 <= year_part <= 99 and 1 <= sequence_part <= 999
- 
+        return isinstance(srf_no, int) and 10001 <= srf_no <= 99999

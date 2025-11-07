@@ -386,6 +386,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         showMessage('success', `Inward SRF ${response.data.srf_no} updated successfully!`);
         navigate('/engineer/view-inward');
       } else {
+        // === MODIFIED BLOCK ===
+        // (1) Always append the srf_no from the form state for new submissions.
+        submissionData.append('srf_no', formData.srf_no);
+
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
         const response = await api.post<InwardResponse>(ENDPOINTS.STAFF.SUBMIT, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
         commitUsedSRFNo(response.data.srf_no.toString());
@@ -567,7 +571,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         </>
                       ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
                       
-                      {/* === THIS IS THE CHANGE from <select> to <input> === */}
                       <td className="p-2">
                         <input
                           type="text"

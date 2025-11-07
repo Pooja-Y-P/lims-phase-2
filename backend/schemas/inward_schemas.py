@@ -33,7 +33,9 @@ class InwardEquipmentResponse(BaseModel):
 class DraftUpdateRequest(BaseModel):
     inward_id: Optional[int] = None; draft_data: Dict[str, Any]
 class DraftResponse(BaseModel):
-    inward_id: int; draft_updated_at: str; customer_details: Optional[str] = None; draft_data: Dict[str, Any]; model_config = ConfigDict(from_attributes=True)
+        inward_id: int; draft_updated_at: Optional[datetime] = None; customer_details: Optional[str] = None; draft_data: Dict[str, Any]; model_config = ConfigDict(from_attributes=True)
+ 
+ 
 class InwardCreate(BaseModel):
     srf_no: Optional[str] = None; date: date; customer_dc_date: str; customer_details: str; receiver: str; equipment_list: List[EquipmentCreate]
     @field_validator('equipment_list', mode='before')

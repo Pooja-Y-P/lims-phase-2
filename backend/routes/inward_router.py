@@ -88,19 +88,47 @@ async def update_draft(request: DraftUpdateRequest, db: Session = Depends(get_db
     inward_service = InwardService(db)
     return await inward_service.update_draft(user_id=current_user.user_id, inward_id=request.inward_id, draft_data=request.draft_data)
 
+# === MODIFIED ENDPOINT ===
 @router.post("/submit", response_model=InwardResponse, status_code=status.HTTP_201_CREATED)
-async def submit_inward(req: Request, date: date = Form(...), customer_dc_date: str = Form(...), customer_details: str = Form(...), receiver: str = Form(...), equipment_list: str = Form(...), inward_id: Optional[int] = Form(None), db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
+async def submit_inward(
+    req: Request,
+    date: date = Form(...),
+    customer_dc_date: str = Form(...),
+    customer_details: str = Form(...),
+    receiver: str = Form(...),
+    equipment_list: str = Form(...),
+    srf_no: str = Form(...),  # <<< (1) ADD srf_no to the signature
+    inward_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
     try:
-        inward_data = InwardCreate(date=date, customer_dc_date=customer_dc_date, customer_details=customer_details, receiver=receiver, equipment_list=equipment_list)
-        srf_service = SrfService(db)
-        if not inward_id: # Only generate new SRF for new submissions, not finalizing drafts
-             inward_data.srf_no = srf_service.generate_next_srf_no()
+        # (2) Use the srf_no passed from the form directly in the Pydantic model
+        inward_data = InwardCreate(
+            date=date,
+            customer_dc_date=customer_dc_date,
+            customer_details=customer_details,
+            receiver=receiver,
+            equipment_list=equipment_list,
+            srf_no=srf_no
+        )
+        # (3) REMOVE the logic that generates a new SRF number here
+        # srf_service = SrfService(db)
+        # if not inward_id:
+        #      inward_data.srf_no = srf_service.generate_next_srf_no()
     except (ValidationError, ValueError) as e:
         raise HTTPException(status_code=422, detail=str(e))
+        
     form_data = await req.form()
     photos_by_index = {int(k.split('_')[1]): v for k, v in form_data.items() if k.startswith('photos_') and isinstance(v, UploadFile) and v.filename}
     inward_service = InwardService(db)
-    return await inward_service.submit_inward(inward_data=inward_data, files_by_index=photos_by_index, user_id=current_user.user_id, draft_inward_id=inward_id)
+    
+    return await inward_service.submit_inward(
+        inward_data=inward_data,
+        files_by_index=photos_by_index,
+        user_id=current_user.user_id,
+        draft_inward_id=inward_id
+    )
 
 @router.delete("/drafts/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_draft(draft_id: int, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -123,7 +151,6 @@ async def get_inward_by_id(inward_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Inward not found")
     return db_inward
 
-# === THIS IS THE NEW ENDPOINT TO FIX THE 405 ERROR ===
 @router.put("/{inward_id}", response_model=InwardResponse)
 async def update_inward(
     inward_id: int,

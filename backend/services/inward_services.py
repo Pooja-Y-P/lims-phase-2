@@ -57,23 +57,78 @@ class InwardService:
         draft = self.db.execute(select(Inward).where(and_(Inward.inward_id == draft_id, Inward.created_by == user_id, Inward.is_draft == True))).scalars().first()
         if not draft: raise HTTPException(status_code=404, detail="Draft not found or access denied")
         return DraftResponse.model_validate(draft)
-
     async def update_draft(self, user_id: int, inward_id: Optional[int], draft_data: Dict[str, Any]) -> DraftResponse:
         try:
             current_time = datetime.now(timezone.utc)
+           
+            fields_to_sync = [
+                'srf_no', 'customer_id', 'date', 'customer_dc_date',
+                'customer_details', 'receiver' # Note: 'receiver' is now handled below
+            ]
+ 
             if inward_id:
+                # --- LOGIC FOR UPDATING AN EXISTING DRAFT ---
                 draft = self.db.get(Inward, inward_id)
-                if not draft or draft.created_by != user_id: raise HTTPException(status_code=404, detail="Draft not found")
-                if not draft.is_draft: raise HTTPException(status_code=400, detail="Cannot update a finalized record as a draft")
-                current_draft_data = draft.draft_data or {}; current_draft_data.update(draft_data)
-                draft.draft_data = current_draft_data; draft.customer_details = draft_data.get('customer_details', draft.customer_details); draft.draft_updated_at = current_time
+                if not draft or draft.created_by != user_id:
+                    raise HTTPException(status_code=404, detail="Draft not found or access denied")
+                if not draft.is_draft:
+                    raise HTTPException(status_code=400, detail="Cannot update a finalized record as a draft")
+ 
+                # Sync main columns from the new draft_data
+                for field in fields_to_sync:
+                    if field in draft_data:
+                        # Special handling for receiver name to get ID
+                        if field == 'receiver' and draft_data[field]:
+                            try:
+                                receiver_id = self._get_receiver_id(draft_data[field])
+                                setattr(draft, 'received_by', receiver_id) # Use the correct column name 'received_by'
+                            except HTTPException:
+                                setattr(draft, 'received_by', None)
+                        elif field != 'receiver': # Avoid setting 'receiver' attribute which doesn't exist
+                            setattr(draft, field, draft_data.get(field))
+ 
+                # FIX 1: Simply replace the old draft data with the new, complete payload.
+                draft.draft_data = draft_data
+                draft.draft_updated_at = current_time
+ 
             else:
-                draft = Inward(customer_details=draft_data.get('customer_details', ''), created_by=user_id, status='draft', is_draft=True, draft_data=draft_data, draft_updated_at=current_time)
+                # --- LOGIC FOR CREATING A NEW DRAFT ---
+                draft_args = {
+                    'created_by': user_id,
+                    'status': 'draft',
+                    'is_draft': True,
+                    'draft_updated_at': current_time,
+                    # FIX 2: Store the ENTIRE draft payload in the JSONB column.
+                    'draft_data': draft_data
+                }
+ 
+                # Populate main columns from draft_data for filtering/display
+                for field in fields_to_sync:
+                    if field == 'receiver' and draft_data.get(field):
+                        try:
+                            receiver_id = self._get_receiver_id(draft_data.get(field))
+                            draft_args['received_by'] = receiver_id # Use correct DB column name
+                        except HTTPException:
+                            draft_args['received_by'] = None
+                    elif field != 'receiver':
+                        draft_args[field] = draft_data.get(field)
+               
+                draft = Inward(**draft_args)
                 self.db.add(draft)
-            self.db.commit(); self.db.refresh(draft)
+           
+            self.db.commit()
+            self.db.refresh(draft)
             return DraftResponse.model_validate(draft)
+ 
         except Exception as e:
-            self.db.rollback(); logger.error(f"Failed to save draft: {e}", exc_info=True); raise HTTPException(status_code=500, detail="Failed to save draft.")
+            self.db.rollback()
+            logger.error(f"Failed to save draft: {e}", exc_info=True)
+            if "NotNullViolation" in str(e):
+                raise HTTPException(status_code=500, detail="Failed to save draft. A required field was missing.")
+            raise HTTPException(status_code=500, detail="Failed to save draft due to a server error.")
+ 
+# ... rest of the file ...
+ 
 
     async def delete_draft(self, draft_id: int, user_id: int) -> bool:
         draft = self.db.execute(select(Inward).where(and_(Inward.inward_id == draft_id, Inward.created_by == user_id, Inward.is_draft == True))).scalars().first()

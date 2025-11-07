@@ -1,12 +1,3 @@
-# file: backend/api/v1/endpoints/srf.py
- 
-"""
-API router for managing Service Request Forms (SRFs).
- 
-Provides endpoints for creating, retrieving, updating, and deleting SRFs
-and their associated equipment details.
-"""
- 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
@@ -16,6 +7,8 @@ from typing import List, Optional
 from ..schemas.srf_schemas import Srf, SrfCreate, SrfDetailUpdate, SrfSummary
 from .. import models
 from ..db import get_db
+# Import your SrfService to handle business logic
+from ..services.srf_services import SrfService
  
 router = APIRouter(
     prefix="/srfs",
@@ -45,8 +38,6 @@ def get_srfs(db: Session = Depends(get_db), inward_status: Optional[str] = Query
     """
     Retrieves a list of SRF summaries.
     Optionally filters SRFs based on the status of their related Inward record.
-   
-    Example: GET /api/srfs?inward_status=created
     """
     try:
         query = (
@@ -60,11 +51,12 @@ def get_srfs(db: Session = Depends(get_db), inward_status: Optional[str] = Query
  
         srfs_from_db = query.order_by(models.Srf.srf_id.desc()).all()
  
-        # Map ORM models to the SrfSummary schema, including the customer name
         def create_summary(srf: models.Srf) -> SrfSummary:
-            summary = SrfSummary.model_validate(srf)
+            summary = SrfSummary.model_validate(srf, from_attributes=True)
             if srf.inward and srf.inward.customer:
                 summary.customer_name = srf.inward.customer.customer_details
+            if srf.inward:
+                 summary.srf_no = str(srf.inward.srf_no)
             return summary
  
         return [create_summary(srf) for srf in srfs_from_db]
@@ -89,55 +81,29 @@ def get_srf_by_id(srf_id: int, db: Session = Depends(get_db)):
 @router.post("/", response_model=Srf, status_code=201)
 def create_srf(srf_data: SrfCreate, db: Session = Depends(get_db)):
     """
-    Creates a new SRF and its associated equipment details in a single transaction.
+    Creates a new SRF by delegating to the SrfService.
+    The service handles all business logic and database transactions.
     """
-    # 1. Validate the parent Inward record exists
-    inward = db.query(models.Inward).filter(models.Inward.inward_id == srf_data.inward_id).first()
-    if not inward:
-        raise HTTPException(status_code=404, detail=f"Inward record with ID {srf_data.inward_id} not found.")
- 
-    # 2. Separate equipment data from the main SRF data
-    srf_payload = srf_data.model_dump(exclude_unset=True)
-    equipment_payloads = srf_payload.pop('equipments', [])
- 
-    # 3. Create the main Srf object
-    new_srf = models.Srf(**srf_payload)
-   
     try:
-        db.add(new_srf)
-        db.flush()  # Assigns a primary key (srf_id) to new_srf without committing
- 
-        # 4. If equipment data is present, create the SrfEquipment objects
-        if equipment_payloads:
-            for eq_data in equipment_payloads:
-                # Security check: Ensure the equipment belongs to the correct inward
-                inward_eq_exists = db.query(models.InwardEquipment.inward_eqp_id).filter(
-                    models.InwardEquipment.inward_eqp_id == eq_data['inward_eqp_id'],
-                    models.InwardEquipment.inward_id == new_srf.inward_id
-                ).first()
-                if not inward_eq_exists:
-                    continue  # Skip this equipment if it doesn't belong to the inward
- 
-                srf_eq = models.SrfEquipment(
-                    srf_id=new_srf.srf_id,  # Link to the newly flushed SRF
-                    inward_eqp_id=eq_data['inward_eqp_id'],
-                    unit=eq_data.get('unit'),
-                    no_of_calibration_points=eq_data.get('no_of_calibration_points'),
-                    mode_of_calibration=eq_data.get('mode_of_calibration')
-                )
-                db.add(srf_eq)
- 
-        db.commit() # Commit the entire transaction
-       
-        # Return the complete, newly created object
+        srf_service = SrfService(db)
+        
+        # The SrfCreate schema from the request body contains all the data the service needs.
+        # We pass the data as a dictionary.
+        new_srf = srf_service.create_srf_from_inward(
+            inward_id=srf_data.inward_id,
+            srf_data=srf_data.model_dump()
+        )
+        
+        # After creation, fetch the full details for the response
         return get_srf_with_full_details(new_srf.srf_id, db)
  
-    except SQLAlchemyError as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create SRF due to a database error: {e}")
+    except HTTPException as e:
+        # Re-raise any specific HTTPExceptions from the service layer
+        raise e
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during SRF creation: {e}")
+        # Catch any other unexpected errors
+        print(f"An unexpected error occurred in create_srf endpoint: {e}")
+        raise HTTPException(status_code=500, detail="An internal server error occurred.")
  
 # =====================================================================
 # PUT: Update SRF
@@ -146,7 +112,6 @@ def create_srf(srf_data: SrfCreate, db: Session = Depends(get_db)):
 def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depends(get_db)):
     """
     Updates an SRF and its nested equipment details.
-    This can create SrfEquipment records if they don't exist yet.
     """
     srf_to_update = get_srf_with_full_details(srf_id, db)
     if not srf_to_update or not srf_to_update.inward:
@@ -164,20 +129,17 @@ def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depe
  
         # B. Update nested equipment data
         if srf_update_data.equipments:
-            # Create a map for efficient lookup of inward equipment
             inward_equipments_map = {eq.inward_eqp_id: eq for eq in srf_to_update.inward.equipments}
            
             for eq_update in srf_update_data.equipments:
                 target_inward_eq = inward_equipments_map.get(eq_update.inward_eqp_id)
                 if target_inward_eq:
-                    # If SrfEquipment doesn't exist for this item, create it
                     if not target_inward_eq.srf_equipment:
                         target_inward_eq.srf_equipment = models.SrfEquipment(
                             srf_id=srf_id,
                             inward_eqp_id=target_inward_eq.inward_eqp_id
                         )
                    
-                    # Update fields on the (now guaranteed to exist) srf_equipment object
                     update_eq_data = eq_update.model_dump(exclude={'inward_eqp_id'}, exclude_unset=True)
                     for key, value in update_eq_data.items():
                         if hasattr(target_inward_eq.srf_equipment, key):
@@ -185,7 +147,6 @@ def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depe
        
         db.commit()
        
-        # Return the fully updated object
         return get_srf_with_full_details(srf_id, db)
  
     except SQLAlchemyError as e:
@@ -208,7 +169,7 @@ def delete_srf(srf_id: int, db: Session = Depends(get_db)):
     try:
         db.delete(srf_to_delete)
         db.commit()
-        return Response(status_code=204) # HTTP 204 No Content on successful deletion
+        return Response(status_code=204)
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete SRF: {e}")
@@ -216,7 +177,7 @@ def delete_srf(srf_id: int, db: Session = Depends(get_db)):
 # =====================================================================
 # GET SRFs by Customer ID (For Customer Portal)
 # =====================================================================
-@router.get("/customer/srfs/{user_id}", response_model=List[Srf])
+@router.get("/customer/{user_id}", response_model=List[Srf])
 def get_srfs_by_customer(user_id: int, db: Session = Depends(get_db)):
     """
     Fetch all SRFs for a customer, looked up via their user_id.
@@ -229,9 +190,8 @@ def get_srfs_by_customer(user_id: int, db: Session = Depends(get_db)):
         inwards = db.query(models.Inward).filter(models.Inward.customer_id == user.customer_id).all()
         inward_ids = [inward.inward_id for inward in inwards]
         if not inward_ids:
-            return [] # No inwards for this customer, so no SRFs
+            return []
  
-        # Use the helper function to build the query, then filter and execute
         srfs = (
             db.query(models.Srf)
             .options(
@@ -247,10 +207,8 @@ def get_srfs_by_customer(user_id: int, db: Session = Depends(get_db)):
         return srfs
    
     except SQLAlchemyError as e:
-        # Log the specific database error for debugging
         print(f"Database error in get_srfs_by_customer: {e}")
         raise HTTPException(status_code=500, detail="A database error occurred.")
     except Exception as e:
         print(f"An unexpected error occurred in get_srfs_by_customer: {e}")
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
- 
