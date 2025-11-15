@@ -124,7 +124,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
     switch (status?.toLowerCase()) {
       case "created": return "bg-blue-100 text-blue-800";
       case "in_progress": return "bg-yellow-100 text-yellow-800";
-      case "completed": return "bg-green-100 text-green-800";
+      
       case "cancelled": return "bg-red-100 text-red-800";
       default: return "bg-gray-100 text-gray-800";
     }
@@ -207,7 +207,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
             <option value="created">Created</option>
             <option value="updated">Updated</option>
             <option value="reviewed">Reviewed</option>
-            <option value="completed">Completed</option>
+            
           </select>
         </div>
 
@@ -344,21 +344,21 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-green-600">
-              {inwards.filter(i => i.status === 'completed').length}
-            </div>
-            <div className="text-sm text-gray-600">Completed</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">
-              {inwards.filter(i => i.status === 'in_progress').length}
-            </div>
-            <div className="text-sm text-gray-600">In Progress</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">
               {inwards.filter(i => i.status === 'created').length}
             </div>
             <div className="text-sm text-gray-600">Created</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-yellow-600">
+              {inwards.filter(i => i.status === 'reviewed').length}
+            </div>
+            <div className="text-sm text-gray-600">Reviewed</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {inwards.filter(i => i.status === 'updated').length}
+            </div>
+            <div className="text-sm text-gray-600">Updated</div>
           </div>
         </div>
       )}

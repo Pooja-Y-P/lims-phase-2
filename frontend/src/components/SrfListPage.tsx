@@ -70,7 +70,7 @@ export const SrfListPage: React.FC = () => {
           status: STATUS_KEYS.PENDING,
         }));
 
-        // 🎯 FIX 1: Add an explicit return type to the map's callback function.
+        // 🎯 FIX 1: Explicit return type added to the map's callback function.
         const srfItems = srfsResponse.data
           .map((srf): WorkItem | null => {
             let workItemStatus: StatusKey | null = null;
@@ -167,29 +167,31 @@ export const SrfListPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 py-8 px-10">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
 
-        <div className="flex items-center mb-6">
-          <button
-            onClick={() => navigate("/engineer")}
-            className="flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Dashboard
-          </button>
+        {/* --- MODIFICATION: Redesigned Header --- */}
+        <div className="flex items-center justify-between gap-4 mb-8 border-b pb-5">
+            <div className="flex items-center gap-4">
+                <div className="bg-blue-100 p-3 rounded-full">
+                    <FileText className="h-8 w-8 text-blue-600" />
+                </div>
+                <div>
+                    <h1 className="text-3xl font-semibold text-gray-800">
+                    SRF Status Overview
+                    </h1>
+                    <p className="text-sm text-gray-500">
+                    Create new SRFs and track the status of existing ones.
+                    </p>
+                </div>
+            </div>
+            <button
+                type="button"
+                onClick={() => navigate('/engineer')}
+                className="flex-shrink-0 flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+            >
+                <ArrowLeft size={18} />
+                <span>Back to Dashboard</span>
+            </button>
         </div>
-
-        <div className="flex items-center gap-4 mb-8 border-b pb-5">
-          <div className="bg-blue-100 p-3 rounded-full">
-            <FileText className="h-8 w-8 text-blue-600" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-semibold text-gray-800">
-              SRF Status Overview
-            </h1>
-            <p className="text-sm text-gray-500">
-              Create new SRFs and track the status of existing ones.
-            </p>
-          </div>
-        </div>
+        {/* --- END MODIFICATION --- */}
 
         <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-8">
           {statuses.map((status) => (
@@ -254,5 +256,5 @@ export const SrfListPage: React.FC = () => {
   );
 };
 
-// 🎯 FIX 2: Add a default export for the component.
+// 🎯 FIX 2: A default export has been added for the component.
 export default SrfListPage;

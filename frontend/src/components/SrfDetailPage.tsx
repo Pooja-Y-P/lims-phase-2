@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import type { AxiosResponse } from "axios";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import axios from "axios";
-import { BookOpen, AlertTriangle, XCircle } from "lucide-react";
+import { BookOpen, AlertTriangle, XCircle, ArrowLeft } from "lucide-react"; 
 
 const API_BASE = "http://localhost:8000/api/";
 
@@ -109,16 +109,15 @@ export const SrfDetailPage: React.FC = () => {
       try {
         const response = await axiosAuth.get<SrfDetail>(`/srfs/${id}`, { signal } as any);
         const data: SrfDetail = response.data;
-        
+        // MODIFICATION: Default calibration points to 1 if not set
         data.inward?.equipments?.forEach(eq => {
             if (!eq.srf_equipment) {
                 eq.srf_equipment = {};
             }
-            if (eq.srf_equipment.no_of_calibration_points == null) {
+            if (eq.srf_equipment.no_of_calibration_points == null) { // Catches null and undefined
                 eq.srf_equipment.no_of_calibration_points = 1;
             }
         });
-
         const sanitizedData: SrfDetail = {
           ...data,
           date: data.date ? data.date.split("T")[0] : "",
@@ -164,7 +163,7 @@ export const SrfDetailPage: React.FC = () => {
         try {
           const response: AxiosResponse<InwardDetail> = await axiosAuth.get<InwardDetail>(`staff/inwards/${inwardIdFromUrl}`, { signal: controller.signal } as any);
           const inward = response.data;
-          
+          // MODIFICATION: Default calibration points to 1 for new SRFs
           inward.equipments?.forEach(eq => {
             if (!eq.srf_equipment) {
                 eq.srf_equipment = {};
@@ -173,7 +172,6 @@ export const SrfDetailPage: React.FC = () => {
                 eq.srf_equipment.no_of_calibration_points = 1;
             }
           });
-
           const newSrfInitialData: SrfDetail = {
             srf_id: 0, 
             inward_id: inward.inward_id, 
@@ -355,11 +353,22 @@ export const SrfDetailPage: React.FC = () => {
           </div>
         )}
 
-        <div className="mb-8 mt-6">
-          <Link to="/engineer/srfs" className="text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1">
-            ← <span>Back to SRF List</span>
-          </Link>
-        </div>
+        {/* --- MODIFICATION START: New Header --- */}
+        <header className="flex items-center justify-between border-b pb-4 mb-6">
+            <div>
+                <h1 className="text-3xl font-bold text-gray-900">SRF Details</h1>
+                <p className="text-lg text-blue-600 font-mono mt-1">{srfData.nepl_srf_no}</p>
+            </div>
+            <button
+                type="button"
+                onClick={() => navigate('/engineer/srfs')}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+            >
+                <ArrowLeft size={18} />
+                <span>Back to SRF List</span>
+            </button>
+        </header>
+        {/* --- MODIFICATION END --- */}
 
         {isLocked && (
             <div className={`p-4 mb-8 border-l-4 rounded-r-lg ${
@@ -370,7 +379,7 @@ export const SrfDetailPage: React.FC = () => {
                 <div className="flex items-start gap-3">
                     {srfData.status === 'rejected' ? <XCircle className="h-6 w-6 flex-shrink-0" /> : <AlertTriangle className="h-6 w-6 flex-shrink-0" />}
                     <div>
-                        <p className="text-sm">It has been <span className="font-semibold">{srfData.status}</span> by the customer and can no longer be edited.</p>
+                        <p className="text-sm">This SRF has been <span className="font-semibold">{srfData.status}</span> by the customer and can no longer be edited.</p>
                         {srfData.status === 'rejected' && srfData.remarks && (
                             <div className="mt-3 pt-3 border-t border-red-200">
                                 <p className="font-semibold text-sm">Customer's Rejection Reason:</p>
@@ -511,7 +520,6 @@ export const SrfDetailPage: React.FC = () => {
                             }
                         }}
                         onBlur={() => {
-                            // This ensures the value is at least 1 when the user clicks away.
                             const currentValue = eq.srf_equipment?.no_of_calibration_points;
                             if (currentValue === undefined || isNaN(currentValue) || currentValue < 1) {
                                 handleSrfEquipmentChange(eq.inward_eqp_id, "no_of_calibration_points", 1);

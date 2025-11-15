@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api, ENDPOINTS, BACKEND_ROOT_URL } from "../api/config"; // Import BACKEND_ROOT_URL
+import { api, ENDPOINTS, BACKEND_ROOT_URL } from "../api/config";
 import { InwardDetail, ViewInwardEquipment } from "../types/inward";
 import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit, X } from "lucide-react";
 import { StickerSheet } from "./StickerSheet";
@@ -81,20 +81,18 @@ export const ViewInward: React.FC = () => {
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        {/* Header Section */}
+        {/* --- MODIFICATION START: Redesigned Header Section --- */}
         <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 mb-6">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-center">
+            {/* Left Side: Title */}
             <div>
-              <button
-                onClick={() => navigate('/engineer/view-inward')}
-                className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 mb-2"
-              >
-                <ArrowLeft size={16} /> Back to List
-              </button>
               <h1 className="text-3xl font-bold text-gray-800">Inward Details</h1>
               <p className="text-lg text-blue-600 font-mono mt-1">{inward.srf_no}</p>
             </div>
+
+            {/* Right Side: All Action Buttons */}
             <div className="flex items-center gap-3">
+               
               <button
                 onClick={handleEditInward}
                 className="flex items-center gap-2 bg-green-600 text-white font-bold px-5 py-3 rounded-lg hover:bg-green-700 transition-colors"
@@ -109,6 +107,14 @@ export const ViewInward: React.FC = () => {
               >
                 <Barcode size={20} />
                 Print Stickers
+              </button>
+              <button
+                  type="button"
+                  onClick={() => navigate('/engineer/view-inward')}
+                  className="flex items-center space-x-2 px-4 py-3 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+              >
+                  <ArrowLeft size={18} />
+                  <span>Back to List</span>
               </button>
             </div>
           </div>
@@ -138,6 +144,7 @@ export const ViewInward: React.FC = () => {
             </div>
           </div>
         </div>
+        {/* --- MODIFICATION END --- */}
 
         {/* Equipment List Table */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200">

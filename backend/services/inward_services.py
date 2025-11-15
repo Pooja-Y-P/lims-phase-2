@@ -246,6 +246,56 @@ class InwardService:
         if not db_inward or db_inward.is_draft: raise HTTPException(status_code=404, detail="Inward record not found.")
         return db_inward
 
+    async def get_inwards_for_export(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
+        """
+        Fetches all finalized inwards within a date range, including their SRF data if available.
+        This is a more flexible query for the main export page.
+        """
+        try:
+            from backend.models.srfs import Srf  # Import here to avoid circular dependency
+            
+            stmt = (
+                select(Inward)
+                .options(
+                    selectinload(Inward.customer), 
+                    selectinload(Inward.equipments),
+                    joinedload(Inward.srf)  # Eagerly load the related SRF
+                )
+                .where(Inward.is_draft.is_(False))
+            )
+
+            if start_date:
+                stmt = stmt.where(func.date(Inward.created_at) >= start_date)
+            if end_date:
+                stmt = stmt.where(func.date(Inward.created_at) <= end_date)
+
+            stmt = stmt.order_by(desc(Inward.created_at))
+            inwards = self.db.scalars(stmt).unique().all()
+
+            result = []
+            for i in inwards:
+                srf = i.srf
+                result.append({
+                    "inward_id": i.inward_id,
+                    "srf_no": str(i.srf_no),
+                    "customer_details": i.customer.customer_details if i.customer else i.customer_details,
+                    "status": i.status,
+                    "received_by": i.received_by,
+                    "updated_at": i.updated_at,
+                    "equipment_count": len(i.equipments or []),
+                    "calibration_frequency": getattr(srf, "calibration_frequency", None),
+                    "statement_of_conformity": getattr(srf, "statement_of_conformity", None),
+                    "ref_iso_is_doc": getattr(srf, "ref_iso_is_doc", None),
+                    "ref_manufacturer_manual": getattr(srf, "ref_manufacturer_manual", None),
+                    "ref_customer_requirement": getattr(srf, "ref_customer_requirement", None),
+                    "turnaround_time": getattr(srf, "turnaround_time", None),
+                    "remarks": getattr(srf, "remarks", None),
+                })
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching inwards for export: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to retrieve inwards for export.")
+
     async def get_updated_inwards(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
         try:
             from backend.models.srfs import Srf

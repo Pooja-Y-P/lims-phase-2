@@ -34,15 +34,16 @@ export const ENDPOINTS = {
     SRFS: `/staff/srfs`,
     INWARDS: `/staff/inwards`,
     INWARDS_UPDATED: `/staff/inwards/updated`,
+    INWARDS_EXPORTABLE: `/staff/inwards/exportable-list`, // <-- NEW ENDPOINT ADDED
     INWARD_EXPORT: (id: number) => `/staff/inwards/${id}/export`,
     INWARD_EXPORT_BATCH: `/staff/inwards/export-batch`,
     INWARD_SEND_REPORT: (id: number) => `/staff/inwards/${id}/send-report`,
     
     // Simplified Draft endpoints
-    DRAFTS: `/staff/inwards/drafts`,  // GET - list all drafts
-    DRAFT: `/staff/inwards/draft`,    // PATCH - update draft with partial data
-    SUBMIT: `/staff/inwards/submit`,  // POST - submit/finalize draft or new form
-    DRAFT_DELETE: (id: number) => `/staff/inwards/drafts/${id}`,  // DELETE - remove draft
+    DRAFTS: `/staff/inwards/drafts`,
+    DRAFT: `/staff/inwards/draft`,
+    SUBMIT: `/staff/inwards/submit`,
+    DRAFT_DELETE: (id: number) => `/staff/inwards/drafts/${id}`,
   },
   
   // Customer-facing portal routes
@@ -53,7 +54,7 @@ export const ENDPOINTS = {
     SUBMIT_REMARKS: (id: number) => `/portal/inwards/${id}/remarks`,
     DIRECT_ACCESS: (id: number, token?: string) => 
       `/portal/direct-fir/${id}${token ? `?token=${token}` : ''}`,
-    CUSTOMERS_DROPDOWN: `/portal/customers/dropdown`, // New endpoint for customer dropdown
+    CUSTOMERS_DROPDOWN: `/portal/customers/dropdown`,
   },
 
   // Other primary resources
@@ -63,12 +64,12 @@ export const ENDPOINTS = {
   NOTIFICATIONS: `/notifications`,
   SRFS: `/srfs/`,
 
-  // NEW: SRF Draft endpoints
+  // SRF Draft endpoints
   SRF_DRAFTS: {
-    SAVE: (id: number) => `/srfs/draft/${id}`,      // PATCH - save existing as draft
-    CREATE: `/srfs/draft`,                          // POST - create new draft
-    RESTORE: (id: number) => `/srfs/draft/${id}/restore`, // GET - restore draft data
-    CLEAR: (id: number) => `/srfs/draft/${id}`,     // DELETE - clear draft data
+    SAVE: (id: number) => `/srfs/draft/${id}`,
+    CREATE: `/srfs/draft`,
+    RESTORE: (id: number) => `/srfs/draft/${id}/restore`,
+    CLEAR: (id: number) => `/srfs/draft/${id}`,
   }
 } as const;
 

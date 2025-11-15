@@ -24,64 +24,17 @@ from backend.schemas.inward_schemas import (
     InwardCreate, 
     InwardResponse, 
     InwardUpdate, 
-    EquipmentCreate,
     DraftUpdateRequest, 
     DraftResponse, 
     SendReportRequest, 
     RetryNotificationRequest,
     ReviewedFirResponse,
     PendingEmailTask,
-    UpdatedInwardSummary
+    UpdatedInwardSummary,
+    FailedNotificationsResponse,
+    BatchExportRequest
 )
 
-class CorrectedFailedNotificationItem(BaseModel):
-    id: int
-    recipient_email: Optional[str] = None
-    subject: str
-    error: Optional[str] = None
-    created_at: datetime
-    created_by: str
-    srf_no: Optional[str] = None
-    customer_details: Optional[str] = None
-    
-    @field_validator('srf_no', mode='before')
-    @classmethod
-    def validate_srf_no(cls, value): return str(value) if value is not None else value
-    
-    @field_validator('recipient_email', mode='before')
-    @classmethod
-    def empty_str_to_none(cls, v):
-        if v == "": return None
-        return v
-    
-    class Config: 
-        from_attributes = True
-
-class NotificationStats(BaseModel):
-    total: int; pending: int; success: int; failed: int
-
-class CorrectedFailedNotificationsResponse(BaseModel):
-    failed_notifications: List[CorrectedFailedNotificationItem]
-    stats: NotificationStats
-
-class BatchExportRequest(BaseModel):
-    inward_ids: List[int]
-
-    @field_validator("inward_ids")
-    @classmethod
-    def ensure_non_empty(cls, value: List[int]) -> List[int]:
-        unique_ids: List[int] = []
-        seen_ids = set()
-        for inward_id in value:
-            if inward_id is None:
-                continue
-            if inward_id in seen_ids:
-                continue
-            seen_ids.add(inward_id)
-            unique_ids.append(inward_id)
-        if not unique_ids:
-            raise ValueError("At least one inward id must be provided for export.")
-        return unique_ids
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -159,14 +112,12 @@ async def update_draft(
     update_request = DraftUpdateRequest(**payload)
     return await inward_service.update_draft(user_id=current_user.user_id, inward_id=update_request.inward_id, draft_data=update_request.draft_data)
 
-# === MODIFIED ENDPOINT ===
 @router.post("/submit", response_model=InwardResponse, status_code=status.HTTP_201_CREATED)
 async def submit_inward(
     req: Request,
     date: date = Form(...),
     customer_dc_date: str = Form(...),
     customer_id: int = Form(...),
-     # Changed from customer_details to customer_id
     customer_details: str = Form(...),
     receiver: str = Form(...),
     equipment_list: str = Form(...),
@@ -176,21 +127,16 @@ async def submit_inward(
     current_user: UserSchema = Depends(check_staff_role)
 ):
     try:
-        # (2) Use the srf_no passed from the form directly in the Pydantic model
         inward_data = InwardCreate(
             date=date,
             customer_dc_date=customer_dc_date,
-            customer_id=customer_id, # Pass customer_id
+            customer_id=customer_id,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list,
+            equipment_list=json.loads(equipment_list),
             srf_no=srf_no
         )
-        # (3) REMOVE the logic that generates a new SRF number here
-        # srf_service = SrfService(db)
-        # if not inward_id:
-        #      inward_data.srf_no = srf_service.generate_next_srf_no()
-    except (ValidationError, ValueError) as e:
+    except (ValidationError, ValueError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
         
     form_data = await req.form()
@@ -233,7 +179,22 @@ async def get_all_inward_records(db: Session = Depends(get_db)):
 @router.get("/reviewed-firs", response_model=List[ReviewedFirResponse])
 async def get_reviewed_firs(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
-    return await inward_service.get_inwards_by_status('reviewed')
+    return await inward_service.get_all_inwards(status='reviewed')
+
+# --- MODIFICATION START: Add a new, more flexible endpoint ---
+@router.get("/exportable-list", response_model=List[UpdatedInwardSummary])
+async def list_exportable_inwards(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    """
+    Provides a flexible list of all finalized inwards for the export page.
+    """
+    inward_service = InwardService(db)
+    return await inward_service.get_inwards_for_export(start_date=start_date, end_date=end_date)
+# --- MODIFICATION END ---
 
 @router.get("/updated", response_model=List[UpdatedInwardSummary])
 async def list_updated_inwards(
@@ -242,6 +203,7 @@ async def list_updated_inwards(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
+    # This original endpoint is kept for its specific functionality
     inward_service = InwardService(db)
     return await inward_service.get_updated_inwards(start_date=start_date, end_date=end_date)
 
@@ -287,7 +249,7 @@ async def cancel_delayed_email(task_id: int, db: Session = Depends(get_db)):
     if not await DelayedEmailService(db).cancel_task(task_id=task_id):
         raise HTTPException(status_code=404, detail="Task not found.")
 
-@router.get("/notifications/failed", response_model=CorrectedFailedNotificationsResponse)
+@router.get("/notifications/failed", response_model=FailedNotificationsResponse)
 async def get_failed_notifications(limit: int = 50, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     notification_service = NotificationService(db)
     failed_notifications = await notification_service.get_failed_notifications(limit=limit)
@@ -334,7 +296,7 @@ async def update_inward(
     req: Request,
     date: date = Form(...),
     customer_dc_date: str = Form(...),
-    customer_id: int = Form(...), # Changed from customer_details to customer_id
+    customer_id: int = Form(...),
     customer_details: str = Form(...),
     receiver: str = Form(...),
     equipment_list: str = Form(...),
@@ -342,21 +304,17 @@ async def update_inward(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    """
-    Endpoint to update an existing, finalized inward record.
-    This handles PUT requests from the inward form when in edit mode.
-    """
     try:
         inward_data = InwardUpdate(
             srf_no=srf_no,
             date=date,
             customer_dc_date=customer_dc_date,
-            customer_id=customer_id, # Pass customer_id
+            customer_id=customer_id,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=equipment_list
+            equipment_list=json.loads(equipment_list)
         )
-    except (ValidationError, ValueError) as e:
+    except (ValidationError, ValueError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     form_data = await req.form()

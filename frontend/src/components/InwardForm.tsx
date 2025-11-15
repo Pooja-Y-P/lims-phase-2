@@ -6,11 +6,9 @@ import { generateSRFNo, commitUsedSRFNo } from '../utils/idGenerators';
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
 import { api, ENDPOINTS, BACKEND_ROOT_URL } from '../api/config';
 import { CustomerRemark } from './CustomerRemarks';
-import { useAuth } from '../auth/AuthProvider'; // Import useAuth
+import { useAuth } from '../auth/AuthProvider';
 
 // --- TYPE DEFINITIONS ---
-// All types are now imported from ../types/inward.ts
-
 interface CustomerDropdownItem {
   customer_id: number;
   customer_details: string;
@@ -61,15 +59,15 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
   const isEditMode = Boolean(editId);
-  const { user } = useAuth(); // Use the auth hook to get current user
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState<InwardFormType>({
     srf_no: 'Loading...',
     date: new Date().toISOString().split('T')[0],
     customer_dc_date: '',
-    receiver: user?.full_name || user?.username || '', // Auto-populate with current user
-    customer_id: null, // Now stores customer_id
-    customer_details: '', // To display the selected customer_details
+    receiver: user?.full_name || user?.username || '',
+    customer_id: null,
+    customer_details: '',
     status: 'created'
   });
   const [equipmentList, setEquipmentList] = useState<EquipmentDetail[]>([]);
@@ -99,6 +97,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     const normalized = sanitized.startsWith("/") ? sanitized : `/${sanitized}`;
     return `${BACKEND_ROOT_URL}${normalized}`;
   }, []);
+
   const serializeDraftState = useCallback(
     (payload?: { formData: InwardFormType; equipmentList: EquipmentDetail[] }) => {
       const targetFormData = payload?.formData ?? formData;
@@ -296,7 +295,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           date: draftData.date || new Date().toISOString().split('T')[0],
           customer_dc_date: draftData.customer_dc_date ?? '',
           customer_id: draftData.customer_id || null,
-          customer_details: draftData.customer_details || '', // Keep for display
+          customer_details: draftData.customer_details || '',
           receiver: draftData.receiver || '',
           status: 'created' as const
         };
@@ -351,14 +350,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     setLastAutoSaveTime(null);
     cleanupAllPreviews();
     setEquipmentList([]);
-    setSelectedCustomerId(null); // Reset selected customer
+    setSelectedCustomerId(null);
     try {
       const srfNo = await generateSRFNo();
       const newFormData = {
         srf_no: srfNo,
         date: new Date().toISOString().split('T')[0],
         customer_dc_date: '',
-        receiver: user?.full_name || user?.username || '', // Auto-populate with current user
+        receiver: user?.full_name || user?.username || '',
         customer_id: null,
         customer_details: '',
         status: 'created' as const
@@ -400,7 +399,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         customer_dc_date: inward.customer_dc_date ?? inward.date ?? '',
         receiver: inward.receiver || '',
         customer_id: inward.customer_id,
-        customer_details: inward.customer_details, // Keep for display
+        customer_details: inward.customer_details,
         status: inward.status
       });
       setSelectedCustomerId(inward.customer_id);
@@ -457,8 +456,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
             return;
         }
     }
-    if (isEditMode) navigate('/engineer/view-inward');
-    else navigate('/engineer/create-inward');
+    // --- MODIFICATION: Navigate to correct page based on edit mode ---
+    if (isEditMode) {
+        navigate('/engineer/view-inward');
+    } else {
+        navigate('/engineer/create-inward');
+    }
   };
 
   const handleCloseEmailModalAndNavigate = () => {
@@ -599,7 +602,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       submissionData.append('date', formData.date);
       submissionData.append('customer_dc_date', formData.customer_dc_date);
       submissionData.append('receiver', formData.receiver);
-      submissionData.append('customer_id', formData.customer_id.toString()); // Send customer_id
+      submissionData.append('customer_id', formData.customer_id.toString());
       submissionData.append('customer_details', formData.customer_details);
       
       const equipmentDataForJson = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, ...rest }) => ({
@@ -620,7 +623,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         showMessage('success', `Inward SRF ${response.data.srf_no} updated successfully!`);
         navigate('/engineer/view-inward');
       } else {
-        // Always append the srf_no from the form state for new submissions.
         submissionData.append('srf_no', formData.srf_no);
 
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
@@ -682,16 +684,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const getDraftStatusText = () => {
     switch (draftSaveStatus) {
-      case 'saving':
-        return 'Saving...';
-      case 'saved':
-        return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
-      case 'error':
-        return 'Save failed - retrying...';
-      case 'unsaved':
-        return 'Unsaved changes';
-      default:
-        return 'Auto-save active';
+      case 'saving': return 'Saving...';
+      case 'saved': return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
+      case 'error': return 'Save failed - retrying...';
+      case 'unsaved': return 'Unsaved changes';
+      default: return 'Auto-save active';
     }
   };
 
@@ -734,7 +731,16 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         </div>
         <div className="flex items-center space-x-2 sm:space-x-4">
             {!isEditMode && (<div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-lg border border-gray-200">{getDraftStatusIcon()}<span className="font-medium">{getDraftStatusText()}</span></div>)}
-            <button type="button" onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"><ArrowLeft size={18} /><span>Back to Drafts</span></button>
+            {/* --- MODIFICATION START: Conditional Button Text --- */}
+            <button 
+              type="button" 
+              onClick={handleBackToPortal} 
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+            >
+              <ArrowLeft size={18} />
+              <span>{isEditMode ? 'Back to List' : 'Back to Drafts'}</span>
+            </button>
+            {/* --- MODIFICATION END --- */}
         </div>
       </div>
 
@@ -757,7 +763,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                 onChange={handleFormChange}
                 required
                 className="w-full px-4 py-2 border rounded-lg bg-white"
-                disabled={isEditMode} // Disable dropdown in edit mode if customer_id shouldn't change
+                disabled={isEditMode}
               >
                 <option value="">Select Company</option>
                 {customers.map(customer => (
@@ -773,6 +779,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         <div className="mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><Wrench size={24} className="text-blue-600" />Equipment Details</h2>
+            {!isEditMode && (
+              <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>
+            )}
           </div>
           <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
             <table className="w-full text-sm border-collapse min-w-[2000px]">
@@ -923,7 +932,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           </div>
           <div className="flex justify-between items-center mt-4">
             <p className='text-sm text-slate-500'>Add all incoming equipment and mark any deviations in the Visual Inspection column.</p>
-            <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>
+            {!isEditMode && (
+              <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>
+            )}
           </div>
         </div>
         

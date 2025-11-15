@@ -83,19 +83,15 @@ export const ExportInwardPage: React.FC = () => {
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
 
-      const response = await api.get<ExportInwardItem[]>(ENDPOINTS.STAFF.INWARDS_UPDATED, {
+      // --- MODIFICATION: Call the new, more flexible endpoint ---
+      const response = await api.get<ExportInwardItem[]>(ENDPOINTS.STAFF.INWARDS_EXPORTABLE, {
         params,
       });
       setExportInwards(response.data);
     } catch (error) {
-      console.error("Error fetching updated inwards:", error);
-      const message = error instanceof Error ? error.message : null;
-      if (message && message.includes("Start date")) {
-        setExportError(message);
-        setExportInwards([]);
-      } else {
-        setExportError("Failed to load updated inwards. Please try again.");
-      }
+      console.error("Error fetching inwards for export:", error);
+      const message = error instanceof Error ? error.message : "An unknown error occurred.";
+      setExportError(`Failed to load inward records: ${message}`);
     } finally {
       setExportLoading(false);
     }
@@ -244,17 +240,17 @@ export const ExportInwardPage: React.FC = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Export Inward Records</h1>
             <p className="mt-1 text-gray-600 text-sm">
-              Review inwards with status <span className="font-semibold text-gray-900">updated</span> and export records individually to Excel.
+              Filter and export finalized inward records to Excel.
             </p>
           </div>
         </div>
         <button
           type="button"
           onClick={() => navigate("/engineer")}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100"
+          className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Portal
+          <ArrowLeft size={18} />
+          <span>Back to Dashboard</span>
         </button>
       </div>
 
@@ -365,14 +361,14 @@ export const ExportInwardPage: React.FC = () => {
             {exportLoading && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                  Loading updated inward records...
+                  Loading inward records...
                 </td>
               </tr>
             )}
             {!exportLoading && exportInwards.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                  No updated inwards found for the selected date range.
+                  No finalized inward records found for the selected date range.
                 </td>
               </tr>
             )}
@@ -457,4 +453,3 @@ export const ExportInwardPage: React.FC = () => {
 };
 
 export default ExportInwardPage;
-
