@@ -82,6 +82,7 @@ from backend.core.email import (
     send_new_user_invitation_email,
     send_existing_user_notification_email
 )
+from backend.core.config import settings
 
 UPLOAD_DIRECTORY = "uploads/inward_photos"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
@@ -414,7 +415,7 @@ class InwardService:
                 inward_id=inward_id,
                 recipient_email=customer_email,
                 creator_id=creator_id,
-                delay_hours=24
+                delay_minutes=settings.DELAYED_EMAIL_DELAY_MINUTES
             )
             return {"message": f"Report for SRF {db_inward.srf_no} scheduled. Manage it from the Engineer Portal."}
 

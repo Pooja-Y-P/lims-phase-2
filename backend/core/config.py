@@ -18,14 +18,15 @@ class Settings(BaseSettings):
     APP_PORT: int = 8000
 
     # --- Database Settings ---
-    DATABASE_URL: str = "postgresql://postgres:root@localhost:5432/lims_phase1"
+    DATABASE_URL: str = "postgresql://postgres:root@localhost:5432/limsdbp1"
 
     # --- JWT/Security Settings ---
     JWT_SECRET: str
     REFRESH_TOKEN_SECRET: str
     ALGORITHM: str = "HS256" # Default algorithm for JWT
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7 
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 15
+    TIMEZONE: str = "UTC"
 
     # --- SMTP/Email Settings ---
     SMTP_SERVER: str = "smtp.gmail.com"
@@ -39,6 +40,9 @@ class Settings(BaseSettings):
     # This is the URL for your React/Vue/Svelte frontend application.
     FRONTEND_URL: str = "http://localhost:5173"
     # ==========================================================
+
+    # --- Delayed Email Settings ---
+    DELAYED_EMAIL_DELAY_MINUTES: int = 3
 
 
 # Create an instance of the settings for import throughout the application

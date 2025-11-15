@@ -12,12 +12,6 @@ class TokenData(BaseModel):
     user_id: Optional[int] = None
     sub: Optional[EmailStr] = None
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    refresh_token: Optional[str] = None
-    expires_in: Optional[int] = None  # seconds until expiry
-
 class User(BaseModel):
     user_id: int
     email: EmailStr
@@ -34,12 +28,44 @@ class UserLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+# --- Token exchange schemas ---
+class LoginResponse(BaseModel):
+    user_id: int
+    username: str
+    email: EmailStr
+    full_name: Optional[str] = None
+    role: str
+    customer_id: Optional[int] = None
+    is_active: bool
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+class TokenRefreshResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+class UserStatusUpdateRequest(BaseModel):
+    is_active: bool
+
 # -------------------- InvitationRequest --------------------
 class InvitationRequest(BaseModel):
     email: EmailStr
     role: str
-    invited_name: str
-    customer_id: Optional[int] = None  # Optional: link to a customer
+    invited_name: Optional[str] = None  # Optional for customer role
+    company_name: Optional[str] = None
+    company_address: Optional[str] = None
+    phone_number: Optional[str] = None
+    customer_id: Optional[int] = None  # Optional: link to an existing customer
 
 # ====================================================================
 # RESPONSE SCHEMAS
@@ -56,6 +82,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     token: Optional[str] = None
+    refresh_token: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

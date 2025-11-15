@@ -12,7 +12,10 @@ interface LoginResponse {
   full_name: string | null;
   role: string;
   is_active: boolean;
-  token: string;
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
   customer_id?: number | null;
 }
  
@@ -74,7 +77,8 @@ const Login: React.FC = () => {
         email: loginData.email,
         full_name: loginData.full_name,
         role: loginData.role as UserRole,
-        token: loginData.token,
+        token: loginData.access_token,
+        refresh_token: loginData.refresh_token,
         is_active: loginData.is_active,
       };
  

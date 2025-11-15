@@ -1,14 +1,20 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Paperclip, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { InwardForm as InwardFormType, EquipmentDetail, InwardDetail } from '../types/inward';
 import { generateSRFNo, commitUsedSRFNo } from '../utils/idGenerators';
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
-import { api, ENDPOINTS } from '../api/config';
+import { api, ENDPOINTS, BACKEND_ROOT_URL } from '../api/config';
 import { CustomerRemark } from './CustomerRemarks';
+import { useAuth } from '../auth/AuthProvider'; // Import useAuth
 
 // --- TYPE DEFINITIONS ---
 // All types are now imported from ../types/inward.ts
+
+interface CustomerDropdownItem {
+  customer_id: number;
+  customer_details: string;
+}
 
 interface InwardResponse {
   inward_id: number;
@@ -32,6 +38,7 @@ interface LoadedDraftData {
   srf_no: string;
   date: string;
   customer_dc_date: string;
+  customer_id: number | null; 
   customer_details: string;
   receiver: string;
   equipment_list: EquipmentDetail[];
@@ -54,13 +61,15 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
   const isEditMode = Boolean(editId);
-  
+  const { user } = useAuth(); // Use the auth hook to get current user
+
   const [formData, setFormData] = useState<InwardFormType>({
     srf_no: 'Loading...',
     date: new Date().toISOString().split('T')[0],
-    customer_dc_date: new Date().toISOString().split('T')[0],
-    receiver: '',
-    customer_details: '',
+    customer_dc_date: '',
+    receiver: user?.full_name || user?.username || '', // Auto-populate with current user
+    customer_id: null, // Now stores customer_id
+    customer_details: '', // To display the selected customer_details
     status: 'created'
   });
   const [equipmentList, setEquipmentList] = useState<EquipmentDetail[]>([]);
@@ -76,15 +85,72 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
+  const previewUrlsRef = useRef<string[]>([]);
+
+  const cleanupAllPreviews = useCallback(() => {
+    previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    previewUrlsRef.current = [];
+  }, []);
+
+  const resolvePhotoUrl = useCallback((photo: string | undefined) => {
+    if (!photo) return "";
+    const sanitized = photo.replace(/\\/g, "/");
+    if (/^https?:\/\//i.test(sanitized)) return sanitized;
+    const normalized = sanitized.startsWith("/") ? sanitized : `/${sanitized}`;
+    return `${BACKEND_ROOT_URL}${normalized}`;
+  }, []);
+  const serializeDraftState = useCallback(
+    (payload?: { formData: InwardFormType; equipmentList: EquipmentDetail[] }) => {
+      const targetFormData = payload?.formData ?? formData;
+      const targetEquipmentList = payload?.equipmentList ?? equipmentList;
+      return JSON.stringify({
+        formData: targetFormData,
+        equipmentList: targetEquipmentList.map((equipment) => {
+          const { photos, photoPreviews, existingPhotoUrls, ...rest } = equipment;
+          return {
+            ...rest,
+            photos: (photos || []).map((file) => (file?.name ? String(file.name) : "")),
+            photoPreviews: (photoPreviews || []).slice(),
+            existingPhotoUrls: (existingPhotoUrls || []).slice()
+          };
+        })
+      });
+    },
+    [formData, equipmentList]
+  );
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
 
+  const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+
   const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
   const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
-  const hasFormData = formData.customer_details.trim().length > 0 || equipmentList.some(eq => (eq.material_desc || '').trim().length > 0);
+  const hasFormData =
+    (formData.customer_id !== null && formData.customer_id !== undefined) ||
+    (formData.customer_dc_date ?? '').trim().length > 0 ||
+    equipmentList.some((eq) => {
+      const hasTextData = (eq.material_desc || '').trim().length > 0;
+      const hasAttachments =
+        (Array.isArray(eq.photos) && eq.photos.length > 0) ||
+        (Array.isArray(eq.photoPreviews) && eq.photoPreviews.length > 0) ||
+        (Array.isArray(eq.existingPhotoUrls) && eq.existingPhotoUrls.length > 0);
+      return hasTextData || hasAttachments;
+    });
+
+  const fetchCustomers = useCallback(async () => {
+    try {
+      const response = await api.get<CustomerDropdownItem[]>(ENDPOINTS.PORTAL.CUSTOMERS_DROPDOWN);
+      setCustomers(response.data);
+    } catch (error) {
+      console.error('Failed to fetch customers for dropdown:', error);
+      showMessage('error', 'Failed to load customer list.');
+    }
+  }, []);
 
   useEffect(() => {
+    fetchCustomers();
     if (isEditMode && editId) {
       loadInwardData(parseInt(editId));
     } else if (initialDraftId) {
@@ -101,37 +167,105 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isEditMode, editId, initialDraftId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, editId, initialDraftId, fetchCustomers]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAllPreviews();
+    };
+  }, [cleanupAllPreviews]);
 
   useEffect(() => {
     if (!isEditMode && isFormReady && hasFormData) {
-      const currentData = JSON.stringify({ formData, equipmentList });
+      const currentData = serializeDraftState();
       if (currentData !== lastSavedDataRef.current) {
         setDraftSaveStatus('unsaved');
         if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
         autoSaveTimeoutRef.current = setTimeout(() => triggerAutoSave(currentData), 2000);
       }
     }
-  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode, serializeDraftState]);
+
+  useEffect(() => {
+    if (!selectedEquipment) return;
+    const index = equipmentList.findIndex(eq => eq.nepl_id === selectedEquipment.nepl_id);
+    if (index !== -1 && equipmentList[index] !== selectedEquipment) {
+      setSelectedEquipment(equipmentList[index]);
+    }
+  }, [equipmentList, selectedEquipment]);
 
   const triggerAutoSave = async (dataToSave: string) => {
     if (!isFormReady || isEditMode) return;
     setDraftSaveStatus('saving');
     try {
+      const equipmentDraftPayload = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, ...rest }) => {
+        const normalizedQty = Number(rest.qty ?? 1);
+        return {
+          ...rest,
+          qty: Number.isFinite(normalizedQty) ? normalizedQty : 1,
+          inspe_notes: rest.inspe_notes || 'OK',
+          existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
+        };
+      });
+
       const draftPayload = {
         inward_id: currentDraftId,
-        draft_data: { ...formData, equipment_list: equipmentList.map(({ photos, barcode_image, qrcode_image, ...rest }) => rest) }
+        draft_data: {
+          ...formData,
+          equipment_list: equipmentDraftPayload
+        }
       };
       const response = await api.patch<DraftSaveResponse>(ENDPOINTS.STAFF.DRAFT, draftPayload);
+
       if (response.data?.inward_id) {
         const newDraftId = response.data.inward_id;
         if (!currentDraftId) {
           setCurrentDraftId(newDraftId);
           navigate(`/engineer/create-inward?draft=${newDraftId}`, { replace: true });
         }
+        let updatedEquipmentListState = equipmentList.map((equipment) => {
+          const sanitizedExisting = (equipment.existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()));
+          return {
+            ...equipment,
+            existingPhotoUrls: sanitizedExisting,
+            photos: equipment.photos || [],
+            photoPreviews: equipment.photoPreviews || []
+          };
+        });
+
+        if (Array.isArray(response.data?.draft_data?.equipment_list)) {
+          updatedEquipmentListState = updatedEquipmentListState.map((equipment, index) => {
+            const serverEquipment = (response.data?.draft_data?.equipment_list as any[])[index];
+            if (!serverEquipment || typeof serverEquipment !== 'object') {
+              return equipment;
+            }
+            const {
+              existing_photo_urls,
+              existingPhotoUrls,
+              photos: _serverPhotos,
+              photoPreviews: _serverPreviews,
+              ...rest
+            } = serverEquipment;
+            const serverExisting =
+              (Array.isArray(existing_photo_urls) ? existing_photo_urls : Array.isArray(existingPhotoUrls) ? existingPhotoUrls : []) as unknown[];
+            const normalizedExisting = serverExisting
+              .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+            return {
+              ...equipment,
+              ...rest,
+              existingPhotoUrls: normalizedExisting,
+              photos: equipment.photos || [],
+              photoPreviews: equipment.photoPreviews || []
+            };
+          });
+        }
+
+        setEquipmentList(updatedEquipmentListState);
         setDraftSaveStatus('saved');
         setLastAutoSaveTime(new Date());
-        lastSavedDataRef.current = dataToSave;
+        lastSavedDataRef.current = serializeDraftState({ formData, equipmentList: updatedEquipmentListState });
       } else {
         throw new Error("Auto-save failed on the server.");
       }
@@ -160,16 +294,44 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         const newFormData = {
           srf_no: draftData.srf_no || formData.srf_no,
           date: draftData.date || new Date().toISOString().split('T')[0],
-          customer_dc_date: draftData.customer_dc_date || new Date().toISOString().split('T')[0],
-          customer_details: draftData.customer_details || '',
+          customer_dc_date: draftData.customer_dc_date ?? '',
+          customer_id: draftData.customer_id || null,
+          customer_details: draftData.customer_details || '', // Keep for display
           receiver: draftData.receiver || '',
           status: 'created' as const
         };
-        const newEquipmentList = draftData.equipment_list || [];
+        const newEquipmentList = (draftData.equipment_list || []).map(eq => {
+          const existingPhotoUrls = (() => {
+            if (Array.isArray((eq as any).existingPhotoUrls)) return (eq as any).existingPhotoUrls;
+            if (Array.isArray((eq as any).existing_photo_urls)) return (eq as any).existing_photo_urls;
+            if (Array.isArray((eq as any).photos)) return (eq as any).photos;
+            return [];
+          })().filter((path: unknown): path is string => typeof path === 'string' && path.trim().length > 0);
+          return {
+            ...eq,
+            photos: [],
+            photoPreviews: [],
+            existingPhotoUrls
+          };
+        });
         setFormData(newFormData);
-        setEquipmentList(newEquipmentList);
+        setSelectedCustomerId(newFormData.customer_id);
+        cleanupAllPreviews();
+        const normalizedEquipmentList = newEquipmentList.length > 0 ? newEquipmentList : [{
+          nepl_id: `${newFormData.srf_no}-1`,
+          material_desc: '',
+          make: '',
+          model: '',
+          qty: 1,
+          calibration_by: 'In Lab' as const,
+          inspe_notes: 'OK',
+          photos: [],
+          photoPreviews: [],
+          existingPhotoUrls: []
+        }];
+        setEquipmentList(normalizedEquipmentList);
         setCurrentDraftId(draftId);
-        lastSavedDataRef.current = JSON.stringify({ formData: newFormData, equipmentList: newEquipmentList });
+        lastSavedDataRef.current = serializeDraftState({ formData: newFormData, equipmentList: normalizedEquipmentList });
         setDraftSaveStatus('saved');
         setLastAutoSaveTime(new Date());
         showMessage('success', 'Draft loaded successfully! Auto-save is active.');
@@ -185,17 +347,19 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   
   const initializeForm = async () => {
     setCurrentDraftId(null);
-    lastSavedDataRef.current = '';
     setDraftSaveStatus('idle');
     setLastAutoSaveTime(null);
+    cleanupAllPreviews();
     setEquipmentList([]);
+    setSelectedCustomerId(null); // Reset selected customer
     try {
       const srfNo = await generateSRFNo();
       const newFormData = {
         srf_no: srfNo,
         date: new Date().toISOString().split('T')[0],
-        customer_dc_date: new Date().toISOString().split('T')[0],
-        receiver: '',
+        customer_dc_date: '',
+        receiver: user?.full_name || user?.username || '', // Auto-populate with current user
+        customer_id: null,
         customer_details: '',
         status: 'created' as const
       };
@@ -206,10 +370,17 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         model: '', 
         qty: 1, 
         calibration_by: 'In Lab' as const,
-        inspe_notes: 'OK'
+        inspe_notes: 'OK',
+        photos: [],
+        photoPreviews: [],
+        existingPhotoUrls: []
       }];
       setFormData(newFormData);
       setEquipmentList(newEquipmentList);
+      lastSavedDataRef.current = serializeDraftState({
+        formData: newFormData,
+        equipmentList: newEquipmentList,
+      });
     } catch (error: any) {
       showMessage('error', error.message || 'Failed to initialize form.');
       setFormData(prev => ({ ...prev, srf_no: 'Error!' }));
@@ -226,25 +397,39 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       setFormData({
         srf_no: inward.srf_no.toString(),
         date: inward.date,
-        customer_dc_date: inward.customer_dc_date || inward.date,
+        customer_dc_date: inward.customer_dc_date ?? inward.date ?? '',
         receiver: inward.receiver || '',
-        customer_details: inward.customer_details,
+        customer_id: inward.customer_id,
+        customer_details: inward.customer_details, // Keep for display
         status: inward.status
       });
+      setSelectedCustomerId(inward.customer_id);
       
-      const equipmentData = inward.equipments?.map((eq) => ({
-        nepl_id: eq.nepl_id,
-        material_desc: eq.material_description,
-        make: eq.make,
-        model: eq.model,
-        range: eq.range || '',
-        serial_no: eq.serial_no || '',
-        qty: eq.quantity,
-        inspe_notes: eq.visual_inspection_notes || 'OK',
-        calibration_by: 'In Lab' as const,
-        remarks_and_decision: eq.remarks_and_decision,
-      })) || [];
+      const equipmentData = (inward.equipments ?? []).map((eq) => {
+        const calibrationBy = (['In Lab', 'Outsource', 'Out Lab'] as const).includes((eq.calibration_by || 'In Lab') as any)
+          ? (eq.calibration_by as 'In Lab' | 'Outsource' | 'Out Lab')
+          : 'In Lab';
+        const existingPhotoUrls = Array.isArray(eq.photos)
+          ? eq.photos.filter((path): path is string => typeof path === 'string' && path.trim().length > 0)
+          : [];
+        return {
+          nepl_id: eq.nepl_id,
+          material_desc: eq.material_description,
+          make: eq.make,
+          model: eq.model,
+          range: eq.range || '',
+          serial_no: eq.serial_no || '',
+          qty: eq.quantity,
+          inspe_notes: eq.visual_inspection_notes || 'OK',
+          calibration_by: calibrationBy,
+          remarks_and_decision: eq.remarks_and_decision,
+          photos: [],
+          photoPreviews: [],
+          existingPhotoUrls
+        };
+      });
       
+      cleanupAllPreviews();
       setEquipmentList(equipmentData.length > 0 ? equipmentData : [{ 
         nepl_id: `${inward.srf_no}-1`, 
         material_desc: '', 
@@ -252,7 +437,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         model: '', 
         qty: 1, 
         calibration_by: 'In Lab' as const,
-        inspe_notes: 'OK'
+        inspe_notes: 'OK',
+        photos: [],
+        photoPreviews: [],
+        existingPhotoUrls: []
       }]);
     } catch (error) {
       console.error('Error loading inward data:', error);
@@ -278,8 +466,20 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     navigate('/engineer/create-inward', { replace: true });
   };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    if (name === 'customer_id') {
+      const customerId = parseInt(value);
+      const selectedCustomer = customers.find(c => c.customer_id === customerId);
+      setFormData(prev => ({
+        ...prev,
+        customer_id: customerId,
+        customer_details: selectedCustomer ? selectedCustomer.customer_details : ''
+      }));
+      setSelectedCustomerId(customerId);
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleEquipmentChange = (index: number, field: keyof EquipmentDetail, value: string | number) => {
@@ -298,47 +498,79 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const handlePhotoChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setEquipmentList(currentList => {
-        const updatedList = [...currentList];
-        updatedList[index] = { ...updatedList[index], photos: [...(updatedList[index].photos || []), ...newFiles] };
-        return updatedList;
-      });
-    }
+    if (!e.target.files || e.target.files.length === 0) return;
+    const newFiles = Array.from(e.target.files);
+    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
+    newPreviews.forEach(url => previewUrlsRef.current.push(url));
+
+    setEquipmentList(currentList => {
+      const updatedList = [...currentList];
+      if (!updatedList[index]) return currentList;
+      const currentEquipment = { ...updatedList[index] };
+      currentEquipment.photos = [...(currentEquipment.photos || []), ...newFiles];
+      currentEquipment.photoPreviews = [...(currentEquipment.photoPreviews || []), ...newPreviews];
+      updatedList[index] = currentEquipment;
+      return updatedList;
+    });
+
+    e.target.value = '';
   };
 
   const handleRemovePhoto = (eqIndex: number, photoIndex: number) => {
+    let previewToRemove: string | undefined;
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
-      const updatedPhotos = updatedList[eqIndex].photos?.filter((_, pIndex) => pIndex !== photoIndex);
-      updatedList[eqIndex] = { ...updatedList[eqIndex], photos: updatedPhotos };
+      const equipment = updatedList[eqIndex];
+      if (!equipment) return currentList;
+      const nextPhotos = (equipment.photos || []).filter((_, pIndex) => pIndex !== photoIndex);
+      const currentPreviews = equipment.photoPreviews || [];
+      previewToRemove = currentPreviews[photoIndex];
+      const nextPreviews = currentPreviews.filter((_, pIndex) => pIndex !== photoIndex);
+      updatedList[eqIndex] = { ...equipment, photos: nextPhotos, photoPreviews: nextPreviews };
       return updatedList;
     });
+
+    if (previewToRemove) {
+      URL.revokeObjectURL(previewToRemove);
+      previewUrlsRef.current = previewUrlsRef.current.filter(url => url !== previewToRemove);
+    }
   };
 
   const addEquipmentRow = () => {
-    const newIndex = equipmentList.length + 1;
-    const neplId = `${formData.srf_no}-${newIndex}`;
-    setEquipmentList([...equipmentList, { 
-      nepl_id: neplId, 
-      material_desc: '', 
-      make: '', 
-      model: '', 
-      qty: 1, 
-      calibration_by: 'In Lab' as const,
-      inspe_notes: 'OK'
-    }]);
+    setEquipmentList(currentList => {
+      const newIndex = currentList.length + 1;
+      const neplId = `${formData.srf_no}-${newIndex}`;
+      return [...currentList, { 
+        nepl_id: neplId, 
+        material_desc: '', 
+        make: '', 
+        model: '', 
+        qty: 1, 
+        calibration_by: 'In Lab' as const,
+        inspe_notes: 'OK',
+        photos: [],
+        photoPreviews: [],
+        existingPhotoUrls: []
+      }];
+    });
   };
 
   const removeEquipmentRow = (index: number) => {
-    if (equipmentList.length > 1) {
-      const reindexedList = equipmentList.filter((_, i) => i !== index).map((item, i) => ({ 
-        ...item, 
-        nepl_id: `${formData.srf_no}-${i + 1}` 
-      }));
-      setEquipmentList(reindexedList);
-    }
+    setEquipmentList(currentList => {
+      if (currentList.length <= 1) return currentList;
+      const equipmentToRemove = currentList[index];
+      equipmentToRemove?.photoPreviews?.forEach(url => {
+        URL.revokeObjectURL(url);
+        previewUrlsRef.current = previewUrlsRef.current.filter(existing => existing !== url);
+      });
+      const reindexedList = currentList
+        .filter((_, i) => i !== index)
+        .map((item, i) => ({ 
+          ...item, 
+          nepl_id: `${formData.srf_no}-${i + 1}` 
+        }));
+      return reindexedList;
+    });
   };
 
   const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
@@ -360,19 +592,21 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
 
     try {
-      if (!formData.receiver || !formData.customer_details) throw new Error('Please fill in Receiver and Company Name & Address.');
+      if (!formData.receiver || formData.customer_id === null) throw new Error('Please fill in Receiver and select a Company Name & Address.');
       if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) throw new Error('Fill in Material Desc, Make, and Model for all equipment.');
 
       const submissionData = new FormData();
       submissionData.append('date', formData.date);
       submissionData.append('customer_dc_date', formData.customer_dc_date);
       submissionData.append('receiver', formData.receiver);
+      submissionData.append('customer_id', formData.customer_id.toString()); // Send customer_id
       submissionData.append('customer_details', formData.customer_details);
       
-      const equipmentDataForJson = equipmentList.map(({ photos, barcode_image, qrcode_image, ...rest }) => ({
-        ...rest, 
+      const equipmentDataForJson = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, ...rest }) => ({
+        ...rest,
         qty: Number(rest.qty),
-        inspe_notes: rest.inspe_notes || 'OK'
+        inspe_notes: rest.inspe_notes || 'OK',
+        existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
       }));
       submissionData.append('equipment_list', JSON.stringify(equipmentDataForJson));
       
@@ -386,8 +620,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         showMessage('success', `Inward SRF ${response.data.srf_no} updated successfully!`);
         navigate('/engineer/view-inward');
       } else {
-        // === MODIFIED BLOCK ===
-        // (1) Always append the srf_no from the form state for new submissions.
+        // Always append the srf_no from the form state for new submissions.
         submissionData.append('srf_no', formData.srf_no);
 
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
@@ -449,11 +682,16 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const getDraftStatusText = () => {
     switch (draftSaveStatus) {
-      case 'saving': return 'Saving...';
-      case 'saved': return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
-      case 'error': return 'Save failed - retrying...';
-      case 'unsaved': return 'Unsaved changes';
-      default: return 'Auto-save active';
+      case 'saving':
+        return 'Saving...';
+      case 'saved':
+        return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
+      case 'error':
+        return 'Save failed - retrying...';
+      case 'unsaved':
+        return 'Unsaved changes';
+      default:
+        return 'Auto-save active';
     }
   };
 
@@ -508,10 +746,27 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Basic Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border">
             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Date *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date *</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date *</label><input type="text" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} required placeholder="Enter Customer DC details" className="w-full px-4 py-2 border rounded-lg" /></div>
             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
             <div className="md:col-span-1"><label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-500">(Auto)</span></label><input type="text" value={formData.srf_no} disabled className="w-full px-4 py-2 bg-gray-200 rounded-lg" /></div>
-            <div className="md:col-span-2 lg:col-span-3"><label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label><input type="text" name="customer_details" value={formData.customer_details} onChange={handleFormChange} required placeholder="Enter company name and address" className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div className="md:col-span-2 lg:col-span-3">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label>
+              <select
+                name="customer_id"
+                value={selectedCustomerId || ''}
+                onChange={handleFormChange}
+                required
+                className="w-full px-4 py-2 border rounded-lg bg-white"
+                disabled={isEditMode} // Disable dropdown in edit mode if customer_id shouldn't change
+              >
+                <option value="">Select Company</option>
+                {customers.map(customer => (
+                  <option key={customer.customer_id} value={customer.customer_id}>
+                    {customer.customer_details}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -589,19 +844,65 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         <div className="flex items-center gap-2">
                           <label htmlFor={`photo-upload-${index}`} className="flex-shrink-0 flex items-center justify-center gap-1 cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs"><Camera size={14} /> Attach</label>
                           <input id={`photo-upload-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handlePhotoChange(index, e)} />
-                          {equipment.photos && equipment.photos.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5">
-                              {equipment.photos.map((photo: File, pIndex: number) => (
-                                <div key={pIndex} className="flex items-center bg-gray-100 p-1 rounded text-xs" title={photo.name}><Paperclip size={12} className="mr-1" /><span className="truncate max-w-[100px]">{photo.name}</span><button type="button" onClick={() => handleRemovePhoto(index, pIndex)} className="ml-1 text-red-500 hover:text-red-700"><X size={14} /></button></div>
+                        </div>
+                        {equipment.existingPhotoUrls && equipment.existingPhotoUrls.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Existing</p>
+                            <div className="flex flex-wrap gap-2">
+                              {equipment.existingPhotoUrls.map((url, existingIndex) => {
+                                const resolved = resolvePhotoUrl(url);
+                                if (!resolved) return null;
+                                return (
+                                  <a
+                                    key={`${url}-${existingIndex}`}
+                                    href={resolved}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block h-16 w-16 overflow-hidden rounded border border-slate-200 hover:border-blue-400"
+                                    title="Open image in new tab"
+                                  >
+                                    <img src={resolved} alt={`Existing equipment image ${existingIndex + 1}`} className="h-full w-full object-cover" />
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {equipment.photoPreviews && equipment.photoPreviews.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">New Attachments</p>
+                            <div className="flex flex-wrap gap-2">
+                              {equipment.photoPreviews.map((preview, pIndex) => (
+                                <div key={pIndex} className="relative h-16 w-16 overflow-hidden rounded border border-slate-200 shadow-sm">
+                                  <img src={preview} alt={`New equipment image ${pIndex + 1}`} className="h-full w-full object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePhoto(index, pIndex)}
+                                    className="absolute top-1 right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-red-500 hover:bg-white hover:text-red-600 shadow focus:outline-none focus:ring-2 focus:ring-red-400"
+                                    aria-label={`Remove image ${pIndex + 1}`}
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
                               ))}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </td>
                       <td className="sticky right-0 z-10 p-2 text-center bg-white group-hover:bg-slate-50">
                         <div className="flex items-center justify-center gap-1">
                           <button type="button" onClick={() => viewEquipmentDetails(index)} className="p-2 text-slate-500 hover:bg-blue-100 hover:text-blue-600 rounded-full" title="View Full Details"><Eye size={16} /></button>
-                          <button type="button" onClick={() => removeEquipmentRow(index)} className="p-2 text-slate-500 hover:bg-red-100 hover:text-red-600 rounded-full" title="Remove Row" disabled={equipmentList.length <= 1}><Trash2 size={16} /></button>
+                          {!isEditMode && (
+                            <button 
+                              type="button" 
+                              onClick={() => removeEquipmentRow(index)} 
+                              className="p-2 text-slate-500 hover:bg-red-100 hover:text-red-600 rounded-full" 
+                              title="Remove Row" 
+                              disabled={equipmentList.length <= 1}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -1,5 +1,6 @@
+import json
 from datetime import datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any, Iterable
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, func, case, and_
 from fastapi import HTTPException, status
@@ -10,6 +11,7 @@ from backend.models.inward import Inward
 from backend.models.inward_equipments import InwardEquipment
 from backend.models.invitations import Invitation
 from backend.models.srfs import Srf
+from backend.models.customers import Customer
 
 # Schemas
 from backend.schemas.customer_schemas import RemarksSubmissionRequest, InwardForCustomer
@@ -22,6 +24,36 @@ class CustomerPortalService:
     def __init__(self, db: Session):
         self.db = db
 
+    @staticmethod
+    def _format_photo_paths(photos: Optional[Any]) -> List[str]:
+        if not photos:
+            return []
+
+        if isinstance(photos, str):
+            try:
+                # Attempt to load stringified JSON first
+                loaded = json.loads(photos)
+                if isinstance(loaded, list):
+                    photos_iterable: Iterable[Any] = loaded
+                else:
+                    photos_iterable = [loaded]
+            except Exception:
+                photos_iterable = [photos]
+        else:
+            photos_iterable = photos
+
+        formatted: List[str] = []
+        for photo in photos_iterable:
+            if not photo:
+                continue
+            path = str(photo).replace("\\", "/")
+            if path.startswith("http://") or path.startswith("https://"):
+                formatted.append(path)
+                continue
+            path = path.lstrip("/")
+            formatted.append(f"/{path}" if path else "")
+        return formatted
+
     # --- LISTING METHODS ---
     
     def get_firs_for_customer_list(self, customer_id: int) -> List[Inward]:
@@ -31,7 +63,7 @@ class CustomerPortalService:
             .where(
                 and_(
                     Inward.customer_id == customer_id,
-                    Inward.status == 'first_inspection_completed'
+                    Inward.status == 'created'
                 )
             )
             .order_by(Inward.date.desc())
@@ -85,7 +117,7 @@ class CustomerPortalService:
             raise HTTPException(status_code=404, detail="SRF not found or you do not have permission to access it.")
         
         # Define which statuses can be changed by the customer
-        valid_initial_statuses = ['pending', 'inward_completed', 'customer_reviewed', 'updated']
+        valid_initial_statuses = ['pending', 'inward_completed', 'reviewed', 'updated']
         if srf_to_update.status.lower() not in valid_initial_statuses:
             raise HTTPException(status_code=400, detail=f"This SRF cannot be updated from its current status: '{srf_to_update.status}'")
 
@@ -130,7 +162,7 @@ class CustomerPortalService:
             inward = self.db.scalars(stmt).first()
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied.")
-            if inward.status not in ['first_inspection_completed', 'customer_reviewed']:
+            if inward.status not in ['created','reviewed']:
                 raise HTTPException(status_code=400, detail=f"This inward is not ready for review. Current status: {inward.status}")
             
             deviation_case = case((InwardEquipment.visual_inspection_notes != "OK", 1), else_=0).desc()
@@ -143,6 +175,7 @@ class CustomerPortalService:
                     "model": eq.model, "serial_no": eq.serial_no,
                     "visual_inspection_notes": eq.visual_inspection_notes,
                     "remarks_and_decision": eq.remarks_and_decision,
+                    "photos": self._format_photo_paths(eq.photos)
                 } for eq in sorted_equipments
             ]
             return InwardForCustomer(inward_id=inward.inward_id, srf_no=inward.srf_no, date=inward.date, status=inward.status, equipments=equipment_list)
@@ -159,7 +192,7 @@ class CustomerPortalService:
             inward = self.db.scalars(stmt).first()
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied")
-            if inward.status != 'first_inspection_completed':
+            if inward.status != 'created':
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This FIR has already been reviewed or is not ready for remarks. Current status: {inward.status}")
             
             equipment_ids_to_update = {item.inward_eqp_id: item.remarks_and_decision for item in remarks_data.remarks}
@@ -172,10 +205,10 @@ class CustomerPortalService:
                     eqp.remarks_and_decision = equipment_ids_to_update.get(eqp.inward_eqp_id)
                     eqp.updated_at = datetime.utcnow()
             
-            inward.status = 'customer_reviewed'
+            inward.status = 'reviewed'
             inward.updated_at = datetime.utcnow()
             self.db.commit()
-            return {"message": "Remarks submitted successfully", "status": "customer_reviewed"}
+            return {"message": "Remarks submitted successfully", "status": "reviewed"}
         except HTTPException:
             raise
         except Exception:
@@ -188,3 +221,20 @@ class CustomerPortalService:
     
     def submit_remarks_direct_access(self, inward_id: int, remarks_data: RemarksSubmissionRequest, access_token: str = None):
         return self.submit_customer_remarks(inward_id, remarks_data, customer_id=None)
+
+    def get_all_customers_for_dropdown(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all customers with their ID and details for dropdown population.
+        """
+        # Use distinct on customer_details and select a representative customer_id
+        # Group by customer_details to ensure unique company names in the dropdown
+        stmt = (
+            select(
+                func.min(Customer.customer_id).label("customer_id"), # Select an arbitrary customer_id for the distinct customer_details
+                Customer.customer_details
+            )
+            .group_by(Customer.customer_details)
+            .order_by(Customer.customer_details)
+        )
+        customers = self.db.execute(stmt).all()
+        return [{"customer_id": c.customer_id, "customer_details": c.customer_details} for c in customers]

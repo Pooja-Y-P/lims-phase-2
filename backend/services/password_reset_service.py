@@ -11,7 +11,7 @@ from fastapi import HTTPException, BackgroundTasks
 from backend.models.users import User
 from backend.models.password_reset_token import PasswordResetToken
 from backend.core.security import hash_password
-from backend.core.email import send_email_task, get_password_reset_template
+from backend.core.email import send_email_with_logging, get_password_reset_template
 
 class PasswordResetService:
     def __init__(self, db: Session):
@@ -56,12 +56,15 @@ class PasswordResetService:
         template_data = get_password_reset_template(user.full_name, reset_link)
 
         # Send email using the correct parameters
-        await send_email_task(
+        await send_email_with_logging(
             background_tasks=background_tasks,
             subject=template_data["subject"],
             recipient=user.email,
             template_name=template_data["template_name"],
-            template_body=template_data["template_body"]
+            template_body=template_data["template_body"],
+            db=self.db, # Pass the database session for logging
+            recipient_user_id=user.user_id, # Pass the user ID for logging
+            created_by="system" # Indicate system-generated email
         )
         
         return True

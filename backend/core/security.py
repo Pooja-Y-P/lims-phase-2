@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from typing import Optional
@@ -15,8 +16,9 @@ from backend.core.config import settings
 SECRET_KEY = settings.JWT_SECRET
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
+REFRESH_TOKEN_EXPIRE_MINUTES = settings.REFRESH_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_SECRET = settings.REFRESH_TOKEN_SECRET
+LOCAL_TIMEZONE = ZoneInfo(settings.TIMEZONE)
 
 # --- Password Hashing ---
 # Create a Passlib context for hashing and verifying passwords
@@ -109,7 +111,7 @@ def create_refresh_token(data: dict) -> str:
         raise ValueError("REFRESH_TOKEN_SECRET is not configured.")
         
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.utcnow() + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire, "iat": datetime.utcnow()})
     
     encoded_jwt = jwt.encode(to_encode, REFRESH_TOKEN_SECRET, algorithm=ALGORITHM)

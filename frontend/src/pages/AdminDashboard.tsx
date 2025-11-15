@@ -17,7 +17,11 @@ interface InvitationResponse {
 }
 
 // ✅ User management table moved above AdminDashboard
-const UserManagementTable: React.FC<{ users: User[] }> = ({ users }) => (
+const UserManagementTable: React.FC<{
+  users: User[];
+  updatingUserId: number | null;
+  onToggleStatus: (userId: number, currentStatus: boolean) => void;
+}> = ({ users, updatingUserId, onToggleStatus }) => (
   <div className="border border-gray-200 rounded-lg overflow-hidden">
     <div className="p-4 bg-gray-50 border-b">
       <h3 className="text-xl font-semibold text-gray-700">System Users ({users.length})</h3>
@@ -29,6 +33,7 @@ const UserManagementTable: React.FC<{ users: User[] }> = ({ users }) => (
           <th className="p-3 font-bold text-left">Email</th>
           <th className="p-3 font-bold text-left">Role</th>
           <th className="p-3 font-bold text-left">Status</th>
+          <th className="p-3 font-bold text-right">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -47,6 +52,29 @@ const UserManagementTable: React.FC<{ users: User[] }> = ({ users }) => (
                 {u.is_active ? 'Active' : 'Inactive'}
               </span>
             </td>
+            <td className="p-3">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onToggleStatus(u.user_id, Boolean(u.is_active))}
+                  disabled={updatingUserId === u.user_id}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                    Boolean(u.is_active)
+                      ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                      : 'bg-green-100 text-green-700 hover:bg-green-200'
+                  } disabled:opacity-70 disabled:cursor-not-allowed`}
+                >
+                  {updatingUserId === u.user_id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : Boolean(u.is_active) ? (
+                    <PowerOff className="w-3 h-3" />
+                  ) : (
+                    <Power className="w-3 h-3" />
+                  )}
+                  {Boolean(u.is_active) ? 'Deactivate' : 'Activate'}
+                </button>
+              </div>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -60,6 +88,8 @@ const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -85,6 +115,46 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleToggleStatus = useCallback(
+    async (userId: number, currentStatus: boolean) => {
+      setStatusMessage(null);
+      setUpdatingUserId(userId);
+      try {
+        const response = await api.patch<User>(ENDPOINTS.USERS.UPDATE_STATUS(userId), {
+          is_active: !currentStatus,
+        });
+        const nextStatus = response.data.is_active ?? !currentStatus;
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.user_id === userId ? { ...u, is_active: nextStatus } : u
+          )
+        );
+        const displayName = response.data.full_name || response.data.username;
+        setStatusMessage({
+          type: 'success',
+          text: `${displayName} is now ${nextStatus ? 'Active' : 'Inactive'}.`,
+        });
+      } catch (e: unknown) {
+        console.error('Failed to update user status:', e);
+        if (e && typeof e === 'object' && 'isAxiosError' in e) {
+          const axiosError = e as any;
+          setStatusMessage({
+            type: 'error',
+            text: axiosError.response?.data?.detail || 'Failed to update user status.',
+          });
+        } else {
+          setStatusMessage({
+            type: 'error',
+            text: 'An unknown error occurred while updating user status.',
+          });
+        }
+      } finally {
+        setUpdatingUserId(null);
+      }
+    },
+    []
+  );
 
   const handleLogout = () => {
     if (logout) logout();
@@ -133,7 +203,26 @@ const AdminDashboard: React.FC = () => {
             <div>
               {activeTab === 'Overview' && <OverviewSection users={users} />}
               {activeTab === 'Invite Users' && <InviteUsersSection />}
-              {activeTab === 'Manage Users' && <UserManagementTable users={users} />}
+              {activeTab === 'Manage Users' && (
+                <div className="space-y-4">
+                  {statusMessage && (
+                    <div
+                      className={`px-4 py-3 rounded-md text-sm font-medium ${
+                        statusMessage.type === 'success'
+                          ? 'bg-green-50 text-green-700 border border-green-200'
+                          : 'bg-red-50 text-red-700 border border-red-200'
+                      }`}
+                    >
+                      {statusMessage.text}
+                    </div>
+                  )}
+                  <UserManagementTable
+                    users={users}
+                    updatingUserId={updatingUserId}
+                    onToggleStatus={handleToggleStatus}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -195,32 +284,58 @@ const StatsCard: React.FC<{ icon: React.ReactNode; title: string; value: number;
 
 const InviteUsersSection: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>('customer');
-  const [invitedName, setInvitedName] = useState('');
+  const [role, setRole] = useState<UserRole>('customer'); // Default to customer
+  const [invitedName, setInvitedName] = useState(''); // Contact Person for customer, Full Name for others
+  const [companyName, setCompanyName] = useState('');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const isCustomerRole = role === 'customer';
+
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email || !role || !invitedName.trim()) {
-      setInviteMessage({ type: 'error', text: 'Please fill in all required fields (name, email, role).' });
-      return;
+    setInviteMessage(null);
+
+    let payload: any = { email, role };
+
+    if (isCustomerRole) {
+      if (!email || !companyName.trim() || !companyAddress.trim() || !invitedName.trim() || !phoneNumber.trim()) {
+        setInviteMessage({ type: 'error', text: 'Please fill in all required fields for customer invitation.' });
+        return;
+      }
+      payload = {
+        ...payload,
+        company_name: companyName.trim(),
+        company_address: companyAddress.trim(),
+        invited_name: invitedName.trim(), // Contact Person
+        phone_number: phoneNumber.trim(),
+      };
+    } else {
+      if (!email || !invitedName.trim()) {
+        setInviteMessage({ type: 'error', text: 'Please fill in all required fields (Full Name, Email Address).' });
+        return;
+      }
+      payload = {
+        ...payload,
+        invited_name: invitedName.trim(), // Full Name
+      };
     }
 
     setIsInviting(true);
-    setInviteMessage(null);
 
     try {
-      const response = await api.post<InvitationResponse>(ENDPOINTS.INVITATIONS.SEND, {
-        email,
-        role,
-        invited_name: invitedName.trim(),
-      });
+      const response = await api.post<InvitationResponse>(ENDPOINTS.INVITATIONS.SEND, payload);
 
       setInviteMessage({ type: 'success', text: response.data.message || `Invitation sent successfully to ${email}!` });
+      // Reset form fields
       setEmail('');
-      setInvitedName('');
       setRole('customer');
+      setInvitedName('');
+      setCompanyName('');
+      setCompanyAddress('');
+      setPhoneNumber('');
     } catch (error) {
       console.error('Invitation failed:', error);
       if (error && typeof error === 'object' && 'isAxiosError' in error) {
@@ -251,38 +366,7 @@ const InviteUsersSection: React.FC = () => {
           </div>
         )}
 
-        <div>
-          <label htmlFor="invitedName" className="block text-sm font-medium text-gray-700">
-            Full Name
-          </label>
-          <input
-            type="text"
-            id="invitedName"
-            value={invitedName}
-            onChange={(e) => setInvitedName(e.target.value)}
-            required
-            disabled={isInviting}
-            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-            placeholder="John Doe"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-            Email Address
-          </label>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={isInviting}
-            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-            placeholder="user@example.com"
-          />
-        </div>
-
+        {/* Assign Role - Always visible and first */}
         <div>
           <label htmlFor="role" className="block text-sm font-medium text-gray-700">
             Assign Role
@@ -300,6 +384,123 @@ const InviteUsersSection: React.FC = () => {
             <option value="admin">Admin</option>
           </select>
         </div>
+
+        {/* Fields for Staff, Engineer, Admin */}
+        {!isCustomerRole && (
+          <>
+            <div>
+              <label htmlFor="invitedName" className="block text-sm font-medium text-gray-700">
+                Full Name
+              </label>
+              <input
+                type="text"
+                id="invitedName"
+                value={invitedName}
+                onChange={(e) => setInvitedName(e.target.value)}
+                required={!isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="John Doe"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required={!isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="user@example.com"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Fields for Customer Role */}
+        {isCustomerRole && (
+          <>
+            <div>
+              <label htmlFor="companyName" className="block text-sm font-medium text-gray-700">
+                Company Name
+              </label>
+              <input
+                type="text"
+                id="companyName"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="ABC Corp"
+              />
+            </div>
+            <div>
+              <label htmlFor="companyAddress" className="block text-sm font-medium text-gray-700">
+                Company Address
+              </label>
+              <input
+                type="text"
+                id="companyAddress"
+                value={companyAddress}
+                onChange={(e) => setCompanyAddress(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="123 Main St, Anytown"
+              />
+            </div>
+            <div>
+              <label htmlFor="invitedName" className="block text-sm font-medium text-gray-700">
+                Contact Person (Full Name)
+              </label>
+              <input
+                type="text"
+                id="invitedName"
+                value={invitedName}
+                onChange={(e) => setInvitedName(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div>
+              <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                id="phoneNumber"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="123-456-7890"
+              />
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                placeholder="customer@example.com"
+              />
+            </div>
+          </>
+        )}
 
         <button
           type="submit"

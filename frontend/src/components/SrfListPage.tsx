@@ -1,80 +1,103 @@
+// FILE: frontend/src/components/SrfListPage.tsx
+
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, Inbox, ChevronRight, ArrowLeft } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 
-interface CreatedInward {
+// Interface for inwards that are ready for SRF creation
+interface PendingInward {
   inward_id: number;
   srf_no: number;
   customer_name: string | null;
   date: string;
+  status: "updated";
 }
 
+// Interface for existing SRF documents
 interface SrfSummary {
   srf_id: number;
   srf_no: number;
   customer_name: string | null;
   date: string;
-  status: string | null;
+  status: "created" | "approved" | "rejected" | null;
 }
 
+// A unified interface for items displayed in the list
 interface WorkItem {
   id: number;
   type: "inward" | "srf";
   displayNumber: string;
   customer_name: string | null;
   date: string;
-  status: "created" | "inward_completed" | "approved" | "rejected";
+  status: "pending_creation" | "customer_review" | "approved" | "rejected";
 }
+
+const STATUS_KEYS = {
+  PENDING: "pending_creation",
+  REVIEW: "customer_review",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+} as const;
+
+type StatusKey = (typeof STATUS_KEYS)[keyof typeof STATUS_KEYS];
 
 export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("created");
+
+  const [activeTab, setActiveTab] = useState<StatusKey>(STATUS_KEYS.PENDING);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
       setError(null);
+
       try {
-        const [inwardsResponse, srfsResponse] = await Promise.all([
-          api.get<CreatedInward[]>(`${ENDPOINTS.STAFF.INWARDS}?status=created`),
-          api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`),
-        ]);
+        const inwardsResponse = await api.get<PendingInward[]>(
+          `${ENDPOINTS.STAFF.INWARDS}/updated`
+        );
+        const srfsResponse = await api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`);
 
-        const srfs = srfsResponse.data;
-        const inwards = inwardsResponse.data;
+        const pendingItems: WorkItem[] = inwardsResponse.data.map((inward) => ({
+          id: inward.inward_id,
+          type: "inward",
+          displayNumber: `SRF No: ${inward.srf_no}`,
+          customer_name: inward.customer_name,
+          date: inward.date,
+          status: STATUS_KEYS.PENDING,
+        }));
 
-        const workItemsList: WorkItem[] = [];
+        // 🎯 FIX 1: Add an explicit return type to the map's callback function.
+        const srfItems = srfsResponse.data
+          .map((srf): WorkItem | null => {
+            let workItemStatus: StatusKey | null = null;
 
-        inwards.forEach((inward) => {
-          const relatedSrf = srfs.find((srf) => srf.srf_no === inward.srf_no);
+            if (srf.status === "created") {
+              workItemStatus = STATUS_KEYS.REVIEW;
+            } else if (srf.status === "approved") {
+              workItemStatus = STATUS_KEYS.APPROVED;
+            } else if (srf.status === "rejected") {
+              workItemStatus = STATUS_KEYS.REJECTED;
+            }
 
-          if (!relatedSrf) {
-            workItemsList.push({
-              id: inward.inward_id,
-              type: "inward",
-              displayNumber: `SRF No: ${inward.srf_no}`,
-              customer_name: inward.customer_name,
-              date: inward.date,
-              status: "created",
-            });
-          } else {
-            const status = relatedSrf.status || "created";
-            workItemsList.push({
-              id: relatedSrf.srf_id,
-              type: "srf",
-              displayNumber: `SRF No: ${relatedSrf.srf_no}`,
-              customer_name: relatedSrf.customer_name,
-              date: relatedSrf.date,
-              status: status as WorkItem["status"],
-            });
-          }
-        });
+            if (workItemStatus) {
+              return {
+                id: srf.srf_id,
+                type: "srf" as const,
+                displayNumber: `SRF No: ${srf.srf_no}`,
+                customer_name: srf.customer_name,
+                date: srf.date,
+                status: workItemStatus,
+              };
+            }
+            return null;
+          })
+          .filter((item): item is WorkItem => item !== null);
 
-        setWorkItems(workItemsList);
+        setWorkItems([...pendingItems, ...srfItems]);
       } catch (err: any) {
         console.error("Failed to fetch data:", err);
         setError(
@@ -90,32 +113,39 @@ export const SrfListPage: React.FC = () => {
     fetchAllData();
   }, []);
 
-  const statuses = ["created", "inward_completed", "approved", "rejected"];
+  const statuses: StatusKey[] = [
+    STATUS_KEYS.PENDING,
+    STATUS_KEYS.REVIEW,
+    STATUS_KEYS.APPROVED,
+    STATUS_KEYS.REJECTED,
+  ];
 
   const groupedWorkItems = workItems.reduce(
-    (groups: Record<string, WorkItem[]>, item) => {
-      if (!groups[item.status]) groups[item.status] = [];
-      groups[item.status].push(item);
+    (groups: Partial<Record<StatusKey, WorkItem[]>>, item) => {
+      if (!groups[item.status]) {
+        groups[item.status] = [];
+      }
+      groups[item.status]!.push(item);
       return groups;
     },
     {}
   );
-
-  const statusLabels: Record<string, string> = {
-    created: "Pending SRF Creation",
-    inward_completed: "Customer Review Pending",
-    approved: "Approved",
-    rejected: "Rejected",
-  };
-
-  const tabColors: Record<string, string> = {
-    created: "text-yellow-600 border-yellow-500",
-    inward_completed: "text-blue-600 border-blue-500",
-    approved: "text-green-600 border-green-500",
-    rejected: "text-red-600 border-red-500",
-  };
-
+  
   const currentWorkItems = groupedWorkItems[activeTab] || [];
+
+  const statusLabels: Record<StatusKey, string> = {
+    [STATUS_KEYS.PENDING]: "Pending SRF Creation",
+    [STATUS_KEYS.REVIEW]: "Customer Review Pending",
+    [STATUS_KEYS.APPROVED]: "Approved",
+    [STATUS_KEYS.REJECTED]: "Rejected",
+  };
+
+  const tabColors: Record<StatusKey, string> = {
+    [STATUS_KEYS.PENDING]: "text-yellow-600 border-yellow-500",
+    [STATUS_KEYS.REVIEW]: "text-blue-600 border-blue-500",
+    [STATUS_KEYS.APPROVED]: "text-green-600 border-green-500",
+    [STATUS_KEYS.REJECTED]: "text-red-600 border-red-500",
+  };
 
   if (loading)
     return (
@@ -136,7 +166,7 @@ export const SrfListPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-10">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
-        {/* Back Button */}
+
         <div className="flex items-center mb-6">
           <button
             onClick={() => navigate("/engineer")}
@@ -147,7 +177,6 @@ export const SrfListPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8 border-b pb-5">
           <div className="bg-blue-100 p-3 rounded-full">
             <FileText className="h-8 w-8 text-blue-600" />
@@ -157,12 +186,11 @@ export const SrfListPage: React.FC = () => {
               SRF Status Overview
             </h1>
             <p className="text-sm text-gray-500">
-              View pending and processed SRFs.
+              Create new SRFs and track the status of existing ones.
             </p>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-8">
           {statuses.map((status) => (
             <button
@@ -174,15 +202,14 @@ export const SrfListPage: React.FC = () => {
                   : "text-gray-500 border-transparent hover:text-blue-600 hover:bg-gray-50"
               }`}
             >
-              {statusLabels[status]}{" "}
+              {statusLabels[status]}
               <span className="ml-1 text-gray-400 font-normal">
-                ({groupedWorkItems[status]?.length || 0})
+                ({(groupedWorkItems[status] || []).length})
               </span>
             </button>
           ))}
         </div>
 
-        {/* Work Items List */}
         <div className="space-y-3">
           {currentWorkItems.length > 0 ? (
             currentWorkItems.map((item) => (
@@ -212,9 +239,7 @@ export const SrfListPage: React.FC = () => {
           ) : (
             <div className="text-center text-gray-500 py-20">
               <Inbox className="h-16 w-16 mx-auto text-gray-400" />
-              <h3 className="mt-4 text-lg font-semibold">
-                No Items Found
-              </h3>
+              <h3 className="mt-4 text-lg font-semibold">No Items Found</h3>
               <p className="text-gray-600">
                 There are no items under{" "}
                 <span className="font-medium">
@@ -228,4 +253,6 @@ export const SrfListPage: React.FC = () => {
     </div>
   );
 };
+
+// 🎯 FIX 2: Add a default export for the component.
 export default SrfListPage;

@@ -8,6 +8,7 @@ export interface User {
   full_name: string | null;
   role: UserRole;
   token?: string;
+  refresh_token?: string;
   is_active?: boolean;
 }
 

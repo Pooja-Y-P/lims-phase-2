@@ -184,10 +184,8 @@ async def send_new_user_invitation_email(
     subject = f"Welcome to LIMS & Action Required for SRF No: {srf_no}"
     activation_link = f"{frontend_url}/activate-account?token={token}"
     
-    # === THE FIX IS HERE ===
     # Corrected the path from /report/inward/ to /customer/fir-remarks/
     direct_fir_link = f"{frontend_url}/customer/fir-remarks/{inward_id}" if inward_id else activation_link
-    # =======================
 
     template_body = {
         "title": "Welcome! Please Activate Your Account",
@@ -195,7 +193,6 @@ async def send_new_user_invitation_email(
         "email": recipient_email,
         "temporary_password": temp_password,
         "activation_link": activation_link,
-        # This variable name 'direct_link' must match your HTML template's placeholder {{ direct_link }}
         "direct_link": direct_fir_link,
         "valid_for_hours": 48
     }
@@ -223,10 +220,8 @@ async def send_existing_user_notification_email(
     """Sends a notification email to an existing customer with the correct FIR link."""
     subject = f"Action Required: First Inspection Report Ready for SRF No: {srf_no}"
     
-    # === THE FIX IS HERE ===
     # Corrected the path from /report/inward/ to /customer/fir-remarks/
     direct_fir_link = f"{frontend_url}/customer/fir-remarks/{inward_id}"
-    # =======================
     
     # This can be a fallback link to the general customer portal login
     login_link = f"{frontend_url}/login"
@@ -234,7 +229,6 @@ async def send_existing_user_notification_email(
     template_body = {
         "title": "New Inspection Report Available",
         "srf_no": srf_no,
-        # This variable name 'direct_link' must match your HTML template's placeholder {{ direct_link }}
         "direct_link": direct_fir_link,
         "login_link": login_link,
     }
@@ -243,7 +237,6 @@ async def send_existing_user_notification_email(
         background_tasks=background_tasks,
         subject=subject,
         recipient=recipient_email,
-        # This template name should match the one you sent earlier for the FIR
         template_name="inward_notification.html", 
         template_body=template_body,
         db=db,
@@ -251,7 +244,52 @@ async def send_existing_user_notification_email(
         created_by=created_by
     )
 
-# --- Other Email Functions ---
+async def send_general_invitation_email(
+    background_tasks: BackgroundTasks,
+    email: EmailStr,
+    name: str,
+    role: UserRole,
+    temporary_password: str,
+    token: str,
+    expires_hours: int,
+    frontend_url: str = settings.FRONTEND_URL,
+    db: Session = None,
+    created_by: str = "system"
+):
+    """Sends a general invitation email for any user role."""
+    subject = f"You're Invited to LIMS as a {role.value.capitalize()}!"
+    activation_link = f"{frontend_url}/activate-account?token={token}"
+
+    template_body = {
+        "title": f"Welcome to LIMS, {name}!",
+        "message": f"You have been invited to join the LIMS application as a {role.value}. "
+                   "Please use the temporary password below to log in and set your new password.",
+        "email": email,
+        "temporary_password": temporary_password,
+        "activation_link": activation_link,
+        "valid_for_hours": expires_hours,
+        "role": role.value.capitalize()
+    }
+    
+    # Use a generic invitation template, or create one if not available.
+    # For now, we can reuse new_customer_invitation.html if it's flexible enough,
+    # or create a new generic_invitation.html.
+    # Assuming new_customer_invitation.html can be adapted for now.
+    # A better approach would be to create a new template like 'generic_invitation.html'
+    # and ensure it uses the template_body variables correctly.
+    template_name = "invitation_admin.html" if role == UserRole.ADMIN else \
+                    "invitation_engineer.html" if role == UserRole.ENGINEER else \
+                    "invitation_customer.html" # Default for customer or if no specific template
+
+    return await send_email_with_logging(
+        background_tasks=background_tasks,
+        subject=subject,
+        recipient=email,
+        template_name=template_name,
+        template_body=template_body,
+        db=db,
+        created_by=created_by
+    )
 
 async def send_welcome_email(
     background_tasks: BackgroundTasks,

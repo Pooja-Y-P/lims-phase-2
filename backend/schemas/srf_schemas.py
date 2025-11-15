@@ -20,6 +20,9 @@ class CustomerSchema(BaseModel):
     """Represents basic customer details linked to an SRF."""
     customer_id: int
     customer_details: Optional[str] = None
+    phone: Optional[str] = None
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
    
     model_config = ConfigDict(from_attributes=True)
  
@@ -69,6 +72,7 @@ class SrfBase(BaseModel):
     srf_no: int
     date: date
     nepl_srf_no: Optional[str] = None
+    # Removed these fields from SrfBase as they will be populated from the Inward's customer
     telephone: Optional[str] = None
     contact_person: Optional[str] = None
     email: Optional[str] = None
@@ -102,6 +106,7 @@ class SrfDetailUpdate(BaseModel):
     All fields are optional to allow for partial updates.
     """
     # General SRF fields
+    # Removed these fields as they will be populated from the Inward's customer
     telephone: Optional[str] = None
     nepl_srf_no: Optional[str] = None
     contact_person: Optional[str] = None

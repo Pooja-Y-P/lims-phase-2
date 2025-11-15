@@ -36,6 +36,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
 
   useEffect(() => {
     filterAndSortInwards();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inwards, searchTerm, statusFilter, sortField, sortOrder]);
 
   const fetchInwards = async () => {
@@ -52,29 +53,47 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
     }
   };
 
+  // --- FIX: Corrected filtering and sorting logic to be type-safe ---
   const filterAndSortInwards = () => {
     let filtered = inwards.filter(inward => {
+      const searchTermLower = searchTerm.toLowerCase();
+      // Safely access properties that might be null/undefined
+      const srfNoString = inward.srf_no?.toString().toLowerCase() ?? '';
+      const customerDetailsString = inward.customer_details?.toLowerCase() ?? '';
+
       const matchesSearch = 
-        inward.srf_no.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-        inward.customer_details.toLowerCase().includes(searchTerm.toLowerCase());
+        srfNoString.includes(searchTermLower) ||
+        customerDetailsString.includes(searchTermLower);
       
       const matchesStatus = statusFilter === "all" || inward.status === statusFilter;
       
       return matchesSearch && matchesStatus;
     });
 
+    // Safely sort the filtered array
     filtered.sort((a, b) => {
-      let aValue = a[sortField];
-      let bValue = b[sortField];
-      
-      if (sortField === "date") {
-        aValue = new Date(aValue as string);
-        bValue = new Date(bValue as string);
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+
+      // Handle null or undefined values to prevent crashes and satisfy TypeScript
+      if (aValue == null) return 1; // Sort nulls to the end
+      if (bValue == null) return -1;
+
+      let comparison = 0;
+      if (sortField === 'date') {
+        // Create Date objects for accurate comparison
+        comparison = new Date(aValue as string).getTime() - new Date(bValue as string).getTime();
+      } else {
+        // Generic comparison for strings and numbers
+        if (aValue < bValue) {
+          comparison = -1;
+        } else if (aValue > bValue) {
+          comparison = 1;
+        }
       }
-      
-      if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
-      if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
-      return 0;
+
+      // Apply sort order
+      return sortOrder === 'desc' ? comparison * -1 : comparison;
     });
 
     setFilteredInwards(filtered);
@@ -85,7 +104,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortOrder("asc");
+      setSortOrder("desc"); // Default to descending for new columns, especially dates
     }
   };
 
@@ -102,7 +121,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case "created": return "bg-blue-100 text-blue-800";
       case "in_progress": return "bg-yellow-100 text-yellow-800";
       case "completed": return "bg-green-100 text-green-800";
@@ -186,13 +205,13 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
           >
             <option value="all">All Status</option>
             <option value="created">Created</option>
-            <option value="in_progress">In Progress</option>
+            <option value="updated">Updated</option>
+            <option value="reviewed">Reviewed</option>
             <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
           </select>
         </div>
 
-        <div className="text-right">
+        <div className="text-right self-center">
           <span className="text-sm text-gray-600">
             Showing {filteredInwards.length} of {inwards.length} records
           </span>
@@ -275,9 +294,9 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                       <span className="text-gray-800 line-clamp-2">{inward.customer_details}</span>
                     </div>
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 text-center">
                     <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full">
-                      {inward.equipments ? inward.equipments.length : 0} items
+                      {inward.equipments ? inward.equipments.length : 0}
                     </span>
                   </td>
                   <td className="p-4">
@@ -287,7 +306,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                   </td>
                   <td className="p-4">
                     <div className="flex items-center justify-center gap-2">
-                      {/* View Button */}
                       <button
                         onClick={() => handleViewInward(inward.inward_id)}
                         className="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition-colors"
@@ -295,8 +313,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                       >
                         <Eye size={18} />
                       </button>
-                      
-                      {/* Edit Button */}
                       <button
                         onClick={() => handleEditInward(inward.inward_id)}
                         className="p-2 text-green-600 hover:bg-green-100 rounded-full transition-colors"
@@ -304,8 +320,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                       >
                         <Edit size={18} />
                       </button>
-                      
-                      {/* Print Stickers Button */}
                       <button
                         onClick={() => handlePrintStickers(inward.inward_id)}
                         className="p-2 text-purple-600 hover:bg-purple-100 rounded-full transition-colors"
@@ -322,7 +336,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
         </table>
       </div>
 
-      {/* Summary Stats */}
       {inwards.length > 0 && (
         <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
           <div className="text-center">
@@ -342,10 +355,10 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
             <div className="text-sm text-gray-600">In Progress</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">
+            <div className="text-2xl font-bold text-blue-600">
               {inwards.filter(i => i.status === 'created').length}
             </div>
-            <div className="text-sm text-gray-600">Pending</div>
+            <div className="text-sm text-gray-600">Created</div>
           </div>
         </div>
       )}

@@ -18,7 +18,7 @@ from backend.schemas.customer_schemas import (
     AccountActivationRequest
 )
 from backend.schemas.srf_schemas import SrfApiResponse, SrfResponse # Import SrfResponse for the new endpoint
-
+from backend.schemas.customer_schemas import CustomerDropdownResponse # Import the new schema
 
 router = APIRouter(prefix="/portal", tags=["Customer Portal"])
 logger = logging.getLogger(__name__)
@@ -135,3 +135,20 @@ async def activate_customer_account(
     service = CustomerPortalService(db)
     token = service.activate_account_and_set_password(request.token, request.password)
     return {"access_token": token, "token_type": "bearer"}
+
+@router.get("/customers/dropdown", response_model=List[CustomerDropdownResponse])
+async def get_customers_for_dropdown(
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user) # Admin/Engineer can access this
+):
+    """
+    Retrieves a list of all customers with their ID and details for dropdown population.
+    Accessible by authenticated users (e.g., Admin, Engineer).
+    """
+    # Ensure only authorized roles can access this endpoint if needed,
+    # though for an engineer portal, it's likely fine for engineers to access.
+    # if current_user.role.lower() not in ['admin', 'engineer']:
+    #     raise HTTPException(status_code=403, detail="Not authorized to access customer list.")
+
+    service = CustomerPortalService(db)
+    return service.get_all_customers_for_dropdown()

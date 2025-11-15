@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api, ENDPOINTS } from "../api/config";
+import { api, ENDPOINTS, BACKEND_ROOT_URL } from "../api/config"; // Import BACKEND_ROOT_URL
 import { InwardDetail, ViewInwardEquipment } from "../types/inward";
-import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit } from "lucide-react";
+import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit, X } from "lucide-react";
 import { StickerSheet } from "./StickerSheet";
 
 export const ViewInward: React.FC = () => {
@@ -12,6 +12,28 @@ export const ViewInward: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showStickerSheet, setShowStickerSheet] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [activePhotos, setActivePhotos] = useState<string[]>([]);
+
+  const resolvePhotoUrl = (photo: string) => {
+    if (!photo) return "";
+    if (/^https?:\/\//i.test(photo)) return photo;
+    const normalized = photo.startsWith("/") ? photo : `/${photo}`;
+    return `${BACKEND_ROOT_URL}${normalized}`;
+  };
+
+  const openImageModal = (photos: string[]) => {
+    const resolvedPhotos = photos
+      .map(resolvePhotoUrl)
+      .filter((url): url is string => Boolean(url));
+    setActivePhotos(resolvedPhotos);
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    setActivePhotos([]);
+    setShowImageModal(false);
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -130,6 +152,7 @@ export const ViewInward: React.FC = () => {
                   <th className="p-4 text-sm font-semibold text-gray-600">Serial No</th>
                   <th className="p-4 text-sm font-semibold text-gray-600">Quantity</th>
                   <th className="p-4 text-sm font-semibold text-gray-600">Range</th>
+                  <th className="p-4 text-sm font-semibold text-gray-600">Image(s)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -141,6 +164,30 @@ export const ViewInward: React.FC = () => {
                     <td className="p-4 text-gray-500">{eq.serial_no || 'N/A'}</td>
                     <td className="p-4 text-gray-500">{eq.quantity}</td>
                     <td className="p-4 text-gray-500">{eq.range || 'N/A'}</td>
+                    <td className="p-4">
+                      {eq.photos && eq.photos.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {eq.photos.map((photo, index) => (
+                            <button
+                              key={`${photo}-${index}`}
+                              type="button"
+                              className="relative h-16 w-16 overflow-hidden rounded border border-gray-200 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              onClick={() => openImageModal(eq.photos ?? [])}
+                              title="Click to view full image"
+                            >
+                              <img
+                                src={resolvePhotoUrl(photo)}
+                                alt={`Equipment image ${index + 1}`}
+                                className="h-full w-full object-cover"
+                              />
+                              <span className="sr-only">View image {index + 1}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">Not Available</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -155,6 +202,36 @@ export const ViewInward: React.FC = () => {
           inwardStatus={inward.status}
           onClose={() => setShowStickerSheet(false)} 
         />
+      )}
+
+      {/* Image Modal */}
+      {showImageModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold">Equipment Images</h3>
+              <button onClick={closeImageModal} className="text-gray-500 hover:text-gray-700">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-grow">
+              {activePhotos.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {activePhotos.map((url, index) => (
+                    <img
+                      key={index}
+                      src={url}
+                      alt={`Equipment attachment ${index + 1}`}
+                      className="max-w-full h-auto rounded-md shadow-sm"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-gray-600">No images available.</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

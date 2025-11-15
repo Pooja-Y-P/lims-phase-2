@@ -132,6 +132,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         ref_manufacturer_manual: srfData.ref_manufacturer_manual,
         ref_customer_requirement: srfData.ref_customer_requirement,
         turnaround_time: srfData.turnaround_time,
+        remarks: srfData.remarks, // Always include remarks from the state
       };
       if (status === 'rejected' && remarks) {
         payload.remarks = remarks;
@@ -146,7 +147,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         throw new Error(errorData.detail || `Failed to ${status} SRF`);
       }
      
-      const updatedSrfData: SrfData = { ...srfData, status, ...(status === 'rejected' && { remarks }) };
+      // Update local state correctly based on the action
+      const updatedSrfData: SrfData = { 
+        ...srfData,
+        status,
+        remarks: status === 'rejected' ? remarks : srfData.remarks };
       setSrfData(updatedSrfData);
       onStatusChange(srfData.srf_id, status); // Notify parent component of the change
      
@@ -256,6 +261,19 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                 <div><strong className="text-slate-900 text-base font-semibold">2. Statement of conformity required?</strong><div className="flex gap-6 mt-3 text-slate-700"><label className="flex items-center gap-3 cursor-pointer"><input type="radio" checked={srfData.statement_of_conformity === true} onChange={() => handleSrfChange("statement_of_conformity", true)} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> YES</label><label className="flex items-center gap-3 cursor-pointer"><input type="radio" checked={srfData.statement_of_conformity === false} onChange={() => handleSrfChange("statement_of_conformity", false)} disabled={isReadOnly} className="h-4 w-4 text-indigo-600 focus:ring-indigo-500" /> NO</label></div>{srfData.statement_of_conformity && (<div className="mt-4 pl-6 border-l-2 border-slate-200"><strong className="text-slate-800 text-base font-semibold">2.1 Decision Rule:</strong><div className="flex flex-col gap-3 mt-3 text-slate-700"><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_iso_is_doc} onChange={e => handleSrfChange("ref_iso_is_doc", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. ISO/IS Doc. Standard</label><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_manufacturer_manual} onChange={e => handleSrfChange("ref_manufacturer_manual", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. manufacturer Manual</label><label className="flex items-center gap-3 cursor-pointer w-fit"><input type="checkbox" checked={srfData.ref_customer_requirement} onChange={e => handleSrfChange("ref_customer_requirement", e.target.checked)} disabled={isReadOnly} className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" /> Ref. Customer Requirement</label></div></div>)}</div>
                 <div><strong className="text-slate-900 text-base font-semibold">3. Turnaround time:</strong><input className={`mt-2 w-full max-w-sm ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`} value={srfData.turnaround_time || ""} onChange={e => handleSrfChange("turnaround_time", e.target.value)} placeholder="e.g., 7 business days" readOnly={isReadOnly} /></div>
             </div>
+            {/* --- ADDED: Additional Notes Section --- */}
+            <div className="p-6 pt-0">
+                <strong className="text-slate-900 text-base font-semibold">4. Additional Notes:</strong>
+                <p className="text-sm text-slate-500 mt-1 mb-2">Any other specific instructions or comments for our team can be added here.</p>
+                <textarea
+                    rows={3}
+                    className={`w-full ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`}
+                    value={srfData.remarks || ""}
+                    onChange={(e) => handleSrfChange("remarks", e.target.value)}
+                    placeholder="e.g., 'Please handle with extra care', 'Call before delivery'"
+                    readOnly={isReadOnly}
+                />
+            </div>
         </section>
  
         <section className="border border-slate-200 rounded-xl">
@@ -291,4 +309,3 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
 };
  
 export default CustomerSrfDetailView;
- 

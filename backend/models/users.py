@@ -50,10 +50,7 @@ class User(Base):
     customer: Mapped["Customer"] = relationship(back_populates="users")
     
     # 2. Inwards (One-to-Many - Multiple FKs)
-    inwards_received: Mapped[List["Inward"]] = relationship(
-        foreign_keys="[Inward.received_by]", 
-        back_populates="receiver"
-    )
+    # Removed inwards_received as received_by is no longer a ForeignKey
     inwards_created: Mapped[List["Inward"]] = relationship(
         foreign_keys="[Inward.created_by]", 
         back_populates="creator"

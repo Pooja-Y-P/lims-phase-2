@@ -6,12 +6,13 @@ from typing import List, Dict, Any, Optional
 
 from fastapi import BackgroundTasks
 from sqlalchemy import select, and_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.models.delayed_email_tasks import DelayedEmailTask
 from backend.models.inward import Inward
 from backend.models.users import User
 from backend.core.email import get_reminder_email_template, send_email_task
+from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,10 +25,11 @@ class DelayedEmailService:
         inward_id: int,
         creator_id: int,
         recipient_email: Optional[str] = None,
-        delay_hours: int = 24
+        delay_minutes: Optional[int] = None
     ) -> DelayedEmailTask:
         """Schedule a delayed email task."""
-        scheduled_time = datetime.now(timezone.utc) + timedelta(hours=delay_hours)
+        delay_minutes = delay_minutes or settings.DELAYED_EMAIL_DELAY_MINUTES
+        scheduled_time = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
         task = DelayedEmailTask(
             inward_id=inward_id,
             recipient_email=recipient_email,
@@ -39,6 +41,84 @@ class DelayedEmailService:
         # to ensure both Notification and DelayedEmailTask are saved together.
         return task
 
+    async def process_due_tasks(self, background_tasks: Optional[BackgroundTasks] = None) -> int:
+        """
+        Automatically send any delayed email tasks whose scheduled time has passed.
+        Returns the count of tasks processed.
+        """
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(DelayedEmailTask)
+            .options(
+                selectinload(DelayedEmailTask.inward).selectinload(Inward.customer)
+            )
+            .where(
+                and_(
+                    DelayedEmailTask.scheduled_at <= now,
+                    DelayedEmailTask.is_sent == False,
+                    DelayedEmailTask.is_cancelled == False
+                )
+            )
+            .order_by(DelayedEmailTask.scheduled_at.asc())
+        )
+        due_tasks = self.db.scalars(stmt).all()
+
+        if not due_tasks:
+            return 0
+
+        created_background_tasks = False
+        if background_tasks is None:
+            background_tasks = BackgroundTasks()
+            created_background_tasks = True
+
+        # Import locally to avoid circular dependencies at module load time.
+        from backend.services.inward_services import InwardService
+
+        inward_service = InwardService(self.db)
+        processed_count = 0
+
+        for task in due_tasks:
+            try:
+                recipient_email = task.recipient_email
+                if not recipient_email:
+                    inward = task.inward
+                    if inward and inward.customer and inward.customer.email:
+                        recipient_email = inward.customer.email
+                    else:
+                        logger.warning(
+                            "Skipping delayed email task %s: no recipient email available",
+                            task.id
+                        )
+                        continue
+
+                response = await inward_service.process_customer_notification(
+                    inward_id=task.inward_id,
+                    creator_id=task.created_by,
+                    customer_email=recipient_email,
+                    send_later=False,
+                    background_tasks=background_tasks
+                )
+
+                if response:
+                    task.recipient_email = recipient_email
+                    task.is_sent = True
+                    task.sent_at = datetime.now(timezone.utc)
+                    processed_count += 1
+            except Exception as exc:
+                logger.error(
+                    "Error auto-sending delayed email task %s: %s",
+                    task.id,
+                    exc,
+                    exc_info=True
+                )
+
+        if processed_count:
+            self.db.commit()
+            if created_background_tasks:
+                await background_tasks()
+
+        return processed_count
+
     # === THIS IS THE NEW METHOD THAT WAS MISSING ===
     async def get_all_pending_tasks(self) -> List[Dict[str, Any]]:
         """
@@ -46,6 +126,7 @@ class DelayedEmailService:
         This is what the Engineer Portal should see.
         """
         try:
+            await self.process_due_tasks()
             now = datetime.now(timezone.utc)
             stmt = (
                 select(DelayedEmailTask, Inward.srf_no, Inward.customer_details)
@@ -82,6 +163,7 @@ class DelayedEmailService:
     # This method can be kept if you need it elsewhere, but the portal uses the one above.
     async def get_pending_tasks_for_user(self, creator_id: int) -> List[Dict[str, Any]]:
         """Get pending email tasks for a specific user with countdown info."""
+        await self.process_due_tasks()
         stmt = (
             select(DelayedEmailTask, Inward)
             .join(Inward, DelayedEmailTask.inward_id == Inward.inward_id)
@@ -147,6 +229,7 @@ class DelayedEmailService:
 
     async def send_reminder_emails(self, background_tasks: BackgroundTasks):
         """Send reminder emails for tasks that are about to expire."""
+        await self.process_due_tasks(background_tasks=background_tasks)
         overdue_tasks = await self.get_overdue_tasks()
         tasks_by_creator: Dict[int, List[DelayedEmailTask]] = {}
         for task in overdue_tasks:

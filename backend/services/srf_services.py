@@ -10,7 +10,8 @@ from backend.models.srfs import Srf
 from backend.models.srf_equipments import SrfEquipment
 from backend.models.inward_equipments import InwardEquipment
 from backend.schemas.user_schemas import User as UserSchema
- 
+from backend.models.customers import Customer
+
 class SrfService:
     def __init__(self, db: Session):
         self.db = db
@@ -21,7 +22,7 @@ class SrfService:
         This version now includes inwards that have completed first inspection.
         """
         # === FIX 1: Allow more statuses to be selected for SRF creation ===
-        allowed_statuses = ['created', 'first_inspection_completed']
+        allowed_statuses = ['updated']
         stmt = (
             select(Inward)
             .options(selectinload(Inward.equipments))
@@ -63,7 +64,7 @@ class SrfService:
             raise HTTPException(status_code=404, detail="Inward not found")
        
         # === FIX 2: Allow SRF creation for 'created' OR 'first_inspection_completed' ===
-        allowed_statuses = ['created', 'first_inspection_completed']
+        allowed_statuses = ['updated']
         if inward.status not in allowed_statuses:
             raise HTTPException(
                 status_code=400, 
@@ -75,14 +76,19 @@ class SrfService:
             # Using 409 Conflict is more specific for "already exists" errors
             raise HTTPException(status_code=409, detail="SRF already exists for this inward. Please refresh the list.")
        
+        # Fetch customer details from the inward's customer_id
+        customer = self.db.get(Customer, inward.customer_id)
+        if not customer:
+            raise HTTPException(status_code=400, detail="Associated customer not found for this inward.")
+
         new_srf = Srf(
             inward_id=inward_id,
             srf_no=inward.srf_no,
             date=srf_data.get('date', inward.date),
-            telephone=srf_data.get('telephone'),
-            contact_person=srf_data.get('contact_person'),
-            email=srf_data.get('email'),
-            certificate_issue_name=srf_data.get('certificate_issue_name'),
+            # The following fields are now derived from the inward.customer relationship
+            # and are not directly set on SRF creation.
+            # They will be accessed via srf.inward.customer in the frontend.
+            certificate_issue_name=srf_data.get('certificate_issue_name', customer.customer_details),
             status='created'
         )
         self.db.add(new_srf)
@@ -107,55 +113,27 @@ class SrfService:
             )
             self.db.add(srf_eq)
            
-        inward.status = 'srf_created'
+        # inward.status = 'srf_created'
        
         self.db.commit()
         self.db.refresh(new_srf)
         return new_srf
    
-    def get_srf_by_id(self, srf_id: int) -> Dict[str, Any]:
-        """Gets detailed information for a single SRF."""
-        srf = self.db.get(Srf, srf_id)
+    def get_srf_by_id(self, srf_id: int) -> Srf:
+        """Gets detailed information for a single SRF, eager loading inward and customer."""
+        srf = self.db.scalars(
+            select(Srf)
+            .options(
+                selectinload(Srf.inward).selectinload(Inward.customer),
+                selectinload(Srf.equipments).selectinload(SrfEquipment.inward_equipment)
+            )
+            .where(Srf.srf_id == srf_id)
+        ).first()
+       
         if not srf:
             raise HTTPException(status_code=404, detail="SRF not found")
        
-        inward = self.db.get(Inward, srf.inward_id)
-       
-        equipment_stmt = (
-            select(SrfEquipment, InwardEquipment)
-            .join(InwardEquipment, SrfEquipment.inward_eqp_id == InwardEquipment.inward_eqp_id)
-            .where(SrfEquipment.srf_id == srf_id)
-        )
-       
-        equipment_details = [
-            {
-                "srf_eqp_id": srf_eq.srf_eqp_id,
-                "inward_eqp_id": srf_eq.inward_eqp_id,
-                "nepl_id": inward_eq.nepl_id,
-                "material_description": inward_eq.material_description,
-                "make": inward_eq.make,
-                "model": inward_eq.model,
-                "serial_no": inward_eq.serial_no,
-                "unit": srf_eq.unit,
-                "no_of_calibration_points": srf_eq.no_of_calibration_points,
-                "mode_of_calibration": srf_eq.mode_of_calibration,
-            }
-            for srf_eq, inward_eq in self.db.execute(equipment_stmt).all()
-        ]
-       
-        return {
-            "srf_id": srf.srf_id,
-            "inward_id": srf.inward_id,
-            "srf_no": srf.srf_no,
-            "date": srf.date,
-            "telephone": srf.telephone,
-            "contact_person": srf.contact_person,
-            "email": srf.email,
-            "certificate_issue_name": srf.certificate_issue_name,
-            "status": srf.status,
-            "customer_details": inward.customer_details if inward else None,
-            "equipments": equipment_details
-        }
+        return srf
  
     def update_srf(self, srf_id: int, update_data: Dict[str, Any]):
         """Updates an existing SRF and its associated equipment details."""
@@ -163,8 +141,15 @@ class SrfService:
         if not srf:
             raise HTTPException(status_code=404, detail="SRF not found")
  
+        # Filter out fields that are now derived from inward.customer
+        updatable_fields = [
+            "nepl_srf_no", "certificate_issue_name", "status",
+            "calibration_frequency", "statement_of_conformity",
+            "ref_iso_is_doc", "ref_manufacturer_manual",
+            "ref_customer_requirement", "turnaround_time", "remarks"
+        ]
         for field, value in update_data.items():
-            if field != 'equipment_details' and hasattr(srf, field):
+            if field in updatable_fields and hasattr(srf, field):
                 setattr(srf, field, value)
        
         equipment_details_payload = update_data.get('equipment_details')

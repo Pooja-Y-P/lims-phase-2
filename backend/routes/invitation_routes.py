@@ -34,6 +34,9 @@ async def send_invitation(
             email=invitation_request.email,
             role=invitation_request.role,
             invited_name=invitation_request.invited_name,
+            company_name=invitation_request.company_name,
+            company_address=invitation_request.company_address,
+            phone_number=invitation_request.phone_number,
             created_by=current_user.user_id,
             background_tasks=background_tasks,
             customer_id=invitation_request.customer_id

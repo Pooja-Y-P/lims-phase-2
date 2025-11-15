@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../api/config';
-import { Save, ArrowLeft, CheckCircle, AlertTriangle, FileText, Calendar, Package, ChevronRight, Building, MessageSquare } from 'lucide-react';
+import { api, BACKEND_ROOT_URL } from '../api/config';
+import { Save, ArrowLeft, CheckCircle, AlertTriangle, FileText, Calendar, Package, ChevronRight, Building, MessageSquare, X,Camera } from 'lucide-react';
 
 // --- Interfaces are unchanged ---
 interface EquipmentForRemarks {
@@ -13,6 +13,7 @@ interface EquipmentForRemarks {
   serial_no: string;
   visual_inspection_notes: string | null;
   remarks_and_decision: string | null;
+  photos?: string[];
 }
 
 interface InwardForRemarks {
@@ -53,6 +54,8 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
   const [saving, setSaving] = useState(false);
   const [customerRemarks, setCustomerRemarks] = useState<{ [key: number]: string }>({});
   const [error, setError] = useState<string | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [activePhotos, setActivePhotos] = useState<string[]>([]);
 
   const fetchInwardDetails = useCallback(async () => {
     if (!inwardId) return;
@@ -78,6 +81,42 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       setLoading(false);
     }
   }, [inwardId, navigate, directAccess, token]);
+
+  const sanitizePhotoPath = (path: string) => {
+    if (!path) return '';
+    const sanitized = path.replace(/\\/g, '/');
+    if (/^https?:\/\//i.test(sanitized)) {
+      return sanitized;
+    }
+    const trimmed = sanitized.replace(/^\/+/, '');
+    return trimmed ? `/${trimmed}` : '';
+  };
+
+  const resolvePhotoUrl = (path: string) => {
+    const normalized = sanitizePhotoPath(path);
+    if (!normalized) return '';
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    return `${BACKEND_ROOT_URL}${normalized}`;
+  };
+
+  const openImageModal = (photos?: string[]) => {
+    if (!photos || photos.length === 0) {
+      return;
+    }
+    const resolved = photos
+      .map(resolvePhotoUrl)
+      .filter((url): url is string => Boolean(url));
+    if (resolved.length === 0) {
+      return;
+    }
+    setActivePhotos(resolved);
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    setActivePhotos([]);
+    setShowImageModal(false);
+  };
 
   useEffect(() => {
     fetchInwardDetails();
@@ -159,11 +198,11 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
   const nonDeviatedEquipment = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes === 'OK');
 
   return (
-    <div className="min-h-screen bg-slate-100 py-12 sm:py-16">
-      <div className="max-w-6xl mx-auto px-4">
-        
-        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden">
-          
+    <>
+      <div className="min-h-screen bg-slate-100 py-12 sm:py-16">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden">
+            
           <header className="bg-slate-800 px-6 py-5 sm:px-8">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -244,6 +283,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                               <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NEPL ID</th>
                               <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Make / Model</th>
                               <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                              <th scope="col" className="w-1/5 px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Images</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-200">
@@ -259,9 +299,23 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                                       Deviation Noted
                                     </span>
                                   </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    {equipment.photos && equipment.photos.length > 0 ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => openImageModal(equipment.photos)}
+                                        className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 transition-colors text-xs font-semibold"
+                                      >
+                                        <Camera size={16} />
+                                        View Images ({equipment.photos.length})
+                                      </button>
+                                    ) : (
+                                      <span className="text-slate-400 text-xs">Not Available</span>
+                                    )}
+                                  </td>
                                 </tr>
                                 <tr className="bg-slate-50/50">
-                                  <td colSpan={4} className="p-4 sm:p-6 border-l-4 border-orange-500">
+                                  <td colSpan={5} className="p-4 sm:p-6 border-l-4 border-orange-500">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                       <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
                                         <h4 className="font-semibold text-amber-900 text-sm flex items-center gap-2">
@@ -312,6 +366,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">NEPL ID</th>
                               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider hidden sm:table-cell">Make / Model</th>
                               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Images</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-200">
@@ -326,6 +381,34 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                                     No Issues
                                   </span>
                                 </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  {equipment.photos && equipment.photos.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2">
+                                      {equipment.photos.map((photo, idx) => {
+                                        const resolved = resolvePhotoUrl(photo);
+                                        if (!resolved) return null;
+                                        return (
+                                          <button
+                                            key={`${photo}-${idx}`}
+                                            type="button"
+                                            className="h-14 w-14 overflow-hidden rounded border border-slate-200 hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            onClick={() => openImageModal(equipment.photos)}
+                                            title="Click to view full image"
+                                          >
+                                            <img
+                                              src={resolved}
+                                              alt={`Equipment image ${idx + 1}`}
+                                              className="h-full w-full object-cover"
+                                            />
+                                            <span className="sr-only">View image {idx + 1}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 text-xs">Not Available</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -336,24 +419,51 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                 )}
               </div>
 
-              {!isAlreadyReviewed && deviatedEquipment.length > 0 && (
-                <div className="mt-10 pt-6 border-t border-slate-200 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-bold text-lg px-8 py-3 rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                  >
-                    <Save size={22} />
-                    <span>{saving ? 'Submitting...' : 'Submit Final Review'}</span>
-                  </button>
-                </div>
-              )}
+              <div className="mt-10 pt-6 border-t border-slate-200 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-bold text-lg px-8 py-3 rounded-lg transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                >
+                  <Save size={22} />
+                  <span>{saving ? 'Submitting...' : 'Submit Final Review'}</span>
+                </button>
+              </div>
+
             </form>
           </main>
         </div>
       </div>
     </div>
-  );
+
+      {showImageModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800">Equipment Images</h3>
+              <button
+                type="button"
+                onClick={closeImageModal}
+                className="text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-4">
+              {activePhotos.map((photo, index) => (
+                <img
+                  key={`${photo}-${index}`}
+                  src={photo}
+                  alt={`Equipment attachment ${index + 1}`}
+                  className="w-full rounded-lg shadow-sm"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+);
 };
 
 export default CustomerRemarksPortal;

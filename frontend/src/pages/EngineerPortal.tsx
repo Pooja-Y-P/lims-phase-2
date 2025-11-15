@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, FileCheck } from "lucide-react";
+import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, Download } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { User } from "../types";
@@ -16,7 +16,9 @@ import EnhancedSrfManagement from "../components/EnhancedSrfManagement";
 import { SrfDetailPage } from "../components/SrfDetailPage"; 
 import { DelayedEmailManager } from "../components/DelayedEmailManager";
 import { FailedNotificationsManager } from "../components/FailedNotificationManager";
-import { ReviewedFirsPage } from "../components/ReviewedFirsPage";
+import ExportInwardPage from "../components/ExportInwardPage";
+import SrfListPage from "../components/SrfListPage";
+// import { ReviewedFirsPage } from "../components/ReviewedFirsPage";
 
 const CertificatesPage = () => (
   <div className="p-8 bg-white rounded-2xl shadow-lg">Certificates Page Content</div>
@@ -149,19 +151,18 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         badge: availableDrafts.length
       },
       {
-        label: "Reviewed FIRs",
-        description: "View customer feedback and update inwards",
-        icon: <FileCheck className="h-8 w-8" />,
-        route: "reviewed-firs",
-        colorClasses: "bg-gradient-to-r from-teal-500 to-cyan-600",
-        badge: reviewedFirCount
-      },
-      {
         label: "View & Update Inward",
         description: "Manage existing inward entries and SRFs",
         icon: <Wrench className="h-8 w-8" />,
         route: "view-inward",
         colorClasses: "bg-gradient-to-r from-cyan-500 to-blue-600",
+      },
+      {
+        label: "Export Inward",
+        description: "Filter and export updated inward records",
+        icon: <Download className="h-8 w-8" />,
+        route: "export-inward",
+        colorClasses: "bg-gradient-to-r from-indigo-500 to-purple-600",
       },
       {
         label: "SRF Management",
@@ -278,10 +279,11 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           <Route path="edit-inward/:id" element={<InwardForm initialDraftId={null} />} />
           <Route path="print-stickers/:id" element={<PrintStickers />} />
           
-          <Route path="srfs" element={<EnhancedSrfManagement />} />
+          <Route path="export-inward" element={<ExportInwardPage />} />
+          <Route path="srfs" element={<SrfListPage />} />
           <Route path="srfs/:srfId" element={<SrfDetailPage />} />
           
-          <Route path="reviewed-firs" element={<ReviewedFirsPage />} />
+          {/* <Route path="reviewed-firs" element={<ReviewedFirsPage />} /> */}
           
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="deviations" element={<DeviationPage />} />

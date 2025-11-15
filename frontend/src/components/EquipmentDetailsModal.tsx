@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X } from 'lucide-react';
 import { EquipmentDetail } from '../types/inward';
+import { BACKEND_ROOT_URL } from '../api/config';
 
 interface EquipmentDetailsModalProps {
   equipment: EquipmentDetail;
@@ -8,6 +9,21 @@ interface EquipmentDetailsModalProps {
 }
 
 export const EquipmentDetailsModal: React.FC<EquipmentDetailsModalProps> = ({ equipment, onClose }) => {
+  const existingPhotoUrls = useMemo(() => {
+    if (!equipment.existingPhotoUrls || equipment.existingPhotoUrls.length === 0) {
+      return [];
+    }
+    return equipment.existingPhotoUrls
+      .map((photo) => {
+        if (!photo) return '';
+        const sanitized = photo.replace(/\\/g, '/');
+        if (/^https?:\/\//i.test(sanitized)) return sanitized;
+        const normalized = sanitized.startsWith('/') ? sanitized : `/${sanitized}`;
+        return `${BACKEND_ROOT_URL}${normalized}`;
+      })
+      .filter(Boolean);
+  }, [equipment.existingPhotoUrls]);
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-auto">
@@ -115,6 +131,41 @@ export const EquipmentDetailsModal: React.FC<EquipmentDetailsModalProps> = ({ eq
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {existingPhotoUrls.length > 0 && (
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Existing Photos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {existingPhotoUrls.map((url, index) => (
+                  <div key={index} className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                    <img
+                      src={url}
+                      alt={`Existing equipment photo ${index + 1}`}
+                      className="w-full h-48 object-cover bg-gray-100"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {equipment.photoPreviews && equipment.photoPreviews.length > 0 && (
+            <div className="border-t pt-6 mt-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Attached Photos</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {equipment.photoPreviews.map((preview, index) => (
+                  <div key={index} className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                    <img
+                      src={preview}
+                      alt={`Equipment photo preview ${index + 1}`}
+                      className="w-full h-48 object-cover bg-gray-100"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-3">These previews reflect the files you have attached and will be uploaded when the form is submitted.</p>
             </div>
           )}
         </div>

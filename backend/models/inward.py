@@ -24,7 +24,7 @@ class Inward(Base):
     customer_dc_date = Column(String(255))
     customer_details = Column(String(255))
     
-    received_by = Column(Integer, ForeignKey("users.user_id"), index=True)
+    received_by = Column(String(255), nullable=False) # Changed to String, removed ForeignKey
     created_by = Column(Integer, ForeignKey("users.user_id"))
     updated_by = Column(Integer, ForeignKey("users.user_id"), nullable=True)
     
@@ -39,7 +39,7 @@ class Inward(Base):
 
     # Relationships
     customer: Mapped["Customer"] = relationship("Customer")
-    receiver: Mapped["User"] = relationship("User", foreign_keys=[received_by], back_populates="inwards_received")
+    # Removed 'receiver' relationship as 'received_by' is no longer a ForeignKey to 'users'
     creator: Mapped["User"] = relationship("User", foreign_keys=[created_by], back_populates="inwards_created")
     updater: Mapped["User"] = relationship("User", foreign_keys=[updated_by], back_populates="inwards_updated")
     
@@ -47,5 +47,3 @@ class Inward(Base):
     srf: Mapped["Srf"] = relationship("Srf", back_populates="inward", uselist=False, cascade="all, delete-orphan")
     notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="inward", cascade="all, delete-orphan")
     delayed_tasks: Mapped[List["DelayedEmailTask"]] = relationship("DelayedEmailTask", back_populates="inward", cascade="all, delete-orphan")
-
-    customer: Mapped["Customer"] = relationship("Customer")

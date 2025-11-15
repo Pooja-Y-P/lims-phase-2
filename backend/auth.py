@@ -59,5 +59,6 @@ def get_current_user(
     # Create the Pydantic model from the database object
     user_response = UserResponse.from_orm(user)
     user_response.token = token
-    
+    user_response.refresh_token = None
+
     return user_response

@@ -34,6 +34,7 @@ class EquipmentForCustomer(BaseModel):
     # Also add visual_inspection_notes so the frontend knows what is deviated
     visual_inspection_notes: Optional[str] = None
     remarks_and_decision: Optional[str] = None
+    photos: Optional[List[str]] = None
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -58,3 +59,20 @@ class InwardListItemForCustomer(BaseModel):
 class CustomerInwardListResponse(BaseModel):
     """The response model for the list of a customer's inwards."""
     inwards: List[InwardListItemForCustomer]
+
+class CustomerSchema(BaseModel):
+    """Schema for customer data, including contact details."""
+    customer_id: int
+    customer_details: Optional[str] = None
+    phone: Optional[str] = None
+    contact_person: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CustomerDropdownResponse(BaseModel):
+    """Schema for customer data to be used in dropdowns."""
+    customer_id: int
+    customer_details: str
+
+    model_config = ConfigDict(from_attributes=True)

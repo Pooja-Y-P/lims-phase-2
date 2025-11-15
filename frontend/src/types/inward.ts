@@ -23,6 +23,8 @@ export interface EquipmentDetail {
   barcode_image?: string;
   qrcode_image?: string;
   photos?: File[];
+  photoPreviews?: string[];
+  existingPhotoUrls?: string[];
   
   // This field holds the customer's feedback
   remarks_and_decision?: string | null;
@@ -40,6 +42,13 @@ export interface ViewInwardEquipment {
   quantity: number;
   visual_inspection_notes?: string | null;
   photos?: string[];
+  calibration_by?: string;
+  supplier?: string;
+  out_dc?: string;
+  in_dc?: string;
+  nextage_contract_reference?: string;
+  qr_code?: string;
+  barcode?: string;
   status?: string;
 
   // FIX: Changed 'remarks' to 'remarks_and_decision' and allowed null
@@ -51,7 +60,8 @@ export interface InwardForm {
   srf_no: string;
   date: string;
   customer_dc_date: string;
-  customer_details: string;
+  customer_id: number | null; // Added customer_id
+  customer_details: string; // Kept for display purposes
   receiver: string;
   status: string;
 }
@@ -62,6 +72,7 @@ export interface InwardDetail {
   srf_no: number | string;
   date: string;
   customer_dc_date?: string;
+  customer_id: number; // Added customer_id
   customer_details: string;
   status: string;
   receiver?: string;

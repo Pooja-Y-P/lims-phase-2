@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from backend.models.users import User 
 from typing import List, Optional 
+from backend.services.token_service import revoke_refresh_tokens_for_user
 # Import for the purpose of full structure, although not directly used here
 from fastapi.security import OAuth2PasswordRequestForm 
 
@@ -49,6 +50,28 @@ def get_all_users(db: Session) -> List[User]:
 def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
     """Retrieves a user by their ID."""
     return db.query(User).filter(User.user_id == user_id).first()
+
+
+def set_user_active_status(db: Session, user_id: int, is_active: bool) -> User:
+    """Enable or disable a user account."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+
+    if user.is_active == is_active:
+        return user
+
+    user.is_active = is_active
+    db.commit()
+    db.refresh(user)
+
+    # Revoke active refresh tokens so the user must re-authenticate.
+    revoke_refresh_tokens_for_user(db, user_id=user.user_id)
+
+    return user
 
 # --- Legacy/Mock Token Service (To be replaced by JWT decoding) ---
 def get_current_user_id(token: Optional[str] = None) -> int:

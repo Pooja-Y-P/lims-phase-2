@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from backend.db import Base, engine
+from backend import models  # Ensure models are registered before create_all
 
 # Import routers
 # These imports are likely being aliased in backend/routes/__init__.py

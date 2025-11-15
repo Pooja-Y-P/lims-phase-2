@@ -1,5 +1,6 @@
 import { AuthProvider } from './auth/AuthProvider';
 import AppRoutes from './routes/AppRoutes';
+import TokenExpirationNotification from './components/TokenExpirationNotification';
 
 /**
  * The main App component.
@@ -12,7 +13,8 @@ function App() {
     <AuthProvider>
       {/* If you had other global providers (e.g., for theme, notifications),
           you would wrap them here as well. */}
-      
+
+      <TokenExpirationNotification />
       <AppRoutes />
     </AuthProvider>
   );
