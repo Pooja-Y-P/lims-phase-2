@@ -68,7 +68,7 @@ class EquipmentCreate(BaseModel):
     accessories_included: Optional[str] = None
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
-    remarks_and_decision: Optional[str] = None
+    engineer_remarks: Optional[str] = None
     existing_photo_urls: Optional[List[str]] = None
 
 class InwardEquipmentResponse(BaseModel):
@@ -90,7 +90,7 @@ class InwardEquipmentResponse(BaseModel):
     accessories_included: Optional[str] = None
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
-    remarks_and_decision: Optional[str] = Field(None, alias='engineer_remark')
+    engineer_remarks: Optional[str] = Field(None, alias='engineer_remarks')
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

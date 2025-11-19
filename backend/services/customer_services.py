@@ -193,7 +193,7 @@ class CustomerPortalService:
                     "model": eq.model, 
                     "serial_no": eq.serial_no,
                     "visual_inspection_notes": eq.visual_inspection_notes,
-                    "remarks_and_decision": eq.remarks_and_decision,
+                    "customer_remarks": eq.customer_remarks,
                     "photos": self._format_photo_paths(eq.photos)
                 })
             
@@ -201,7 +201,7 @@ class CustomerPortalService:
             return InwardForCustomer(
                 inward_id=inward.inward_id, 
                 srf_no=inward.srf_no, 
-                date=inward.date, 
+                material_inward_date=inward.material_inward_date, 
                 status=inward.status, 
                 equipments=equipment_list
             )
@@ -227,7 +227,7 @@ class CustomerPortalService:
             if inward.status != 'created':
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This FIR has already been reviewed or is not ready for remarks. Current status: {inward.status}")
             
-            equipment_ids_to_update = {item.inward_eqp_id: item.remarks_and_decision for item in remarks_data.remarks}
+            equipment_ids_to_update = {item.inward_eqp_id: item.customer_remarks for item in remarks_data.remarks}
             
             if equipment_ids_to_update:
                 stmt = select(InwardEquipment).where(InwardEquipment.inward_id == inward_id, InwardEquipment.inward_eqp_id.in_(equipment_ids_to_update.keys()))
@@ -237,7 +237,7 @@ class CustomerPortalService:
                     raise HTTPException(status_code=400, detail="One or more equipment IDs are invalid for this inward.")
                 
                 for eqp in equipments:
-                    eqp.remarks_and_decision = equipment_ids_to_update.get(eqp.inward_eqp_id)
+                    eqp.customer_remarks = equipment_ids_to_update.get(eqp.inward_eqp_id)
                     eqp.updated_at = datetime.utcnow()
             
             inward.status = 'reviewed'

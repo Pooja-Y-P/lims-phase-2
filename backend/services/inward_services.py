@@ -123,7 +123,7 @@ class InwardService:
                     "Out DC": equipment.out_dc, "In DC": equipment.in_dc,
                     "Nextage Reference": equipment.nextage_contract_reference,
                     "Accessories Included": equipment.accessories_included,  # New field
-                    "Engineer Remark / Decision": equipment.engineer_remark,
+                    "Engineer Remark / Decision": equipment.engineer_remarks,
                     "Customer Remark": equipment.customer_remarks,
                     "Equipment Unit": getattr(srf_equipment, "unit", None),
                     "Calibration Points": getattr(srf_equipment, "no_of_calibration_points", None),
@@ -264,7 +264,7 @@ class InwardService:
             else:
                 db_inward = Inward(
                     srf_no=authoritative_srf_no,
-                    material_inward_date=inward_data.date,
+                    material_inward_date=inward_data.material_inward_date,
                     customer_dc_date=inward_data.customer_dc_date,
                     customer_dc_no=inward_data.customer_dc_no,
                     customer_id=inward_data.customer_id,
@@ -300,7 +300,7 @@ class InwardService:
 
             self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete(synchronize_session=False)
 
-            db_inward.material_inward_date = inward_data.date
+            db_inward.material_inward_date = inward_data.material_inward_date
             db_inward.customer_dc_date = inward_data.customer_dc_date
             db_inward.customer_dc_no = inward_data.customer_dc_no
             db_inward.customer_id = inward_data.customer_id
@@ -357,7 +357,7 @@ class InwardService:
                 accessories_included=eqp_model.accessories_included,  # New field
                 qr_code=eqp_model.qr_code, barcode=eqp_model.barcode,
                 photos=photo_paths,
-                engineer_remark=eqp_model.remarks_and_decision,
+                engineer_remarks=eqp_model.engineer_remarks,
                 customer_remarks=None
             )
             equipment_models.append(db_equipment)
