@@ -1,15 +1,20 @@
+from typing import TYPE_CHECKING
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 
 from backend.db import Base
+
+if TYPE_CHECKING:
+    from .inward import Inward
+    from .srf_equipments import SrfEquipment
 
 class InwardEquipment(Base):
     __tablename__ = "inward_equipments"
 
     inward_eqp_id = Column(Integer, primary_key=True)
     inward_id = Column(Integer, ForeignKey("inward.inward_id", ondelete="CASCADE"))
-    
+
     nepl_id = Column(String(100), unique=True, nullable=False, index=True)
     material_description = Column(String(500))
     make = Column(String(255))
@@ -25,19 +30,23 @@ class InwardEquipment(Base):
     in_dc = Column(String(255))
     nextage_contract_reference = Column(String(255))
     
+    # New field: accessories_included
+    accessories_included = Column(Text)
+
     qr_code = Column(Text)
     barcode = Column(Text)
-    
-    # ✅ Renamed column
-    remarks_and_decision = Column(Text)
+
+    # Engineer remarks and customer remarks
+    engineer_remarks = Column(String(255))
+    customer_remarks = Column(String(255))
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True))
 
-    inward = relationship("Inward", back_populates="equipments")
-    srf_equipment = relationship(
+    # --- Relationships ---
+    inward: Mapped["Inward"] = relationship("Inward", back_populates="equipments")
+    srf_equipment: Mapped["SrfEquipment"] = relationship(
         "SrfEquipment",
         back_populates="inward_equipment",
-        uselist=False,
-        cascade="all, delete-orphan"
+        uselist=False
     )

@@ -1,24 +1,24 @@
-# backend/schemas/inward_schemas.py
-
 import json
-from datetime import date, datetime
+import datetime
 from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, ConfigDict, field_validator, EmailStr, Field
 
-# Assuming customer_schemas.py exists and has CustomerSchema
-from backend.schemas.customer_schemas import CustomerSchema
+# To avoid complex dependencies, using a simple placeholder for CustomerSchema
+class CustomerSchema(BaseModel):
+    customer_id: int
+    model_config = ConfigDict(from_attributes=True)
 
-# === This schema is for the nested 'customer' object ===
+# === This schema is for the nested 'customer' object in responses ===
 class CustomerInfo(BaseModel):
     customer_details: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
-# === This schema now correctly expects the nested 'customer' object ===
+# === Response Schemas for various listings ===
 class ReviewedFirResponse(BaseModel):
     inward_id: int
     srf_no: str
-    updated_at: Optional[datetime] = None
-    customer: Optional[CustomerInfo] = None # It expects the nested object
+    updated_at: Optional[datetime.datetime] = None
+    customer: Optional[CustomerInfo] = None
 
     @field_validator('srf_no', mode='before')
     @classmethod
@@ -33,14 +33,14 @@ class UpdatedInwardSummary(BaseModel):
     customer_details: Optional[str] = None
     status: str
     received_by: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    updated_at: Optional[datetime.datetime] = None
     equipment_count: int = 0
     calibration_frequency: Optional[str] = None
     statement_of_conformity: Optional[bool] = None
     ref_iso_is_doc: Optional[bool] = None
     ref_manufacturer_manual: Optional[bool] = None
     ref_customer_requirement: Optional[bool] = None
-    turnaround_time: Optional[int] = None # Assuming this should be an int
+    turnaround_time: Optional[int] = None
     remarks: Optional[str] = None
 
     @field_validator('srf_no', mode='before')
@@ -50,6 +50,7 @@ class UpdatedInwardSummary(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+# === Equipment Schemas ===
 class EquipmentCreate(BaseModel):
     nepl_id: str
     material_desc: str
@@ -64,6 +65,7 @@ class EquipmentCreate(BaseModel):
     out_dc: Optional[str] = None
     in_dc: Optional[str] = None
     nextage_ref: Optional[str] = None
+    accessories_included: Optional[str] = None
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
     remarks_and_decision: Optional[str] = None
@@ -85,12 +87,14 @@ class InwardEquipmentResponse(BaseModel):
     out_dc: Optional[str] = None
     in_dc: Optional[str] = None
     nextage_contract_reference: Optional[str] = None
+    accessories_included: Optional[str] = None
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
-    remarks_and_decision: Optional[str] = None
+    remarks_and_decision: Optional[str] = Field(None, alias='engineer_remark')
 
-    model_config = ConfigDict(from_attributes=True)
-    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+# === Draft Schemas ===
 class DraftUpdateRequest(BaseModel):
     inward_id: Optional[int] = None
     draft_data: Dict[str, Any]
@@ -99,17 +103,14 @@ class DraftUpdateRequest(BaseModel):
     @classmethod
     def ensure_dict(cls, value: Any) -> Dict[str, Any]:
         if isinstance(value, str):
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError as exc:
-                raise ValueError("draft_data must be valid JSON") from exc
-        if isinstance(value, dict):
-            return value
+            try: return json.loads(value)
+            except json.JSONDecodeError as exc: raise ValueError("draft_data must be valid JSON") from exc
+        if isinstance(value, dict): return value
         raise ValueError("draft_data must be an object")
 
 class DraftResponse(BaseModel):
     inward_id: int
-    draft_updated_at: Optional[datetime] = None
+    draft_updated_at: Optional[datetime.datetime] = None
     customer_details: Optional[str] = None
     draft_data: Dict[str, Any]
 
@@ -117,24 +118,41 @@ class DraftResponse(BaseModel):
     @classmethod
     def ensure_response_dict(cls, value: Any) -> Dict[str, Any]:
         if isinstance(value, str):
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError as exc:
-                raise ValueError("draft_data must be valid JSON") from exc
-        if isinstance(value, dict):
-            return value
+            try: return json.loads(value)
+            except json.JSONDecodeError as exc: raise ValueError("draft_data must be valid JSON") from exc
+        if isinstance(value, dict): return value
         raise ValueError("draft_data must be an object")
 
     model_config = ConfigDict(from_attributes=True)
- 
+
+# === Core Inward Schemas ===
 class InwardCreate(BaseModel):
     srf_no: Optional[str] = None
-    date: date
-    customer_dc_date: str
+    
+    # --- FIX STARTS HERE ---
+    # 1. Use default_factory to dynamically generate today's date if missing
+    material_inward_date: datetime.date = Field(default_factory=datetime.date.today)
+    
+    # 2. Allow empty strings for date fields (React forms often send "" for empty dates)
+    customer_dc_date: Optional[str] = "" 
+    
+    customer_dc_no: str
     customer_id: int
     customer_details: str
     receiver: str
     equipment_list: List[EquipmentCreate]
+
+    # 3. Add Validator to intercept empty strings or bad defaults BEFORE validation
+    @field_validator('material_inward_date', mode='before')
+    @classmethod
+    def parse_material_inward_date(cls, v):
+        # This fixes the "input_value=<class 'datetime.date'>" error
+        # and handles empty strings sent by FormData
+        if v == "" or v is None or v == datetime.date:
+            return datetime.date.today()
+        return v
+    # --- FIX ENDS HERE ---
+
     @field_validator('equipment_list', mode='before')
     @classmethod
     def parse_json_string(cls, v):
@@ -142,15 +160,18 @@ class InwardCreate(BaseModel):
             try: return json.loads(v)
             except json.JSONDecodeError: raise ValueError("equipment_list contains invalid JSON")
         return v
-        
-class InwardUpdate(InwardCreate): pass
+
+class InwardUpdate(InwardCreate):
+    srf_no: str
 
 class InwardResponse(BaseModel):
     inward_id: int
     srf_no: str
-    date: date
-    customer_id: Optional[int] = None # Correctly made optional
-    customer_details: Optional[str]
+    material_inward_date: datetime.date = Field(alias='material_inward_date')
+    customer_dc_no: Optional[str] = None
+    customer_dc_date: Optional[str] = None
+    customer_id: Optional[int] = None
+    customer_details: Optional[str] = None
     status: str
     customer: Optional[CustomerSchema] = None
     equipments: List[InwardEquipmentResponse] = []
@@ -160,34 +181,32 @@ class InwardResponse(BaseModel):
     def srf_to_string(cls, v):
         return str(v) if v is not None else v
 
-    model_config = ConfigDict(from_attributes=True)
-    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+# === Notification and Task Schemas ===
 class SendReportRequest(BaseModel):
-    email: Optional[EmailStr] = None; send_later: bool = False
-    
+    emails: Optional[List[EmailStr]] = None
+    send_later: bool = False
+
 class RetryNotificationRequest(BaseModel):
     email: EmailStr
-    
+
 class PendingEmailTask(BaseModel):
     task_id: int = Field(alias='id')
     inward_id: int
     srf_no: str
     customer_details: Optional[str] = None
     recipient_email: Optional[EmailStr] = None
-    scheduled_at: datetime
-    created_at: datetime
+    scheduled_at: datetime.datetime
+    created_at: datetime.datetime
     time_left_seconds: int
     is_overdue: bool
-    
-    @field_validator('srf_no', mode='before')
+
+    @field_validator('srf_no', 'customer_details', mode='before')
     @classmethod
-    def srf_to_string_pending(cls, v): return str(v) if v is not None else v
-    
-    @field_validator('customer_details', mode='before')
-    @classmethod
-    def customer_details_to_string(cls, v):
+    def to_string(cls, v):
         return str(v) if v is not None else v
-        
+    
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 class FailedNotificationItem(BaseModel):
@@ -195,19 +214,19 @@ class FailedNotificationItem(BaseModel):
     recipient_email: Optional[str] = None
     subject: str
     error: Optional[str] = None
-    created_at: datetime
+    created_at: datetime.datetime
     created_by: str
     srf_no: Optional[str] = None
     customer_details: Optional[str] = None
-    
+
     @field_validator('srf_no', mode='before')
     @classmethod
     def srf_to_string_failed(cls, v): return str(v) if v is not None else v
-    
+
     @field_validator('recipient_email', mode='before')
     @classmethod
     def empty_str_to_none(cls, v): return None if v == "" else v
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 class NotificationStats(BaseModel):

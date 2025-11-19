@@ -13,7 +13,7 @@ class EquipmentRemarkUpdate(BaseModel):
     """Schema for a single equipment remark update."""
     inward_eqp_id: int
     # --- FIX: Change field name from 'remarks' to 'remarks_and_decision' ---
-    remarks_and_decision: Optional[str] = ""
+    customer_remark: Optional[str] = ""
 
 class RemarksSubmissionRequest(BaseModel):
     """Schema for submitting a list of remarks for an inward."""
@@ -41,8 +41,8 @@ class EquipmentForCustomer(BaseModel):
 class InwardForCustomer(BaseModel):
     """A detailed view of an Inward for the customer, including equipment."""
     inward_id: int
-    srf_no: int
-    date: date
+    srf_no: str
+    material_inward_date: date
     status: str
     equipments: List[EquipmentForCustomer] = []
     
@@ -51,8 +51,8 @@ class InwardForCustomer(BaseModel):
 class InwardListItemForCustomer(BaseModel):
     """A summarized view of an Inward for listing purposes."""
     inward_id: int
-    srf_no: int
-    date: date
+    srf_no: str
+    material_inward_date: date
     status: str
     equipment_count: int
 

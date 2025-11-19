@@ -17,8 +17,8 @@ from backend.schemas.customer_schemas import (
     InwardForCustomer,
     AccountActivationRequest
 )
-from backend.schemas.srf_schemas import SrfApiResponse, SrfResponse # Import SrfResponse for the new endpoint
-from backend.schemas.customer_schemas import CustomerDropdownResponse # Import the new schema
+from backend.schemas.srf_schemas import SrfApiResponse, SrfResponse
+from backend.schemas.customer_schemas import CustomerDropdownResponse
 
 router = APIRouter(prefix="/portal", tags=["Customer Portal"])
 logger = logging.getLogger(__name__)
@@ -36,8 +36,6 @@ def get_customer_user(current_user: UserResponse = Depends(get_current_user)) ->
 class SrfStatusUpdateRequest(BaseModel):
     status: str
     remarks: Optional[str] = None
-    # You can add other fields the customer can edit here if needed
-    # e.g., telephone: Optional[str] = None
 
 
 # --- SRF ENDPOINTS ---
@@ -51,7 +49,6 @@ async def get_customer_srfs(
     service = CustomerPortalService(db)
     return service.get_srfs_for_customer(current_user.customer_id)
 
-# NEW: Endpoint for a customer to approve/reject an SRF
 @router.put("/srfs/{srf_id}/status", response_model=SrfResponse)
 async def update_srf_status_by_customer(
     srf_id: int,
@@ -66,7 +63,6 @@ async def update_srf_status_by_customer(
         customer_id=current_user.customer_id,
         new_status=request.status,
         remarks=request.remarks,
-        # Pass other editable fields as kwargs if your service method supports it
     )
 
 
@@ -90,7 +86,19 @@ async def get_fir_for_review(
 ):
     """Get details for a single FIR for authenticated customer review."""
     service = CustomerPortalService(db)
-    return service.get_fir_for_customer_review(inward_id, current_user.customer_id)
+    
+    # --- FIX APPLIED HERE ---
+    fir_details = service.get_fir_for_customer_review(inward_id, current_user.customer_id)
+    
+    if not fir_details:
+        # This returns a 404 instead of crashing with a 500 Internal Server Error
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="FIR not found or you do not have permission to view it."
+        )
+        
+    return fir_details
+
 
 @router.post("/firs/{inward_id}/remarks")
 async def submit_fir_remarks(
@@ -113,7 +121,17 @@ async def get_fir_direct_access(
 ):
     """Get FIR details via a direct link from an email."""
     service = CustomerPortalService(db)
-    return service.get_fir_for_direct_access(inward_id, token)
+    
+    # --- SAFETY CHECK APPLIED HERE TOO ---
+    fir_details = service.get_fir_for_direct_access(inward_id, token)
+    
+    if not fir_details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="FIR not found or invalid token."
+        )
+
+    return fir_details
 
 @router.post("/direct-fir/{inward_id}/remarks")
 async def submit_fir_remarks_direct(
@@ -139,16 +157,11 @@ async def activate_customer_account(
 @router.get("/customers/dropdown", response_model=List[CustomerDropdownResponse])
 async def get_customers_for_dropdown(
     db: Session = Depends(get_db),
-    current_user: UserResponse = Depends(get_current_user) # Admin/Engineer can access this
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """
     Retrieves a list of all customers with their ID and details for dropdown population.
     Accessible by authenticated users (e.g., Admin, Engineer).
     """
-    # Ensure only authorized roles can access this endpoint if needed,
-    # though for an engineer portal, it's likely fine for engineers to access.
-    # if current_user.role.lower() not in ['admin', 'engineer']:
-    #     raise HTTPException(status_code=403, detail="Not authorized to access customer list.")
-
     service = CustomerPortalService(db)
     return service.get_all_customers_for_dropdown()

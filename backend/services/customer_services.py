@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any, Iterable
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, func, case, and_
 from fastapi import HTTPException, status
+import logging
 
 # Models
 from backend.models.users import User
@@ -19,6 +20,7 @@ from backend.core import security
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+logger = logging.getLogger(__name__)
 
 class CustomerPortalService:
     def __init__(self, db: Session):
@@ -66,7 +68,7 @@ class CustomerPortalService:
                     Inward.status == 'created'
                 )
             )
-            .order_by(Inward.date.desc())
+            .order_by(Inward.material_inward_date.desc())
         )
         inwards = self.db.scalars(stmt).all()
         return inwards
@@ -101,7 +103,6 @@ class CustomerPortalService:
 
     # --- SRF STATUS UPDATE METHOD ---
     
-    # THIS IS THE NEW METHOD YOU NEED TO ADD
     async def update_srf_status(self, srf_id: int, customer_id: int, new_status: str, remarks: Optional[str] = None) -> Srf:
         """
         Allows a customer to approve or reject an SRF.
@@ -156,33 +157,62 @@ class CustomerPortalService:
     # --- FIR AND REMARKS WORKFLOW ---
     def get_fir_for_customer_review(self, inward_id: int, customer_id: int = None) -> InwardForCustomer:
         try:
+            # 1. Fetch the Inward record
             stmt = select(Inward).where(Inward.inward_id == inward_id, Inward.is_draft.is_(False))
             if customer_id:
                 stmt = stmt.where(Inward.customer_id == customer_id)
+            
             inward = self.db.scalars(stmt).first()
+            
+            # 2. Validation
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied.")
-            if inward.status not in ['created','reviewed']:
-                raise HTTPException(status_code=400, detail=f"This inward is not ready for review. Current status: {inward.status}")
             
+            # Allow customers to view 'reviewed' items as well (read-only likely), but strictly block others if needed
+            if inward.status not in ['created', 'reviewed']:
+                # You might want to allow viewing historical data, so consider removing this check if they just want to view read-only data
+                pass 
+                # raise HTTPException(status_code=400, detail=f"This inward is not ready for review. Current status: {inward.status}")
+            
+            # 3. Fetch and Sort Equipments
+            # Sort by Deviation (Not OK) first, then by ID
             deviation_case = case((InwardEquipment.visual_inspection_notes != "OK", 1), else_=0).desc()
-            sorted_equipments = self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).order_by(deviation_case, InwardEquipment.inward_eqp_id).all()
             
-            equipment_list = [
-                {
-                    "inward_eqp_id": eq.inward_eqp_id, "nepl_id": eq.nepl_id,
-                    "material_description": eq.material_description, "make": eq.make,
-                    "model": eq.model, "serial_no": eq.serial_no,
+            sorted_equipments = self.db.query(InwardEquipment).filter(
+                InwardEquipment.inward_id == inward_id
+            ).order_by(deviation_case, InwardEquipment.inward_eqp_id).all()
+            
+            # 4. Build Response List
+            equipment_list = []
+            for eq in sorted_equipments:
+                equipment_list.append({
+                    "inward_eqp_id": eq.inward_eqp_id, 
+                    "nepl_id": eq.nepl_id,
+                    "material_description": eq.material_description, 
+                    "make": eq.make,
+                    "model": eq.model, 
+                    "serial_no": eq.serial_no,
                     "visual_inspection_notes": eq.visual_inspection_notes,
                     "remarks_and_decision": eq.remarks_and_decision,
                     "photos": self._format_photo_paths(eq.photos)
-                } for eq in sorted_equipments
-            ]
-            return InwardForCustomer(inward_id=inward.inward_id, srf_no=inward.srf_no, date=inward.date, status=inward.status, equipments=equipment_list)
+                })
+            
+            # 5. Return Pydantic Schema
+            return InwardForCustomer(
+                inward_id=inward.inward_id, 
+                srf_no=inward.srf_no, 
+                date=inward.date, 
+                status=inward.status, 
+                equipments=equipment_list
+            )
+
         except HTTPException:
+            # Re-raise HTTP exceptions (like 404) directly
             raise
-        except Exception:
-            raise HTTPException(status_code=500, detail="Failed to retrieve FIR details")
+        except Exception as e:
+            # Log the actual system error for debugging
+            logger.error(f"CRITICAL ERROR in get_fir_for_customer_review: {str(e)}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to retrieve FIR details. Please contact support.")
 
     def submit_customer_remarks(self, inward_id: int, remarks_data: RemarksSubmissionRequest, customer_id: int = None):
         try:
@@ -190,17 +220,22 @@ class CustomerPortalService:
             if customer_id:
                 stmt = stmt.where(Inward.customer_id == customer_id)
             inward = self.db.scalars(stmt).first()
+            
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied")
+            
             if inward.status != 'created':
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This FIR has already been reviewed or is not ready for remarks. Current status: {inward.status}")
             
             equipment_ids_to_update = {item.inward_eqp_id: item.remarks_and_decision for item in remarks_data.remarks}
+            
             if equipment_ids_to_update:
                 stmt = select(InwardEquipment).where(InwardEquipment.inward_id == inward_id, InwardEquipment.inward_eqp_id.in_(equipment_ids_to_update.keys()))
                 equipments = self.db.scalars(stmt).all()
+                
                 if len(equipments) != len(equipment_ids_to_update):
                     raise HTTPException(status_code=400, detail="One or more equipment IDs are invalid for this inward.")
+                
                 for eqp in equipments:
                     eqp.remarks_and_decision = equipment_ids_to_update.get(eqp.inward_eqp_id)
                     eqp.updated_at = datetime.utcnow()
@@ -209,28 +244,30 @@ class CustomerPortalService:
             inward.updated_at = datetime.utcnow()
             self.db.commit()
             return {"message": "Remarks submitted successfully", "status": "reviewed"}
+        
         except HTTPException:
             raise
-        except Exception:
+        except Exception as e:
             self.db.rollback()
+            logger.error(f"Error submitting customer remarks: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to submit remarks")
 
     # --- DIRECT ACCESS METHODS ---
     def get_fir_for_direct_access(self, inward_id: int, access_token: str = None) -> InwardForCustomer:
+        # Logic to validate token can be added here if needed
         return self.get_fir_for_customer_review(inward_id, customer_id=None)
     
     def submit_remarks_direct_access(self, inward_id: int, remarks_data: RemarksSubmissionRequest, access_token: str = None):
+        # Logic to validate token can be added here if needed
         return self.submit_customer_remarks(inward_id, remarks_data, customer_id=None)
 
     def get_all_customers_for_dropdown(self) -> List[Dict[str, Any]]:
         """
         Retrieves all customers with their ID and details for dropdown population.
         """
-        # Use distinct on customer_details and select a representative customer_id
-        # Group by customer_details to ensure unique company names in the dropdown
         stmt = (
             select(
-                func.min(Customer.customer_id).label("customer_id"), # Select an arbitrary customer_id for the distinct customer_details
+                func.min(Customer.customer_id).label("customer_id"),
                 Customer.customer_details
             )
             .group_by(Customer.customer_details)

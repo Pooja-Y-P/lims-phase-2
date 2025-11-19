@@ -58,7 +58,7 @@ export interface ViewInwardEquipment {
 // Interface for the main inward form's top-level data
 export interface InwardForm {
   srf_no: string;
-  date: string;
+  material_inward_date: string;
   customer_dc_date: string;
   customer_id: number | null; // Added customer_id
   customer_details: string; // Kept for display purposes
@@ -70,7 +70,7 @@ export interface InwardForm {
 export interface InwardDetail {
   inward_id: number;
   srf_no: number | string;
-  date: string;
+  material_inward_date: string;
   customer_dc_date?: string;
   customer_id: number; // Added customer_id
   customer_details: string;

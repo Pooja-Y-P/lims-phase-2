@@ -69,7 +69,7 @@ class InwardSchema(BaseModel):
  
 class SrfBase(BaseModel):
     """Base fields that are common across SRF operations."""
-    srf_no: int
+    srf_no: str
     date: date
     nepl_srf_no: Optional[str] = None
     # Removed these fields from SrfBase as they will be populated from the Inward's customer
@@ -159,7 +159,7 @@ class Srf(SrfBase):
 class SrfSummary(BaseModel):
     """A lightweight summary model for listing multiple SRFs (e.g., in a table)."""
     srf_id: int
-    srf_no: int
+    srf_no: str
     date: date
     status: str
     customer_name: Optional[str] = None # Denormalized for easy display
@@ -173,7 +173,7 @@ class SrfResponse(BaseModel):
     This contains the exact fields needed by that endpoint, including some special instructions.
     """
     srf_id: int
-    srf_no: int
+    srf_no: str
     nepl_srf_no: Optional[str] = None
     status: str
     created_at: datetime

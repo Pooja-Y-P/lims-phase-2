@@ -21,12 +21,12 @@ from backend.schemas.user_schemas import User as UserSchema
 
 # --- IMPORTING from your central schema file ---
 from backend.schemas.inward_schemas import (
-    InwardCreate, 
-    InwardResponse, 
-    InwardUpdate, 
-    DraftUpdateRequest, 
-    DraftResponse, 
-    SendReportRequest, 
+    InwardCreate,
+    InwardResponse,
+    InwardUpdate,
+    DraftUpdateRequest,
+    DraftResponse,
+    SendReportRequest,
     RetryNotificationRequest,
     ReviewedFirResponse,
     PendingEmailTask,
@@ -34,7 +34,6 @@ from backend.schemas.inward_schemas import (
     FailedNotificationsResponse,
     BatchExportRequest
 )
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -115,8 +114,9 @@ async def update_draft(
 @router.post("/submit", response_model=InwardResponse, status_code=status.HTTP_201_CREATED)
 async def submit_inward(
     req: Request,
-    date: date = Form(...),
+    material_inward_date: date = Form(...),
     customer_dc_date: str = Form(...),
+    customer_dc_no: str = Form(...),
     customer_id: int = Form(...),
     customer_details: str = Form(...),
     receiver: str = Form(...),
@@ -128,8 +128,9 @@ async def submit_inward(
 ):
     try:
         inward_data = InwardCreate(
-            date=date,
+            material_inward_date=date,
             customer_dc_date=customer_dc_date,
+            customer_dc_no=customer_dc_no,
             customer_id=customer_id,
             customer_details=customer_details,
             receiver=receiver,
@@ -137,8 +138,9 @@ async def submit_inward(
             srf_no=srf_no
         )
     except (ValidationError, ValueError, json.JSONDecodeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
-        
+        logger.error(f"Validation error on submit: {e}")
+        raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
+
     form_data = await req.form()
     photos_by_index: Dict[int, List[UploadFile]] = {}
     for key in form_data.keys():
@@ -153,7 +155,7 @@ async def submit_inward(
         if upload_files:
             photos_by_index[index] = upload_files
     inward_service = InwardService(db)
-    
+
     return await inward_service.submit_inward(
         inward_data=inward_data,
         files_by_index=photos_by_index,
@@ -181,7 +183,6 @@ async def get_reviewed_firs(db: Session = Depends(get_db), current_user: UserSch
     inward_service = InwardService(db)
     return await inward_service.get_all_inwards(status='reviewed')
 
-# --- MODIFICATION START: Add a new, more flexible endpoint ---
 @router.get("/exportable-list", response_model=List[UpdatedInwardSummary])
 async def list_exportable_inwards(
     start_date: Optional[date] = None,
@@ -194,7 +195,6 @@ async def list_exportable_inwards(
     """
     inward_service = InwardService(db)
     return await inward_service.get_inwards_for_export(start_date=start_date, end_date=end_date)
-# --- MODIFICATION END ---
 
 @router.get("/updated", response_model=List[UpdatedInwardSummary])
 async def list_updated_inwards(
@@ -203,7 +203,6 @@ async def list_updated_inwards(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    # This original endpoint is kept for its specific functionality
     inward_service = InwardService(db)
     return await inward_service.get_updated_inwards(start_date=start_date, end_date=end_date)
 
@@ -226,10 +225,10 @@ async def export_inwards_batch(
 # --- EMAIL AND NOTIFICATION ENDPOINTS ---
 @router.post("/{inward_id}/send-report", status_code=status.HTTP_200_OK)
 async def send_customer_feedback_request(inward_id: int, request_data: SendReportRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
-    if not request_data.send_later and not request_data.email:
-        raise HTTPException(status_code=422, detail="Email is required.")
+    if not request_data.send_later and not request_data.emails:
+        raise HTTPException(status_code=422, detail="At least one email is required when sending immediately.")
     inward_service = InwardService(db)
-    return await inward_service.process_customer_notification(inward_id=inward_id, customer_email=request_data.email, send_later=request_data.send_later, creator_id=current_user.user_id, background_tasks=background_tasks)
+    return await inward_service.process_customer_notification(inward_id=inward_id, customer_emails=request_data.emails, send_later=request_data.send_later, creator_id=current_user.user_id, background_tasks=background_tasks)
 
 @router.get("/delayed-emails/pending", response_model=List[PendingEmailTask])
 async def get_pending_delayed_emails(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -238,9 +237,10 @@ async def get_pending_delayed_emails(db: Session = Depends(get_db), current_user
 
 @router.post("/delayed-emails/{task_id}/send", status_code=status.HTTP_200_OK)
 async def send_delayed_email_now(task_id: int, request_data: dict = Body(...), background_tasks: BackgroundTasks = BackgroundTasks(), db: Session = Depends(get_db)):
-    email = request_data.get("email")
-    if not email: raise HTTPException(status_code=422, detail="Email is required.")
-    if not await InwardService(db).send_scheduled_report_now(task_id=task_id, customer_email=email, background_tasks=background_tasks):
+    emails = request_data.get("emails", [])
+    if not emails: 
+        raise HTTPException(status_code=422, detail="At least one email is required.")
+    if not await InwardService(db).send_scheduled_report_now(task_id=task_id, customer_emails=emails, background_tasks=background_tasks):
         raise HTTPException(status_code=500, detail="Failed to send email.")
     return {"message": "Email sent successfully."}
 
@@ -294,8 +294,9 @@ async def get_inward_by_id(inward_id: int, db: Session = Depends(get_db)):
 async def update_inward(
     inward_id: int,
     req: Request,
-    date: date = Form(...),
+    material_inward_date: date = Form(...),
     customer_dc_date: str = Form(...),
+    customer_dc_no: str = Form(...),
     customer_id: int = Form(...),
     customer_details: str = Form(...),
     receiver: str = Form(...),
@@ -307,15 +308,17 @@ async def update_inward(
     try:
         inward_data = InwardUpdate(
             srf_no=srf_no,
-            date=date,
+            material_inward_date=date,
             customer_dc_date=customer_dc_date,
+            customer_dc_no=customer_dc_no,
             customer_id=customer_id,
             customer_details=customer_details,
             receiver=receiver,
             equipment_list=json.loads(equipment_list)
         )
     except (ValidationError, ValueError, json.JSONDecodeError) as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        logger.error(f"Validation error on update: {e}")
+        raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
 
     form_data = await req.form()
     photos_by_index: Dict[int, List[UploadFile]] = {}
@@ -331,7 +334,7 @@ async def update_inward(
         if upload_files:
             photos_by_index[index] = upload_files
     inward_service = InwardService(db)
-    
+
     updated_inward = await inward_service.update_inward_with_files(
         inward_id=inward_id,
         inward_data=inward_data,

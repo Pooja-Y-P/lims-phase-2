@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { InwardForm as InwardFormType, EquipmentDetail, InwardDetail } from '../types/inward';
+// MODIFICATION: Import the base type to handle conversions
+import { InwardForm as InwardFormType, EquipmentDetail as BaseEquipmentDetail, InwardDetail } from '../types/inward';
 import { generateSRFNo, commitUsedSRFNo } from '../utils/idGenerators';
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
 import { api, ENDPOINTS, BACKEND_ROOT_URL } from '../api/config';
@@ -9,6 +10,18 @@ import { CustomerRemark } from './CustomerRemarks';
 import { useAuth } from '../auth/AuthProvider';
 
 // --- TYPE DEFINITIONS ---
+
+interface ExtendedInwardFormType extends InwardFormType {
+  customer_dc_no: string;
+}
+
+interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'calibration_by'> {
+  inspe_status: 'OK' | 'Not OK';
+  inspe_remarks: string;
+  calibration_by: 'In Lab' | 'Outsource' | 'On-Site';
+  accessories_included?: string;
+}
+
 interface CustomerDropdownItem {
   customer_id: number;
   customer_details: string;
@@ -34,9 +47,10 @@ interface DraftSaveResponse {
 
 interface LoadedDraftData {
   srf_no: string;
-  date: string;
+  material_inward_date: string;
   customer_dc_date: string;
-  customer_id: number | null; 
+  customer_dc_no: string;
+  customer_id: number | null;
   customer_details: string;
   receiver: string;
   equipment_list: EquipmentDetail[];
@@ -54,6 +68,15 @@ type InwardFormProps = {
   initialDraftId: number | null;
 };
 
+// MATERIAL DESCRIPTION OPTIONS
+const MATERIAL_DESCRIPTIONS = [
+  "Hydraulic Torque Wrench",
+  "Pressure Gauge",
+  "Temperature Gauge",
+  "Vernier Caliper",
+  "Micrometer",
+];
+
 // --- COMPONENT ---
 export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const navigate = useNavigate();
@@ -61,10 +84,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const isEditMode = Boolean(editId);
   const { user } = useAuth();
 
-  const [formData, setFormData] = useState<InwardFormType>({
+  const [formData, setFormData] = useState<ExtendedInwardFormType>({
     srf_no: 'Loading...',
-    date: new Date().toISOString().split('T')[0],
+    material_inward_date: new Date().toISOString().split('T')[0],
     customer_dc_date: '',
+    customer_dc_no: '',
     receiver: user?.full_name || user?.username || '',
     customer_id: null,
     customer_details: '',
@@ -75,12 +99,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(isEditMode || Boolean(initialDraftId));
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  
+
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [reportEmail, setReportEmail] = useState('');
+  const [reportEmails, setReportEmails] = useState<string[]>(['']);
   const [lastSavedInwardId, setLastSavedInwardId] = useState<number | null>(null);
   const [lastSavedSrfNo, setLastSavedSrfNo] = useState<string>('');
-  
+
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
   const previewUrlsRef = useRef<string[]>([]);
@@ -99,7 +123,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   }, []);
 
   const serializeDraftState = useCallback(
-    (payload?: { formData: InwardFormType; equipmentList: EquipmentDetail[] }) => {
+    (payload?: { formData: ExtendedInwardFormType; equipmentList: EquipmentDetail[] }) => {
       const targetFormData = payload?.formData ?? formData;
       const targetEquipmentList = payload?.equipmentList ?? equipmentList;
       return JSON.stringify({
@@ -117,6 +141,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     },
     [formData, equipmentList]
   );
+
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
@@ -129,6 +154,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const hasFormData =
     (formData.customer_id !== null && formData.customer_id !== undefined) ||
     (formData.customer_dc_date ?? '').trim().length > 0 ||
+    (formData.customer_dc_no ?? '').trim().length > 0 ||
     equipmentList.some((eq) => {
       const hasTextData = (eq.material_desc || '').trim().length > 0;
       const hasAttachments =
@@ -157,9 +183,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     } else {
       initializeForm();
     }
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       if (autoSaveTimeoutRef.current) {
@@ -204,7 +230,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         return {
           ...rest,
           qty: Number.isFinite(normalizedQty) ? normalizedQty : 1,
-          inspe_notes: rest.inspe_notes || 'OK',
           existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
         };
       });
@@ -290,16 +315,17 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       const response = await api.get<DraftLoadResponse>(`${ENDPOINTS.STAFF.DRAFTS}/${draftId}`);
       const draftData = response.data.draft_data;
       if (draftData) {
-        const newFormData = {
+        const newFormData: ExtendedInwardFormType = {
           srf_no: draftData.srf_no || formData.srf_no,
-          date: draftData.date || new Date().toISOString().split('T')[0],
+          material_inward_date: draftData.material_inward_date || new Date().toISOString().split('T')[0],
           customer_dc_date: draftData.customer_dc_date ?? '',
+          customer_dc_no: draftData.customer_dc_no ?? '',
           customer_id: draftData.customer_id || null,
           customer_details: draftData.customer_details || '',
           receiver: draftData.receiver || '',
           status: 'created' as const
         };
-        const newEquipmentList = (draftData.equipment_list || []).map(eq => {
+        const newEquipmentList: EquipmentDetail[] = (draftData.equipment_list || []).map(eq => {
           const existingPhotoUrls = (() => {
             if (Array.isArray((eq as any).existingPhotoUrls)) return (eq as any).existingPhotoUrls;
             if (Array.isArray((eq as any).existing_photo_urls)) return (eq as any).existing_photo_urls;
@@ -323,7 +349,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           model: '',
           qty: 1,
           calibration_by: 'In Lab' as const,
-          inspe_notes: 'OK',
+          inspe_status: 'OK' as const,
+          inspe_remarks: '',
+          accessories_included: '',
           photos: [],
           photoPreviews: [],
           existingPhotoUrls: []
@@ -343,7 +371,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       setIsLoadingData(false);
     }
   };
-  
+
   const initializeForm = async () => {
     setCurrentDraftId(null);
     setDraftSaveStatus('idle');
@@ -352,24 +380,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     setEquipmentList([]);
     setSelectedCustomerId(null);
     try {
-      const srfNo = await generateSRFNo();
-      const newFormData = {
-        srf_no: srfNo,
-        date: new Date().toISOString().split('T')[0],
+      const srfNumber = await generateSRFNo();
+      
+      const newFormData: ExtendedInwardFormType = {
+        srf_no: srfNumber,
+        material_inward_date: new Date().toISOString().split('T')[0],
         customer_dc_date: '',
+        customer_dc_no: '',
         receiver: user?.full_name || user?.username || '',
         customer_id: null,
         customer_details: '',
         status: 'created' as const
       };
-      const newEquipmentList = [{ 
-        nepl_id: `${srfNo}-1`, 
-        material_desc: '', 
-        make: '', 
-        model: '', 
-        qty: 1, 
+      const newEquipmentList: EquipmentDetail[] = [{
+        nepl_id: `${srfNumber}-1`,
+        material_desc: '',
+        make: '',
+        model: '',
+        qty: 1,
         calibration_by: 'In Lab' as const,
-        inspe_notes: 'OK',
+        inspe_status: 'OK' as const,
+        inspe_remarks: '',
+        accessories_included: '',
         photos: [],
         photoPreviews: [],
         existingPhotoUrls: []
@@ -395,22 +427,32 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       const inward = response.data;
       setFormData({
         srf_no: inward.srf_no.toString(),
-        date: inward.date,
-        customer_dc_date: inward.customer_dc_date ?? inward.date ?? '',
+        material_inward_date: inward.material_inward_date,
+        customer_dc_date: inward.customer_dc_date ?? inward.material_inward_date ?? '',
+        customer_dc_no: (inward as any).customer_dc_no ?? '',
         receiver: inward.receiver || '',
         customer_id: inward.customer_id,
         customer_details: inward.customer_details,
         status: inward.status
       });
       setSelectedCustomerId(inward.customer_id);
-      
-      const equipmentData = (inward.equipments ?? []).map((eq) => {
-        const calibrationBy = (['In Lab', 'Outsource', 'Out Lab'] as const).includes((eq.calibration_by || 'In Lab') as any)
-          ? (eq.calibration_by as 'In Lab' | 'Outsource' | 'Out Lab')
+
+      const equipmentData: EquipmentDetail[] = (inward.equipments ?? []).map((eq) => {
+        let rawCalibBy = eq.calibration_by || 'In Lab';
+        if (rawCalibBy === 'Out Lab') {
+          rawCalibBy = 'On-Site';
+        }
+        const calibrationBy = (['In Lab', 'Outsource', 'On-Site'] as const).includes(rawCalibBy as any)
+          ? (rawCalibBy as 'In Lab' | 'Outsource' | 'On-Site')
           : 'In Lab';
+        
+        const visualNotes = eq.visual_inspection_notes || 'OK';
+        const isOk = visualNotes.trim().toUpperCase() === 'OK';
+        
         const existingPhotoUrls = Array.isArray(eq.photos)
           ? eq.photos.filter((path): path is string => typeof path === 'string' && path.trim().length > 0)
           : [];
+
         return {
           nepl_id: eq.nepl_id,
           material_desc: eq.material_description,
@@ -419,24 +461,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           range: eq.range || '',
           serial_no: eq.serial_no || '',
           qty: eq.quantity,
-          inspe_notes: eq.visual_inspection_notes || 'OK',
           calibration_by: calibrationBy,
+          inspe_status: isOk ? 'OK' : 'Not OK',
+          inspe_remarks: isOk ? '' : visualNotes,
+          accessories_included: (eq as any).accessories_included || '',
           remarks_and_decision: eq.remarks_and_decision,
           photos: [],
           photoPreviews: [],
           existingPhotoUrls
         };
       });
-      
+
       cleanupAllPreviews();
-      setEquipmentList(equipmentData.length > 0 ? equipmentData : [{ 
-        nepl_id: `${inward.srf_no}-1`, 
-        material_desc: '', 
-        make: '', 
-        model: '', 
-        qty: 1, 
+      setEquipmentList(equipmentData.length > 0 ? equipmentData : [{
+        nepl_id: `${inward.srf_no}-1`,
+        material_desc: '',
+        make: '',
+        model: '',
+        qty: 1,
         calibration_by: 'In Lab' as const,
-        inspe_notes: 'OK',
+        inspe_status: 'OK' as const,
+        inspe_remarks: '',
+        accessories_included: '',
         photos: [],
         photoPreviews: [],
         existingPhotoUrls: []
@@ -452,15 +498,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const handleBackToPortal = () => {
     if (hasFormData && !isEditMode && JSON.stringify({ formData, equipmentList }) !== lastSavedDataRef.current) {
-        if(!window.confirm('You have unsaved changes. Are you sure you want to go back?')) {
-            return;
-        }
+      if(!window.confirm('You have unsaved changes. Are you sure you want to go back?')) {
+        return;
+      }
     }
-    // --- MODIFICATION: Navigate to correct page based on edit mode ---
     if (isEditMode) {
-        navigate('/engineer/view-inward');
+      navigate('/engineer/view-inward');
     } else {
-        navigate('/engineer/create-inward');
+      navigate('/engineer/create-inward');
     }
   };
 
@@ -488,14 +533,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const handleEquipmentChange = (index: number, field: keyof EquipmentDetail, value: string | number) => {
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
-      if (!updatedList[index]) return currentList;
-      const currentEquipment = { ...updatedList[index], [field]: value };
-      if (field === 'calibration_by' && value !== 'Outsource') {
-        delete (currentEquipment as any).supplier;
-        delete (currentEquipment as any).in_dc;
-        delete (currentEquipment as any).out_dc;
+      const equipmentToUpdate = updatedList[index];
+      if (!equipmentToUpdate) return currentList;
+
+      const updatedEquipment = { ...equipmentToUpdate };
+      
+      if (field === 'inspe_status') {
+          updatedEquipment.inspe_status = value as 'OK' | 'Not OK';
+          if (value === 'OK') {
+              updatedEquipment.inspe_remarks = '';
+          }
+      } else if (field === 'calibration_by') {
+          updatedEquipment.calibration_by = value as 'In Lab' | 'Outsource' | 'On-Site';
+          if (value !== 'Outsource') {
+            delete (updatedEquipment as any).supplier;
+            delete (updatedEquipment as any).in_dc;
+            delete (updatedEquipment as any).out_dc;
+          }
+      } else {
+        (updatedEquipment as any)[field] = value;
       }
-      updatedList[index] = currentEquipment;
+      
+      updatedList[index] = updatedEquipment;
       return updatedList;
     });
   };
@@ -543,14 +602,16 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     setEquipmentList(currentList => {
       const newIndex = currentList.length + 1;
       const neplId = `${formData.srf_no}-${newIndex}`;
-      return [...currentList, { 
-        nepl_id: neplId, 
-        material_desc: '', 
-        make: '', 
-        model: '', 
-        qty: 1, 
+      return [...currentList, {
+        nepl_id: neplId,
+        material_desc: '',
+        make: '',
+        model: '',
+        qty: 1,
         calibration_by: 'In Lab' as const,
-        inspe_notes: 'OK',
+        inspe_status: 'OK' as const,
+        inspe_remarks: '',
+        accessories_included: '',
         photos: [],
         photoPreviews: [],
         existingPhotoUrls: []
@@ -558,26 +619,35 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     });
   };
 
-  const removeEquipmentRow = (index: number) => {
-    setEquipmentList(currentList => {
-      if (currentList.length <= 1) return currentList;
-      const equipmentToRemove = currentList[index];
-      equipmentToRemove?.photoPreviews?.forEach(url => {
-        URL.revokeObjectURL(url);
-        previewUrlsRef.current = previewUrlsRef.current.filter(existing => existing !== url);
-      });
-      const reindexedList = currentList
-        .filter((_, i) => i !== index)
-        .map((item, i) => ({ 
-          ...item, 
-          nepl_id: `${formData.srf_no}-${i + 1}` 
+  const removeEquipmentRow = (indexToRemove: number) => {
+    if (!window.confirm('Are you sure you want to delete this equipment row? This action cannot be undone.')) {
+      return;
+    }
+
+    const equipmentToRemove = equipmentList[indexToRemove];
+    if (equipmentToRemove?.photoPreviews?.length) {
+        equipmentToRemove.photoPreviews.forEach(url => {
+            URL.revokeObjectURL(url);
+            previewUrlsRef.current = previewUrlsRef.current.filter(existing => existing !== url);
+        });
+    }
+
+    const updatedList = equipmentList
+        .filter((_, i) => i !== indexToRemove)
+        .map((item, i) => ({
+            ...item,
+            nepl_id: `${formData.srf_no}-${i + 1}`
         }));
-      return reindexedList;
-    });
+
+    if (updatedList.length === 0) {
+        addEquipmentRow();
+    } else {
+        setEquipmentList(updatedList);
+    }
   };
 
   const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
-  
+
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
@@ -599,20 +669,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) throw new Error('Fill in Material Desc, Make, and Model for all equipment.');
 
       const submissionData = new FormData();
-      submissionData.append('date', formData.date);
-      submissionData.append('customer_dc_date', formData.customer_dc_date);
+      
+      // FIX: Ensure material_inward_date is always a valid date string
+      // If the user somehow clears the date, we fall back to today's date
+      const finalInwardDate = formData.material_inward_date 
+        ? formData.material_inward_date 
+        : new Date().toISOString().split('T')[0];
+
+      submissionData.append('material_inward_date', finalInwardDate);
+      submissionData.append('customer_dc_date', formData.customer_dc_date || "");
+      submissionData.append('customer_dc_no', formData.customer_dc_no);
       submissionData.append('receiver', formData.receiver);
       submissionData.append('customer_id', formData.customer_id.toString());
       submissionData.append('customer_details', formData.customer_details);
-      
-      const equipmentDataForJson = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, ...rest }) => ({
+
+      const equipmentDataForJson = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, inspe_status, inspe_remarks, ...rest }) => ({
         ...rest,
         qty: Number(rest.qty),
-        inspe_notes: rest.inspe_notes || 'OK',
+        inspe_notes: inspe_status === 'OK' ? 'OK' : inspe_remarks,
         existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
       }));
       submissionData.append('equipment_list', JSON.stringify(equipmentDataForJson));
-      
+
       equipmentList.forEach((equipment, index) => {
         equipment.photos?.forEach((photoFile: File) => submissionData.append(`photos_${index}`, photoFile, photoFile.name));
       });
@@ -627,11 +705,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
         const response = await api.post<InwardResponse>(ENDPOINTS.STAFF.SUBMIT, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        commitUsedSRFNo(response.data.srf_no.toString());
+        commitUsedSRFNo(response.data.srf_no.toString().replace('NEPL', ''));
         showMessage('success', `Inward SRF ${response.data.srf_no} submitted. Please notify the customer.`);
         setShowEmailModal(true);
         setLastSavedInwardId(response.data.inward_id);
         setLastSavedSrfNo(String(response.data.srf_no));
+        
+        setReportEmails(['']);
       }
     } catch (error: unknown) {
       if (isSimpleAxiosError(error)) {
@@ -648,13 +728,30 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  const addEmailField = () => {
+    setReportEmails(prev => [...prev, '']);
+  };
+
+  const removeEmailField = (index: number) => {
+    setReportEmails(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEmailChange = (index: number, value: string) => {
+    setReportEmails(prev => prev.map((email, i) => i === index ? value : email));
+  };
+
   const handleSendFir = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reportEmail || !lastSavedInwardId) return;
+    const validEmails = reportEmails.filter(email => email.trim() && email.includes('@'));
+    if (validEmails.length === 0 || !lastSavedInwardId) return;
+    
     try {
-      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { email: reportEmail, send_later: false });
-      showMessage('success', `FIR for SRF ${lastSavedSrfNo} sent to ${reportEmail}!`);
-      setReportEmail('');
+      await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { 
+        emails: validEmails, 
+        send_later: false 
+      });
+      showMessage('success', `FIR for SRF ${lastSavedSrfNo} sent to ${validEmails.length} recipient(s)!`);
+      setReportEmails(['']);
       handleCloseEmailModalAndNavigate();
     } catch (error: any) {
       showMessage('error', error.response?.data?.detail || 'Failed to send FIR.');
@@ -671,7 +768,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       showMessage('error', error.response?.data?.detail || 'Failed to schedule FIR.');
     }
   };
-  
+
   const getDraftStatusIcon = () => {
     switch (draftSaveStatus) {
       case 'saving': return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
@@ -694,8 +791,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const renderEmailModal = () => !showEmailModal ? null : (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={handleCloseEmailModalAndNavigate}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={handleCloseEmailModalAndNavigate} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative" onClick={(e) => e.stopPropagation()}>
+        <button onClick={handleCloseEmailModalAndNavigate} className="absolute top-4 right-4 text-gray-400 hover:text-red-500">
+          <X size={24} />
+        </button>
         <div className="flex items-center space-x-4 mb-4">
           <Send className="text-blue-600" size={36} />
           <h2 className="text-2xl font-bold text-gray-800">Send Inward Report to Customer</h2>
@@ -703,23 +802,84 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         <p className="text-gray-600 mb-6">The inward for SRF <strong>{lastSavedSrfNo}</strong> is complete. You can now notify the customer by sending the First Inspection Report (FIR).</p>
         <div className="space-y-6">
           <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50">
-            <label htmlFor="reportEmail" className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label>
-            <div className="flex gap-2">
-              <input id="reportEmail" type="email" value={reportEmail} onChange={(e) => setReportEmail(e.target.value)} required placeholder="Enter customer's email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" />
-              <button type="submit" disabled={!reportEmail} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 font-bold"><Send size={18} /><span>Send FIR</span></button>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label>
+            <div className="space-y-2">
+              {reportEmails.map((email, index) => (
+                <div key={index} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => handleEmailChange(index, e.target.value)}
+                    required
+                    placeholder={index === 0 ? "Primary customer email..." : "Additional email..."}
+                    className="flex-grow px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  {reportEmails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmailField(index)}
+                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={addEmailField}
+                  className="px-4 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg font-medium"
+                >
+                  + Add Email
+                </button>
+                <button
+                  type="submit"
+                  disabled={!reportEmails.some(email => email.trim())}
+                  className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 font-bold"
+                >
+                  <Send size={18} />
+                  <span>Send FIR</span>
+                </button>
+              </div>
             </div>
           </form>
           <div className="p-4 border rounded-lg bg-gray-50">
             <label className="block text-sm font-medium text-gray-700 mb-2">Schedule for Later</label>
-            <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Add to Scheduled Tasks</span></button>
+            <button
+              type="button"
+              onClick={handleScheduleFir}
+              className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"
+            >
+              <Clock size={20} />
+              <span>Add to Scheduled Tasks</span>
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 
+  const getModalEquipment = (): BaseEquipmentDetail | null => {
+    if (!selectedEquipment) return null;
+
+    const { inspe_status, inspe_remarks, accessories_included, ...rest } = selectedEquipment;
+
+    const modalEquipment: BaseEquipmentDetail = {
+      ...rest,
+      calibration_by: selectedEquipment.calibration_by === 'On-Site' ? 'Out Lab' : selectedEquipment.calibration_by,
+      inspe_notes: inspe_status === 'OK' ? 'OK' : inspe_remarks,
+    };
+    return modalEquipment;
+  }
+
   if (isLoadingData) {
-    return (<div className="flex justify-center items-center h-screen"><Loader2 className="animate-spin text-blue-600" size={48} /><span className="ml-4 text-xl text-gray-700">Loading Form...</span></div>);
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="animate-spin text-blue-600" size={48} />
+        <span className="ml-4 text-xl text-gray-700">Loading Form...</span>
+      </div>
+    );
   }
 
   return (
@@ -730,29 +890,47 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           <div><h1 className="text-3xl font-bold text-gray-900">{isEditMode ? 'Edit Inward Form' : 'New Inward Form'}</h1></div>
         </div>
         <div className="flex items-center space-x-2 sm:space-x-4">
-            {!isEditMode && (<div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-lg border border-gray-200">{getDraftStatusIcon()}<span className="font-medium">{getDraftStatusText()}</span></div>)}
-            {/* --- MODIFICATION START: Conditional Button Text --- */}
-            <button 
-              type="button" 
-              onClick={handleBackToPortal} 
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
-            >
-              <ArrowLeft size={18} />
-              <span>{isEditMode ? 'Back to List' : 'Back to Drafts'}</span>
-            </button>
-            {/* --- MODIFICATION END --- */}
+          {!isEditMode && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-lg border border-gray-200">
+              {getDraftStatusIcon()}
+              <span className="font-medium">{getDraftStatusText()}</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleBackToPortal}
+            className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+          >
+            <ArrowLeft size={18} />
+            <span>{isEditMode ? 'Back to List' : 'Back to Drafts'}</span>
+          </button>
         </div>
       </div>
 
-      {!isEditMode && hasFormData && (<div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg"><div className="flex items-center gap-3"><Save className="h-5 w-5 text-blue-600" /><div><h3 className="font-semibold text-blue-900">Auto-Save Active</h3><p className="text-sm text-blue-700">Your work is automatically saved. Feel free to resume anytime from the drafts section.</p></div></div></div>)}
-      {message && ( <div className={`my-4 px-4 py-3 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>{message.text}</div> )}
+      {!isEditMode && hasFormData && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-3">
+            <Save className="h-5 w-5 text-blue-600" />
+            <div>
+              <h3 className="font-semibold text-blue-900">Auto-Save Active</h3>
+              <p className="text-sm text-blue-700">Your work is automatically saved. Feel free to resume anytime from the drafts section.</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {message && (
+        <div className={`my-4 px-4 py-3 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+          {message.text}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Basic Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border">
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Date *</label><input type="date" name="date" value={formData.date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date *</label><input type="text" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} required placeholder="Enter Customer DC details" className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Material Inward Date *</label><input type="date" name="material_inward_date" value={formData.material_inward_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC No. *</label><input type="text" name="customer_dc_no" value={formData.customer_dc_no} onChange={handleFormChange} required placeholder="Enter Customer DC Number" className="w-full px-4 py-2 border rounded-lg" /></div>
+            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} className="w-full px-4 py-2 border rounded-lg" /></div>
             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
             <div className="md:col-span-1"><label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-500">(Auto)</span></label><input type="text" value={formData.srf_no} disabled className="w-full px-4 py-2 bg-gray-200 rounded-lg" /></div>
             <div className="md:col-span-2 lg:col-span-3">
@@ -784,12 +962,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
             )}
           </div>
           <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
-            <table className="w-full text-sm border-collapse min-w-[2000px]">
+            <table className="w-full text-sm border-collapse min-w-[2500px]">
               <thead className="bg-slate-100">
                 <tr>
                   <th className="sticky left-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">#</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[160px]">NEPL ID</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Material Desc *</th>
+                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[280px]">Material Description *</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Make *</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Model *</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Range</th>
@@ -803,6 +981,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                       <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Out DC</th>
                     </>
                   )}
+                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Accessories Included</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Visual Inspection</th>
                   <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Photos</th>
                   <th className="sticky right-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">Actions</th>
@@ -811,44 +990,82 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
               <tbody className="divide-y divide-slate-200">
                 {equipmentList.map((equipment, index) => (
                   <React.Fragment key={index}>
-                    <tr className={`hover:bg-slate-50 group ${equipment.inspe_notes && equipment.inspe_notes.toUpperCase() !== 'OK' ? 'bg-orange-50' : ''} ${equipment.remarks_and_decision ? 'border-b-0' : ''}`}>
+                    <tr className={`hover:bg-slate-50 group ${equipment.inspe_status === 'Not OK' ? 'bg-orange-50' : ''} ${equipment.remarks_and_decision ? 'border-b-0' : ''}`}>
                       <td className="sticky left-0 z-10 p-3 text-center font-semibold text-slate-500 bg-white group-hover:bg-slate-50">{index + 1}</td>
                       <td className="p-2"><input type="text" value={equipment.nepl_id} disabled className="w-full bg-slate-100 font-medium px-2 py-1.5 border border-slate-200 rounded-md" /></td>
-                      <td className="p-2"><input type="text" value={equipment.material_desc} onChange={(e) => handleEquipmentChange(index, 'material_desc', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" required /></td>
+                      
+                      {/* BEAUTIFUL NORMAL DROPDOWN FOR MATERIAL DESCRIPTION */}
+                      <td className="p-2">
+                        <select
+                          value={equipment.material_desc}
+                          onChange={(e) => handleEquipmentChange(index, 'material_desc', e.target.value)}
+                          required
+                          className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                        >
+                          <option value="">Select Material Description *</option>
+                          {MATERIAL_DESCRIPTIONS.map((desc) => (
+                            <option key={desc} value={desc}>{desc}</option>
+                          ))}
+                          <option value="Other">Other (Specify in Make/Model)</option>
+                        </select>
+                      </td>
+
                       <td className="p-2"><input type="text" value={equipment.make} onChange={(e) => handleEquipmentChange(index, 'make', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" required /></td>
                       <td className="p-2"><input type="text" value={equipment.model} onChange={(e) => handleEquipmentChange(index, 'model', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" required /></td>
                       <td className="p-2"><input type="text" value={equipment.range || ''} onChange={(e) => handleEquipmentChange(index, 'range', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
                       <td className="p-2"><input type="text" value={equipment.serial_no || ''} onChange={(e) => handleEquipmentChange(index, 'serial_no', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
                       <td className="p-2"><input type="number" value={equipment.qty} min={1} onChange={(e) => handleEquipmentChange(index, 'qty', parseInt(e.target.value) || 1)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md text-center focus:ring-1 focus:ring-blue-500" required /></td>
                       <td className="p-2">
-                        <select className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" value={equipment.calibration_by} onChange={(e) => handleEquipmentChange(index, 'calibration_by', e.target.value)}>
+                        <select className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value={equipment.calibration_by} onChange={(e) => handleEquipmentChange(index, 'calibration_by', e.target.value)}>
                           <option value="In Lab">In Lab</option>
                           <option value="Outsource">Outsource</option>
-                          <option value="Out Lab">Out Lab</option>
+                          <option value="On-Site">On-Site</option>
                         </select>
                       </td>
                       {equipment.calibration_by === 'Outsource' ? (
                         <>
-                          <td className="p-2"><input type="text" placeholder="Supplier" value={equipment.supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                          <td className="p-2"><input type="text" placeholder="In DC" value={equipment.in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                          <td className="p-2"><input type="text" placeholder="Out DC" value={equipment.out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
+                          <td className="p-2"><input type="text" placeholder="Supplier" value={(equipment as any).supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
+                          <td className="p-2"><input type="text" placeholder="In DC" value={(equipment as any).in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
+                          <td className="p-2"><input type="text" placeholder="Out DC" value={(equipment as any).out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
                         </>
                       ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
-                      
+
                       <td className="p-2">
                         <input
                           type="text"
-                          value={equipment.inspe_notes || 'OK'}
-                          onChange={(e) => handleEquipmentChange(index, 'inspe_notes', e.target.value)}
-                          placeholder="OK, or describe issue"
-                          className={`w-full px-2 py-1.5 border rounded-md focus:ring-1 focus:ring-blue-500 ${
-                            (!equipment.inspe_notes || equipment.inspe_notes.trim().toUpperCase() === 'OK')
-                              ? 'bg-green-50 border-green-200 text-green-800' 
-                              : 'bg-orange-50 border-orange-300 text-orange-800'
-                          }`}
+                          value={equipment.accessories_included || ''}
+                          onChange={(e) => handleEquipmentChange(index, 'accessories_included', e.target.value)}
+                          placeholder="List accessories..."
+                          className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
-                      
+
+                      <td className="p-2">
+                        <div className="flex flex-col gap-1">
+                            <select
+                                value={equipment.inspe_status}
+                                onChange={(e) => handleEquipmentChange(index, 'inspe_status', e.target.value)}
+                                className={`w-full px-3 py-2 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 ${
+                                    equipment.inspe_status === 'OK'
+                                    ? 'bg-green-50 border-green-200 text-green-800'
+                                    : 'bg-orange-50 border-orange-300 text-orange-800'
+                                }`}
+                            >
+                                <option value="OK">OK</option>
+                                <option value="Not OK">Not OK</option>
+                            </select>
+                            {equipment.inspe_status === 'Not OK' && (
+                                <input
+                                    type="text"
+                                    value={equipment.inspe_remarks}
+                                    onChange={(e) => handleEquipmentChange(index, 'inspe_remarks', e.target.value)}
+                                    placeholder="Describe issue..."
+                                    className="w-full mt-1 bg-transparent px-2 py-1.5 border border-orange-300 rounded-md focus:ring-1 focus:ring-orange-500 text-orange-800"
+                                />
+                            )}
+                        </div>
+                      </td>
+
                       <td className="p-2 align-middle">
                         <div className="flex items-center gap-2">
                           <label htmlFor={`photo-upload-${index}`} className="flex-shrink-0 flex items-center justify-center gap-1 cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs"><Camera size={14} /> Attach</label>
@@ -902,12 +1119,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         <div className="flex items-center justify-center gap-1">
                           <button type="button" onClick={() => viewEquipmentDetails(index)} className="p-2 text-slate-500 hover:bg-blue-100 hover:text-blue-600 rounded-full" title="View Full Details"><Eye size={16} /></button>
                           {!isEditMode && (
-                            <button 
-                              type="button" 
-                              onClick={() => removeEquipmentRow(index)} 
-                              className="p-2 text-slate-500 hover:bg-red-100 hover:text-red-600 rounded-full" 
-                              title="Remove Row" 
-                              disabled={equipmentList.length <= 1}
+                            <button
+                              type="button"
+                              onClick={() => removeEquipmentRow(index)}
+                              className="p-2 text-slate-500 hover:bg-red-100 hover:text-red-600 rounded-full"
+                              title="Remove Row"
                             >
                               <Trash2 size={16} />
                             </button>
@@ -916,10 +1132,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                       </td>
                     </tr>
 
-                    {equipment.remarks_and_decision && (
+                    {equipment.remarks_and_decision && equipment.inspe_status === 'Not OK' && (
                       <tr className="bg-yellow-50/70">
                         <td className="sticky left-0 z-10 p-2 bg-yellow-50/70"></td>
-                        <td colSpan={isAnyOutsourced ? 12 : 9} className="p-0">
+                        <td colSpan={isAnyOutsourced ? 13 : 10} className="p-0">
                           <CustomerRemark remark={equipment.remarks_and_decision} />
                         </td>
                         <td className="sticky right-0 z-10 p-2 bg-yellow-50/70"></td>
@@ -946,10 +1162,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         </div>
       </form>
 
-      {selectedEquipment && <EquipmentDetailsModal equipment={selectedEquipment} onClose={() => setSelectedEquipment(null)} />}
+      {selectedEquipment && <EquipmentDetailsModal equipment={getModalEquipment()!} onClose={() => setSelectedEquipment(null)} />}
       {renderEmailModal()}
     </div>
-  ); 
+  );
 };
 
 export default InwardForm;
