@@ -21,7 +21,7 @@ from backend.core.config import settings
 from backend.core.email import (
     send_existing_user_notification_email,
     send_new_user_invitation_email,
-    send_multiple_user_notification_email  # New function for multiple emails
+    send_multiple_user_notification_email
 )
 from backend.core.security import create_invitation_token, hash_password
 
@@ -122,7 +122,7 @@ class InwardService:
                     "Calibration By": equipment.calibration_by, "Supplier": equipment.supplier,
                     "Out DC": equipment.out_dc, "In DC": equipment.in_dc,
                     "Nextage Reference": equipment.nextage_contract_reference,
-                    "Accessories Included": equipment.accessories_included,  # New field
+                    "Accessories Included": equipment.accessories_included,
                     "Engineer Remark / Decision": equipment.engineer_remarks,
                     "Customer Remark": equipment.customer_remarks,
                     "Equipment Unit": getattr(srf_equipment, "unit", None),
@@ -176,19 +176,32 @@ class InwardService:
         try:
             current_time = datetime.now(timezone.utc)
             
-            # --- MODIFICATION START ---
-            # Correctly extract the date. Prefer 'material_inward_date' (Frontend key), fallback to 'date' (Legacy key).
             material_date = draft_data.get('material_inward_date') or draft_data.get('date')
-            # --- MODIFICATION END ---
+            
+            # --- FIXED: Handle SRF No for Drafts to prevent using real numbers or constraint errors ---
+            incoming_srf = draft_data.get('srf_no')
+            
+            # If SRF is TBD, Loading, or Missing, assign a temp DRAFT ID
+            if not incoming_srf or incoming_srf in ['TBD', 'Loading...', 'Error!']:
+                if inward_id:
+                     # If updating an existing draft, check if it already has a DRAFT-xxx ID
+                    existing_draft = self.db.get(Inward, inward_id)
+                    srf_to_save = existing_draft.srf_no if existing_draft else f"DRAFT-{uuid.uuid4().hex[:8]}"
+                else:
+                    # New draft, assign temp ID
+                    srf_to_save = f"DRAFT-{uuid.uuid4().hex[:8]}"
+            else:
+                # If user somehow has a specific number (rare for new flow), use it
+                srf_to_save = incoming_srf
+            # ----------------------------------------------------------------------------------------
 
             if inward_id:
                 draft = self.db.get(Inward, inward_id)
                 if not draft or draft.created_by != user_id or not draft.is_draft:
                     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found or access denied")
                 
-                draft.srf_no = draft_data.get('srf_no', draft.srf_no)
+                draft.srf_no = srf_to_save
                 draft.customer_id = draft_data.get('customer_id')
-                # Use the extracted material_date
                 draft.material_inward_date = material_date or draft.material_inward_date
                 draft.customer_dc_date = draft_data.get('customer_dc_date')
                 draft.customer_dc_no = draft_data.get('customer_dc_no')
@@ -199,9 +212,8 @@ class InwardService:
                 draft = Inward(
                     created_by=user_id, status='draft', is_draft=True,
                     draft_updated_at=current_time, draft_data=draft_data,
-                    srf_no=draft_data.get('srf_no'),
+                    srf_no=srf_to_save,
                     customer_id=draft_data.get('customer_id'),
-                    # Use the extracted material_date
                     material_inward_date=material_date,
                     customer_dc_date=draft_data.get('customer_dc_date'),
                     customer_dc_no=draft_data.get('customer_dc_no'),
@@ -217,7 +229,7 @@ class InwardService:
             logger.warning(f"Draft save failed due to a data conflict: {e.orig}")
             if 'violates not-null constraint' in str(e.orig):
                  raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"A required field (likely Material Inward Date) was missing. Error: {e.orig}")
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Data conflict. The SRF Number '{draft_data.get('srf_no')}' may already be in use.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Data conflict. The SRF Number may already be in use.")
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to save draft due to an unexpected error: {e}", exc_info=True)
@@ -239,6 +251,7 @@ class InwardService:
         draft_inward_id: Optional[int] = None,
         customer_details_value: Optional[str] = None
     ) -> Inward:
+        # Generates the REAL, authoritative number only on final submit
         authoritative_srf_no = SrfService(self.db).generate_next_srf_no()
         try:
             customer_details = getattr(inward_data, "customer_details", customer_details_value)
@@ -249,6 +262,7 @@ class InwardService:
                 if not db_inward or db_inward.created_by != user_id or not db_inward.is_draft:
                     raise HTTPException(status_code=404, detail="Draft not found or access denied.")
                 
+                # Overwrite temporary DRAFT ID with real SRF ID
                 db_inward.srf_no = authoritative_srf_no
                 db_inward.material_inward_date = inward_data.material_inward_date
                 db_inward.customer_dc_date = inward_data.customer_dc_date
@@ -354,7 +368,7 @@ class InwardService:
                 calibration_by=eqp_model.calibration_by,
                 supplier=eqp_model.supplier, out_dc=eqp_model.out_dc, in_dc=eqp_model.in_dc,
                 nextage_contract_reference=eqp_model.nextage_ref,
-                accessories_included=eqp_model.accessories_included,  # New field
+                accessories_included=eqp_model.accessories_included,
                 qr_code=eqp_model.qr_code, barcode=eqp_model.barcode,
                 photos=photo_paths,
                 engineer_remarks=eqp_model.engineer_remarks,

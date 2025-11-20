@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Mail, X, AlertTriangle, Send, Trash2, Loader2 } from 'lucide-react';
+import { Clock, Mail, X, AlertTriangle, Send, Trash2, Loader2, Plus } from 'lucide-react';
 import { api, ENDPOINTS } from '../api/config';
 
-// === FIX 1: The interface must match the JSON response from the backend, which now sends 'id' ===
 interface DelayedTask {
   id: number;
   inward_id: number;
@@ -24,7 +23,9 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
   const [loading, setLoading] = useState(true);
   const [actionState, setActionState] = useState<{ [key: number]: 'sending' | 'cancelling' | null }>({});
   const [timers, setTimers] = useState<{ [key: number]: number }>({});
-  const [emailInputs, setEmailInputs] = useState<{ [key: number]: string }>({});
+  
+  // CHANGED: Stores an array of email strings for each task ID
+  const [emailInputs, setEmailInputs] = useState<{ [key: number]: string[] }>({});
 
   useEffect(() => {
     fetchPendingTasks();
@@ -56,17 +57,24 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
       setTasks(pendingTasks);
       
       const initialTimers: { [key: number]: number } = {};
-      const initialEmails: { [key: number]: string } = {};
+      const initialEmails: { [key: number]: string[] } = {};
       
-      // === FIX 2: Use task.id consistently ===
       pendingTasks.forEach((task) => {
         initialTimers[task.id] = task.time_left_seconds;
-        if (task.recipient_email && !emailInputs[task.id]) {
-            initialEmails[task.id] = task.recipient_email;
+        
+        // Initialize emails: if exists, split by comma (just in case), otherwise start with one empty field
+        if (!emailInputs[task.id]) {
+            if (task.recipient_email) {
+                // Handle cases where backend might send "email1, email2" string
+                initialEmails[task.id] = task.recipient_email.split(',').map(e => e.trim());
+            } else {
+                initialEmails[task.id] = [''];
+            }
         }
       });
       
       setTimers(initialTimers);
+      // Merge new initials with existing state to preserve user typing
       setEmailInputs(prev => ({...initialEmails, ...prev}));
 
     } catch (error) {
@@ -76,20 +84,59 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
     }
   };
 
-  const handleEmailInputChange = (taskId: number, value: string) => {
-    setEmailInputs(prev => ({ ...prev, [taskId]: value }));
+  // --- Email List Handlers ---
+
+  const handleEmailChange = (taskId: number, index: number, value: string) => {
+    setEmailInputs(prev => {
+      const currentEmails = [...(prev[taskId] || [''])];
+      currentEmails[index] = value;
+      return { ...prev, [taskId]: currentEmails };
+    });
   };
 
-  const sendEmailNow = async (taskId: number, email: string) => {
-    if (!email) {
-      alert('Please enter a recipient email address.');
+  const addEmailField = (taskId: number) => {
+    setEmailInputs(prev => {
+      const currentEmails = [...(prev[taskId] || [])];
+      return { ...prev, [taskId]: [...currentEmails, ''] };
+    });
+  };
+
+  const removeEmailField = (taskId: number, index: number) => {
+    setEmailInputs(prev => {
+      const currentEmails = [...(prev[taskId] || [''])];
+      // Prevent removing the last field
+      if (currentEmails.length === 1) {
+          currentEmails[0] = '';
+          return { ...prev, [taskId]: currentEmails };
+      }
+      const updatedEmails = currentEmails.filter((_, i) => i !== index);
+      return { ...prev, [taskId]: updatedEmails };
+    });
+  };
+
+  // ---------------------------
+
+  const sendEmailNow = async (taskId: number, emailList: string[]) => {
+    // Filter valid emails
+    const validEmails = emailList
+        .map(e => e.trim())
+        .filter(e => e.length > 0 && e.includes('@'));
+
+    if (validEmails.length === 0) {
+      alert('Please enter at least one valid recipient email address.');
       return;
     }
+
     setActionState(prev => ({ ...prev, [taskId]: 'sending' }));
     try {
-      await api.post(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/${taskId}/send`, { email });
+      // Backend should accept 'emails' (array) or 'email' (comma separated)
+      // We send 'emails' array here. Ensure your Backend endpoint supports this.
+      await api.post(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/${taskId}/send`, { 
+        emails: validEmails 
+      });
+      
       await fetchPendingTasks();
-      alert(`First inspection report sent to ${email} successfully!`);
+      alert(`First inspection report sent to ${validEmails.length} recipient(s) successfully!`);
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to send email. Please try again.');
     } finally {
@@ -178,9 +225,10 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
                 const isOverdue = task.is_overdue || timeLeft <= 0;
                 const isUrgent = timeLeft > 0 && timeLeft < 3600;
                 const currentAction = actionState[task.id];
-                const emailForTask = emailInputs[task.id] || '';
                 
-                // === FIX 3: Use task.id consistently in the JSX ===
+                // Get array of emails for this task (default to one empty if undefined)
+                const emailsForTask = emailInputs[task.id] || [''];
+                
                 return (
                   <div key={task.id} className={`border rounded-lg p-6 transition-all duration-200 ${isOverdue ? 'border-red-300 bg-red-50' : isUrgent ? 'border-orange-300 bg-orange-50' : 'border-gray-200 bg-white'}`}>
                     <div className="flex justify-between items-start mb-4">
@@ -195,17 +243,39 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 rounded-lg p-3 mb-4 space-y-2">
-                      <label htmlFor={`email-${task.id}`} className="block text-sm font-medium text-gray-700">Recipient Email:</label>
-                      <input
-                        id={`email-${task.id}`}
-                        type="email"
-                        placeholder="Enter customer's email address..."
-                        value={emailForTask}
-                        onChange={(e) => handleEmailInputChange(task.id, e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                        disabled={!!currentAction}
-                      />
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Recipient Emails:</label>
+                      <div className="space-y-2">
+                        {emailsForTask.map((email, index) => (
+                            <div key={index} className="flex gap-2">
+                                <input
+                                    type="email"
+                                    placeholder="Enter customer's email address..."
+                                    value={email}
+                                    onChange={(e) => handleEmailChange(task.id, index, e.target.value)}
+                                    className="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                    disabled={!!currentAction}
+                                />
+                                {emailsForTask.length > 1 && (
+                                    <button 
+                                        onClick={() => removeEmailField(task.id, index)}
+                                        disabled={!!currentAction}
+                                        className="px-3 py-2 text-red-600 hover:bg-red-100 rounded-lg border border-transparent hover:border-red-200"
+                                        title="Remove email"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        <button 
+                            onClick={() => addEmailField(task.id)}
+                            disabled={!!currentAction}
+                            className="text-sm flex items-center space-x-1 text-blue-600 hover:text-blue-800 font-medium mt-2 px-1"
+                        >
+                            <Plus size={16} /> <span>Add Another Email</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex justify-end space-x-3">
@@ -213,7 +283,11 @@ export const DelayedEmailManager: React.FC<DelayedEmailManagerProps> = ({ onClos
                         {currentAction === 'cancelling' ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 size={16} />}
                         <span>{currentAction === 'cancelling' ? 'Cancelling...' : 'Cancel'}</span>
                       </button>
-                      <button onClick={() => sendEmailNow(task.id, emailForTask)} disabled={!emailForTask || !!currentAction} className="flex items-center space-x-2 px-6 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300">
+                      <button 
+                        onClick={() => sendEmailNow(task.id, emailsForTask)} 
+                        disabled={emailsForTask.every(e => !e.trim()) || !!currentAction} 
+                        className="flex items-center space-x-2 px-6 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300"
+                      >
                         {currentAction === 'sending' ? <Loader2 className="animate-spin h-4 w-4" /> : <Send size={16} />}
                         <span>{currentAction === 'sending' ? 'Sending...' : 'Send Now'}</span>
                       </button>

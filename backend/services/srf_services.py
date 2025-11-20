@@ -23,9 +23,7 @@ class SrfService:
     def get_pending_srf_inwards(self, current_user: UserSchema) -> List[Dict[str, Any]]:
         """
         Gets inwards that are ready for SRF creation.
-        This version now includes inwards that have completed first inspection.
         """
-        # === FIX 1: Allow more statuses to be selected for SRF creation ===
         allowed_statuses = ['updated']
         stmt = (
             select(Inward)
@@ -67,7 +65,6 @@ class SrfService:
         if not inward:
             raise HTTPException(status_code=404, detail="Inward not found")
 
-        # === FIX 2: Allow SRF creation for 'created' OR 'first_inspection_completed' ===
         allowed_statuses = ['updated']
         if inward.status not in allowed_statuses:
             raise HTTPException(
@@ -77,10 +74,8 @@ class SrfService:
 
         existing_srf = self.db.scalars(select(Srf).where(Srf.inward_id == inward_id)).first()
         if existing_srf:
-            # Using 409 Conflict is more specific for "already exists" errors
             raise HTTPException(status_code=409, detail="SRF already exists for this inward. Please refresh the list.")
 
-        # Fetch customer details from the inward's customer_id
         customer = self.db.get(Customer, inward.customer_id)
         if not customer:
             raise HTTPException(status_code=400, detail="Associated customer not found for this inward.")
@@ -89,9 +84,6 @@ class SrfService:
             inward_id=inward_id,
             srf_no=inward.srf_no,
             date=srf_data.get('date', inward.date),
-            # The following fields are now derived from the inward.customer relationship
-            # and are not directly set on SRF creation.
-            # They will be accessed via srf.inward.customer in the frontend.
             certificate_issue_name=srf_data.get('certificate_issue_name', customer.customer_details),
             status='created'
         )
@@ -102,10 +94,8 @@ class SrfService:
             select(InwardEquipment).where(InwardEquipment.inward_id == inward_id)
         ).all()
 
-        # Correctly handle the equipment list from the frontend
         equipment_payload_list = srf_data.get('equipments', [])
         for inward_eq in inward_equipments:
-            # Find the corresponding payload for the current equipment item
             eq_payload = next((item for item in equipment_payload_list if item.get('inward_eqp_id') == inward_eq.inward_eqp_id), {})
 
             srf_eq = SrfEquipment(
@@ -117,14 +107,11 @@ class SrfService:
             )
             self.db.add(srf_eq)
 
-        # inward.status = 'srf_created'
-
         self.db.commit()
         self.db.refresh(new_srf)
         return new_srf
 
     def get_srf_by_id(self, srf_id: int) -> Srf:
-        """Gets detailed information for a single SRF, eager loading inward and customer."""
         srf = self.db.scalars(
             select(Srf)
             .options(
@@ -140,12 +127,10 @@ class SrfService:
         return srf
 
     def update_srf(self, srf_id: int, update_data: Dict[str, Any]):
-        """Updates an existing SRF and its associated equipment details."""
         srf = self.db.get(Srf, srf_id)
         if not srf:
             raise HTTPException(status_code=404, detail="SRF not found")
 
-        # Filter out fields that are now derived from inward.customer
         updatable_fields = [
             "nepl_srf_no", "certificate_issue_name", "status",
             "calibration_frequency", "statement_of_conformity",
@@ -179,44 +164,61 @@ class SrfService:
         return srf
 
     def generate_next_srf_no(self) -> str:
-        """Generate the next SRF number in format NEPL25001"""
+        """
+        Generate the next SRF number in format NEPL25001.
+        Uses both tables to find the true maximum to avoid skipping or collisions.
+        Strictly EXCLUDES drafts from calculation.
+        """
         try:
-            # Get current year's last two digits
             current_year = datetime.now().year
-            year_suffix = str(current_year)[-2:]  # e.g., "25" for 2025
+            year_suffix = str(current_year)[-2:]  # e.g., "25"
+            prefix = f"NEPL{year_suffix}"
+            year_pattern = f"{prefix}%"
 
-            # Find the highest SRF number for current year
-            year_pattern = f"NEPL{year_suffix}%"
+            # 1. Check Inward table - IMPORTANT: Exclude Drafts
+            latest_inward_srf = self.db.scalars(
+                select(Inward.srf_no)
+                .where(
+                    Inward.srf_no.like(year_pattern),
+                    Inward.is_draft.is_(False)  # <--- CRITICAL FIX: Ignore drafts
+                )
+                .order_by(desc(Inward.srf_no))
+            ).first()
 
-            # Query to get the latest SRF number for current year
-            latest_srf = self.db.scalars(
+            # 2. Check SRF table
+            latest_srf_table_no = self.db.scalars(
                 select(Srf.nepl_srf_no)
                 .where(Srf.nepl_srf_no.like(year_pattern))
                 .order_by(desc(Srf.nepl_srf_no))
             ).first()
 
-            if latest_srf:
-                # Extract the numeric part and increment
+            def extract_sequence(srf_str: str | None) -> int:
+                if not srf_str:
+                    return 0
                 try:
-                    numeric_part = latest_srf.replace(f"NEPL{year_suffix}", "")
-                    next_number = int(numeric_part) + 1
+                    srf_str = str(srf_str).strip()
+                    if srf_str.startswith(prefix):
+                        # Only extract if the length is correct to avoid parsing "NEPL25ABC"
+                        numeric_part = srf_str[len(prefix):]
+                        if numeric_part.isdigit():
+                            return int(numeric_part)
+                    return 0
                 except (ValueError, AttributeError):
-                    logger.warning(f"Could not parse SRF number: {latest_srf}, starting from 1")
-                    next_number = 1
-            else:
-                # No SRF found for current year, start from 1
-                next_number = 1
+                    return 0
 
-            # Format: NEPL + year suffix + 3-digit number (e.g., NEPL25001)
-            next_srf_no = f"NEPL{year_suffix}{next_number:03d}"
+            max_inward = extract_sequence(latest_inward_srf)
+            max_srf = extract_sequence(latest_srf_table_no)
 
-            logger.info(f"Generated SRF number: {next_srf_no}")
+            # Take the highest number found
+            current_max = max(max_inward, max_srf)
+            next_number = current_max + 1
+
+            next_srf_no = f"{prefix}{next_number:03d}"
+
+            logger.info(f"Generated SRF: {next_srf_no} (Inward Max: {max_inward}, SRF Max: {max_srf})")
             return next_srf_no
 
         except Exception as e:
             logger.error(f"Error generating SRF number: {e}", exc_info=True)
-            # Fallback to current timestamp-based generation
             timestamp = datetime.now().strftime("%y%m%d%H%M")
-            fallback_srf = f"NEPL{timestamp}"
-            logger.warning(f"Using fallback SRF number: {fallback_srf}")
-            return fallback_srf
+            return f"NEPL{timestamp}"

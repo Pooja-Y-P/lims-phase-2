@@ -45,11 +45,27 @@ def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation forbidden.")
     return current_user
 
-# --- DRAFT ENDPOINTS ---
+# =========================================================
+# 1. STATIC ROUTES (MUST BE DEFINED FIRST)
+# =========================================================
+
+@router.get("/next-no", response_model=dict)
+def get_next_srf_no(db: Session = Depends(get_db)):
+    """
+    Generates the next available SRF Number (e.g., NEPL25001).
+    Defined AT THE TOP to prevent '422 Unprocessable Entity' errors 
+    caused by catching this string in dynamic int routes.
+    """
+    return {"next_srf_no": SrfService(db).generate_next_srf_no()}
+
 @router.get("/drafts", response_model=List[DraftResponse])
 async def get_drafts(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
     return await inward_service.get_user_drafts(current_user.user_id)
+
+# =========================================================
+# 2. DYNAMIC ROUTES WITH SPECIFIC PREFIXES
+# =========================================================
 
 @router.get("/drafts/{draft_id}", response_model=DraftResponse)
 async def get_draft(draft_id: int, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -128,7 +144,7 @@ async def submit_inward(
 ):
     try:
         inward_data = InwardCreate(
-            material_inward_date=date,
+            material_inward_date=material_inward_date,
             customer_dc_date=customer_dc_date,
             customer_dc_no=customer_dc_no,
             customer_id=customer_id,
@@ -169,10 +185,7 @@ async def delete_draft(draft_id: int, db: Session = Depends(get_db), current_use
     if not await InwardService(db).delete_draft(draft_id, current_user.user_id):
         raise HTTPException(status_code=404, detail="Draft not found")
 
-# --- GENERAL INWARD & FIR ENDPOINTS ---
-@router.get("/next-srf-no", response_model=dict)
-def get_next_srf_no(db: Session = Depends(get_db)):
-    return {"srf_no": SrfService(db).generate_next_srf_no()}
+# --- GENERAL LISTING ENDPOINTS ---
 
 @router.get("/", response_model=List[InwardResponse])
 async def get_all_inward_records(db: Session = Depends(get_db)):
@@ -190,9 +203,6 @@ async def list_exportable_inwards(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    """
-    Provides a flexible list of all finalized inwards for the export page.
-    """
     inward_service = InwardService(db)
     return await inward_service.get_inwards_for_export(start_date=start_date, end_date=end_date)
 
@@ -223,6 +233,7 @@ async def export_inwards_batch(
     )
 
 # --- EMAIL AND NOTIFICATION ENDPOINTS ---
+
 @router.post("/{inward_id}/send-report", status_code=status.HTTP_200_OK)
 async def send_customer_feedback_request(inward_id: int, request_data: SendReportRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     if not request_data.send_later and not request_data.emails:
@@ -267,7 +278,10 @@ async def delete_notification(notification_id: int, db: Session = Depends(get_db
     if not await NotificationService(db).delete_notification(notification_id):
         raise HTTPException(status_code=404, detail="Notification not found.")
 
-# --- INDIVIDUAL INWARD ENDPOINTS ---
+# =========================================================
+# 3. CATCH-ALL DYNAMIC ROUTES (MUST BE DEFINED LAST)
+# =========================================================
+
 @router.get("/{inward_id}/export")
 async def export_updated_inward(
     inward_id: int,
@@ -308,7 +322,7 @@ async def update_inward(
     try:
         inward_data = InwardUpdate(
             srf_no=srf_no,
-            material_inward_date=date,
+            material_inward_date=material_inward_date,
             customer_dc_date=customer_dc_date,
             customer_dc_no=customer_dc_no,
             customer_id=customer_id,

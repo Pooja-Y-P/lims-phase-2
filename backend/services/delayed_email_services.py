@@ -94,7 +94,7 @@ class DelayedEmailService:
                 response = await inward_service.process_customer_notification(
                     inward_id=task.inward_id,
                     creator_id=task.created_by,
-                    customer_email=recipient_email,
+                    customer_emails=recipient_email,
                     send_later=False,
                     background_tasks=background_tasks
                 )

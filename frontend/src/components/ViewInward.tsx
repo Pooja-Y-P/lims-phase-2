@@ -130,7 +130,7 @@ export const ViewInward: React.FC = () => {
               <Calendar className="h-8 w-8 text-gray-400" />
               <div>
                 <p className="text-sm text-gray-500">Received Date</p>
-                <p className="font-semibold text-gray-700">{new Date(inward.date).toLocaleDateString()}</p>
+                <p className="font-semibold text-gray-700">{new Date(inward.material_inward_date).toLocaleDateString()}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">

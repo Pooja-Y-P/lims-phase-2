@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2 } from 'lucide-react';
-// MODIFICATION: Import the base type to handle conversions
+import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { InwardForm as InwardFormType, EquipmentDetail as BaseEquipmentDetail, InwardDetail } from '../types/inward';
-import { generateSRFNo, commitUsedSRFNo } from '../utils/idGenerators';
 import { EquipmentDetailsModal } from './EquipmentDetailsModal';
 import { api, ENDPOINTS, BACKEND_ROOT_URL } from '../api/config';
 import { CustomerRemark } from './CustomerRemarks';
@@ -25,17 +25,12 @@ interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'cal
 interface CustomerDropdownItem {
   customer_id: number;
   customer_details: string;
+  email?: string;
 }
 
 interface InwardResponse {
   inward_id: number;
   srf_no: string;
-}
-
-interface SimpleAxiosError {
-  isAxiosError: true;
-  response?: { data?: any; status?: number; };
-  message: string;
 }
 
 interface DraftSaveResponse {
@@ -60,10 +55,6 @@ interface DraftLoadResponse {
   draft_data: LoadedDraftData;
 }
 
-function isSimpleAxiosError(error: unknown): error is SimpleAxiosError {
-  return typeof error === 'object' && error !== null && (error as any).isAxiosError === true;
-}
-
 type InwardFormProps = {
   initialDraftId: number | null;
 };
@@ -85,7 +76,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const { user } = useAuth();
 
   const [formData, setFormData] = useState<ExtendedInwardFormType>({
-    srf_no: 'Loading...',
+    srf_no: 'Loading...', 
     material_inward_date: new Date().toISOString().split('T')[0],
     customer_dc_date: '',
     customer_dc_no: '',
@@ -94,20 +85,48 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     customer_details: '',
     status: 'created'
   });
+
   const [equipmentList, setEquipmentList] = useState<EquipmentDetail[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(isEditMode || Boolean(initialDraftId));
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Modals & Flow State
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  
   const [reportEmails, setReportEmails] = useState<string[]>(['']);
   const [lastSavedInwardId, setLastSavedInwardId] = useState<number | null>(null);
   const [lastSavedSrfNo, setLastSavedSrfNo] = useState<string>('');
+  const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string>('');
 
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
   const previewUrlsRef = useRef<string[]>([]);
+
+  // Draft State
+  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
+  const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
+  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
+
+  const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+
+  const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
+  const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
+  const hasFormData =
+    (formData.customer_id !== null && formData.customer_id !== undefined) ||
+    (formData.customer_dc_date ?? '').trim().length > 0 ||
+    (formData.customer_dc_no ?? '').trim().length > 0 ||
+    equipmentList.some((eq) => (eq.material_desc || '').trim().length > 0);
+
+  // --- HELPER FUNCTIONS ---
+
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 7000);
+  };
 
   const cleanupAllPreviews = useCallback(() => {
     previewUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
@@ -142,283 +161,26 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     [formData, equipmentList]
   );
 
-  const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
-  const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
-  const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
+  // --- DATA LOADING ---
 
-  const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
-
-  const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
-  const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
-  const hasFormData =
-    (formData.customer_id !== null && formData.customer_id !== undefined) ||
-    (formData.customer_dc_date ?? '').trim().length > 0 ||
-    (formData.customer_dc_no ?? '').trim().length > 0 ||
-    equipmentList.some((eq) => {
-      const hasTextData = (eq.material_desc || '').trim().length > 0;
-      const hasAttachments =
-        (Array.isArray(eq.photos) && eq.photos.length > 0) ||
-        (Array.isArray(eq.photoPreviews) && eq.photoPreviews.length > 0) ||
-        (Array.isArray(eq.existingPhotoUrls) && eq.existingPhotoUrls.length > 0);
-      return hasTextData || hasAttachments;
-    });
+  const fetchNextSrfNo = async (): Promise<string> => {
+    try {
+      const response = await api.get<{ next_srf_no: string }>(`${ENDPOINTS.STAFF.INWARDS}/next-no`);
+      return response.data.next_srf_no;
+    } catch (e) {
+      console.warn("Next SRF fetch failed, UI will show TBD");
+      return "TBD";
+    }
+  };
 
   const fetchCustomers = useCallback(async () => {
     try {
       const response = await api.get<CustomerDropdownItem[]>(ENDPOINTS.PORTAL.CUSTOMERS_DROPDOWN);
       setCustomers(response.data);
     } catch (error) {
-      console.error('Failed to fetch customers for dropdown:', error);
       showMessage('error', 'Failed to load customer list.');
     }
   }, []);
-
-  useEffect(() => {
-    fetchCustomers();
-    if (isEditMode && editId) {
-      loadInwardData(parseInt(editId));
-    } else if (initialDraftId) {
-      loadDraftData(initialDraftId);
-    } else {
-      initializeForm();
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, editId, initialDraftId, fetchCustomers]);
-
-  useEffect(() => {
-    return () => {
-      cleanupAllPreviews();
-    };
-  }, [cleanupAllPreviews]);
-
-  useEffect(() => {
-    if (!isEditMode && isFormReady && hasFormData) {
-      const currentData = serializeDraftState();
-      if (currentData !== lastSavedDataRef.current) {
-        setDraftSaveStatus('unsaved');
-        if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
-        autoSaveTimeoutRef.current = setTimeout(() => triggerAutoSave(currentData), 2000);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode, serializeDraftState]);
-
-  useEffect(() => {
-    if (!selectedEquipment) return;
-    const index = equipmentList.findIndex(eq => eq.nepl_id === selectedEquipment.nepl_id);
-    if (index !== -1 && equipmentList[index] !== selectedEquipment) {
-      setSelectedEquipment(equipmentList[index]);
-    }
-  }, [equipmentList, selectedEquipment]);
-
-  const triggerAutoSave = async (dataToSave: string) => {
-    if (!isFormReady || isEditMode) return;
-    setDraftSaveStatus('saving');
-    try {
-      const equipmentDraftPayload = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, ...rest }) => {
-        const normalizedQty = Number(rest.qty ?? 1);
-        return {
-          ...rest,
-          qty: Number.isFinite(normalizedQty) ? normalizedQty : 1,
-          existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
-        };
-      });
-
-      const draftPayload = {
-        inward_id: currentDraftId,
-        draft_data: {
-          ...formData,
-          equipment_list: equipmentDraftPayload
-        }
-      };
-      const response = await api.patch<DraftSaveResponse>(ENDPOINTS.STAFF.DRAFT, draftPayload);
-
-      if (response.data?.inward_id) {
-        const newDraftId = response.data.inward_id;
-        if (!currentDraftId) {
-          setCurrentDraftId(newDraftId);
-          navigate(`/engineer/create-inward?draft=${newDraftId}`, { replace: true });
-        }
-        let updatedEquipmentListState = equipmentList.map((equipment) => {
-          const sanitizedExisting = (equipment.existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()));
-          return {
-            ...equipment,
-            existingPhotoUrls: sanitizedExisting,
-            photos: equipment.photos || [],
-            photoPreviews: equipment.photoPreviews || []
-          };
-        });
-
-        if (Array.isArray(response.data?.draft_data?.equipment_list)) {
-          updatedEquipmentListState = updatedEquipmentListState.map((equipment, index) => {
-            const serverEquipment = (response.data?.draft_data?.equipment_list as any[])[index];
-            if (!serverEquipment || typeof serverEquipment !== 'object') {
-              return equipment;
-            }
-            const {
-              existing_photo_urls,
-              existingPhotoUrls,
-              photos: _serverPhotos,
-              photoPreviews: _serverPreviews,
-              ...rest
-            } = serverEquipment;
-            const serverExisting =
-              (Array.isArray(existing_photo_urls) ? existing_photo_urls : Array.isArray(existingPhotoUrls) ? existingPhotoUrls : []) as unknown[];
-            const normalizedExisting = serverExisting
-              .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
-            return {
-              ...equipment,
-              ...rest,
-              existingPhotoUrls: normalizedExisting,
-              photos: equipment.photos || [],
-              photoPreviews: equipment.photoPreviews || []
-            };
-          });
-        }
-
-        setEquipmentList(updatedEquipmentListState);
-        setDraftSaveStatus('saved');
-        setLastAutoSaveTime(new Date());
-        lastSavedDataRef.current = serializeDraftState({ formData, equipmentList: updatedEquipmentListState });
-      } else {
-        throw new Error("Auto-save failed on the server.");
-      }
-    } catch (error) {
-      console.error('Auto-save failed:', error);
-      setDraftSaveStatus('error');
-      setTimeout(() => { if (hasFormData) triggerAutoSave(dataToSave); }, 5000);
-    }
-  };
-
-  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-    const currentData = JSON.stringify({ formData, equipmentList });
-    if (hasFormData && !isEditMode && currentData !== lastSavedDataRef.current) {
-      const message = 'You have unsaved changes. Are you sure you want to leave?';
-      e.returnValue = message;
-      return message;
-    }
-  };
-
-  const loadDraftData = async (draftId: number) => {
-    setIsLoadingData(true);
-    try {
-      const response = await api.get<DraftLoadResponse>(`${ENDPOINTS.STAFF.DRAFTS}/${draftId}`);
-      const draftData = response.data.draft_data;
-      if (draftData) {
-        const newFormData: ExtendedInwardFormType = {
-          srf_no: draftData.srf_no || formData.srf_no,
-          material_inward_date: draftData.material_inward_date || new Date().toISOString().split('T')[0],
-          customer_dc_date: draftData.customer_dc_date ?? '',
-          customer_dc_no: draftData.customer_dc_no ?? '',
-          customer_id: draftData.customer_id || null,
-          customer_details: draftData.customer_details || '',
-          receiver: draftData.receiver || '',
-          status: 'created' as const
-        };
-        const newEquipmentList: EquipmentDetail[] = (draftData.equipment_list || []).map(eq => {
-          const existingPhotoUrls = (() => {
-            if (Array.isArray((eq as any).existingPhotoUrls)) return (eq as any).existingPhotoUrls;
-            if (Array.isArray((eq as any).existing_photo_urls)) return (eq as any).existing_photo_urls;
-            if (Array.isArray((eq as any).photos)) return (eq as any).photos;
-            return [];
-          })().filter((path: unknown): path is string => typeof path === 'string' && path.trim().length > 0);
-          return {
-            ...eq,
-            photos: [],
-            photoPreviews: [],
-            existingPhotoUrls
-          };
-        });
-        setFormData(newFormData);
-        setSelectedCustomerId(newFormData.customer_id);
-        cleanupAllPreviews();
-        const normalizedEquipmentList = newEquipmentList.length > 0 ? newEquipmentList : [{
-          nepl_id: `${newFormData.srf_no}-1`,
-          material_desc: '',
-          make: '',
-          model: '',
-          qty: 1,
-          calibration_by: 'In Lab' as const,
-          inspe_status: 'OK' as const,
-          inspe_remarks: '',
-          accessories_included: '',
-          photos: [],
-          photoPreviews: [],
-          existingPhotoUrls: []
-        }];
-        setEquipmentList(normalizedEquipmentList);
-        setCurrentDraftId(draftId);
-        lastSavedDataRef.current = serializeDraftState({ formData: newFormData, equipmentList: normalizedEquipmentList });
-        setDraftSaveStatus('saved');
-        setLastAutoSaveTime(new Date());
-        showMessage('success', 'Draft loaded successfully! Auto-save is active.');
-      }
-    } catch (error) {
-      console.error('Error loading draft:', error);
-      showMessage('error', 'Failed to load draft.');
-      navigate('/engineer');
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
-  const initializeForm = async () => {
-    setCurrentDraftId(null);
-    setDraftSaveStatus('idle');
-    setLastAutoSaveTime(null);
-    cleanupAllPreviews();
-    setEquipmentList([]);
-    setSelectedCustomerId(null);
-    try {
-      const srfNumber = await generateSRFNo();
-      
-      const newFormData: ExtendedInwardFormType = {
-        srf_no: srfNumber,
-        material_inward_date: new Date().toISOString().split('T')[0],
-        customer_dc_date: '',
-        customer_dc_no: '',
-        receiver: user?.full_name || user?.username || '',
-        customer_id: null,
-        customer_details: '',
-        status: 'created' as const
-      };
-      const newEquipmentList: EquipmentDetail[] = [{
-        nepl_id: `${srfNumber}-1`,
-        material_desc: '',
-        make: '',
-        model: '',
-        qty: 1,
-        calibration_by: 'In Lab' as const,
-        inspe_status: 'OK' as const,
-        inspe_remarks: '',
-        accessories_included: '',
-        photos: [],
-        photoPreviews: [],
-        existingPhotoUrls: []
-      }];
-      setFormData(newFormData);
-      setEquipmentList(newEquipmentList);
-      lastSavedDataRef.current = serializeDraftState({
-        formData: newFormData,
-        equipmentList: newEquipmentList,
-      });
-    } catch (error: any) {
-      showMessage('error', error.message || 'Failed to initialize form.');
-      setFormData(prev => ({ ...prev, srf_no: 'Error!' }));
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
 
   const loadInwardData = async (inwardId: number) => {
     setIsLoadingData(true);
@@ -436,12 +198,15 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         status: inward.status
       });
       setSelectedCustomerId(inward.customer_id);
+      
+      if (inward.customer_id && customers.length > 0) {
+         const found = customers.find(c => c.customer_id === inward.customer_id);
+         if (found?.email) setSelectedCustomerEmail(found.email);
+      }
 
       const equipmentData: EquipmentDetail[] = (inward.equipments ?? []).map((eq) => {
         let rawCalibBy = eq.calibration_by || 'In Lab';
-        if (rawCalibBy === 'Out Lab') {
-          rawCalibBy = 'On-Site';
-        }
+        if (rawCalibBy === 'Out Lab') rawCalibBy = 'On-Site';
         const calibrationBy = (['In Lab', 'Outsource', 'On-Site'] as const).includes(rawCalibBy as any)
           ? (rawCalibBy as 'In Lab' | 'Outsource' | 'On-Site')
           : 'In Lab';
@@ -496,6 +261,162 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  const loadDraftData = async (draftId: number) => {
+    setIsLoadingData(true);
+    try {
+      const response = await api.get<DraftLoadResponse>(`${ENDPOINTS.STAFF.DRAFTS}/${draftId}`);
+      const draftData = response.data.draft_data;
+      const nextSrf = await fetchNextSrfNo();
+
+      if (draftData) {
+        const newFormData: ExtendedInwardFormType = {
+          srf_no: nextSrf,
+          material_inward_date: draftData.material_inward_date || new Date().toISOString().split('T')[0],
+          customer_dc_date: draftData.customer_dc_date ?? '',
+          customer_dc_no: draftData.customer_dc_no ?? '',
+          customer_id: draftData.customer_id || null,
+          customer_details: draftData.customer_details || '',
+          receiver: draftData.receiver || '',
+          status: 'created' as const
+        };
+        const newEquipmentList: EquipmentDetail[] = (draftData.equipment_list || []).map(eq => {
+          const existingPhotoUrls = (() => {
+            if (Array.isArray((eq as any).existingPhotoUrls)) return (eq as any).existingPhotoUrls;
+            if (Array.isArray((eq as any).existing_photo_urls)) return (eq as any).existing_photo_urls;
+            return [];
+          })().filter((path: unknown): path is string => typeof path === 'string' && path.trim().length > 0);
+          return {
+            ...eq,
+            photos: [],
+            photoPreviews: [],
+            existingPhotoUrls
+          };
+        });
+        setFormData(newFormData);
+        setSelectedCustomerId(newFormData.customer_id);
+        
+        if (newFormData.customer_id && customers.length > 0) {
+            const foundCust = customers.find(c => c.customer_id === newFormData.customer_id);
+            if (foundCust && foundCust.email) setSelectedCustomerEmail(foundCust.email);
+        }
+
+        cleanupAllPreviews();
+        setEquipmentList(newEquipmentList);
+        setCurrentDraftId(draftId);
+        lastSavedDataRef.current = serializeDraftState({ formData: newFormData, equipmentList: newEquipmentList });
+        setDraftSaveStatus('saved');
+        setLastAutoSaveTime(new Date());
+        showMessage('success', 'Draft loaded successfully! Auto-save is active.');
+      }
+    } catch (error) {
+      console.error('Error loading draft:', error);
+      showMessage('error', 'Failed to load draft.');
+      navigate('/engineer');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  const initializeForm = async () => {
+    setCurrentDraftId(null);
+    setDraftSaveStatus('idle');
+    setLastAutoSaveTime(null);
+    cleanupAllPreviews();
+    setEquipmentList([]);
+    setSelectedCustomerId(null);
+    setSelectedCustomerEmail('');
+    
+    try {
+      const displaySrf = await fetchNextSrfNo();
+      
+      const newFormData: ExtendedInwardFormType = {
+        srf_no: displaySrf,
+        material_inward_date: new Date().toISOString().split('T')[0],
+        customer_dc_date: '',
+        customer_dc_no: '',
+        receiver: user?.full_name || user?.username || '',
+        customer_id: null,
+        customer_details: '',
+        status: 'created' as const
+      };
+      
+      const newEquipmentList: EquipmentDetail[] = [{
+        nepl_id: `${displaySrf}-1`,
+        material_desc: '',
+        make: '',
+        model: '',
+        qty: 1,
+        calibration_by: 'In Lab' as const,
+        inspe_status: 'OK' as const,
+        inspe_remarks: '',
+        accessories_included: '',
+        photos: [],
+        photoPreviews: [],
+        existingPhotoUrls: []
+      }];
+      
+      setFormData(newFormData);
+      setEquipmentList(newEquipmentList);
+      lastSavedDataRef.current = serializeDraftState({
+        formData: newFormData,
+        equipmentList: newEquipmentList,
+      });
+    } catch (error: any) {
+      setFormData(prev => ({ ...prev, srf_no: 'Error!' }));
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  // --- LIFECYCLE ---
+
+  useEffect(() => {
+    fetchCustomers();
+    if (isEditMode && editId) {
+      loadInwardData(parseInt(editId));
+    } else if (initialDraftId) {
+      loadDraftData(initialDraftId);
+    } else {
+      initializeForm();
+    }
+
+    const handleBeforeUnloadLocal = (e: BeforeUnloadEvent) => handleBeforeUnload(e);
+    window.addEventListener('beforeunload', handleBeforeUnloadLocal);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnloadLocal);
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      cleanupAllPreviews();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, editId, initialDraftId, fetchCustomers]);
+
+  useEffect(() => {
+    if (!isEditMode && isFormReady && hasFormData) {
+      const currentData = serializeDraftState();
+      if (currentData !== lastSavedDataRef.current) {
+        setDraftSaveStatus('unsaved');
+        if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = setTimeout(() => triggerAutoSave(), 2000);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode, serializeDraftState]);
+
+
+  // --- LOGIC HANDLERS ---
+
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    const currentData = JSON.stringify({ formData, equipmentList });
+    if (hasFormData && !isEditMode && currentData !== lastSavedDataRef.current) {
+      const message = 'You have unsaved changes. Are you sure you want to leave?';
+      e.returnValue = message;
+      return message;
+    }
+  };
+
   const handleBackToPortal = () => {
     if (hasFormData && !isEditMode && JSON.stringify({ formData, equipmentList }) !== lastSavedDataRef.current) {
       if(!window.confirm('You have unsaved changes. Are you sure you want to go back?')) {
@@ -509,22 +430,79 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
-  const handleCloseEmailModalAndNavigate = () => {
-    setShowEmailModal(false);
-    navigate('/engineer/create-inward', { replace: true });
+  const triggerAutoSave = async () => {
+    if (!isFormReady || isEditMode) return;
+    setDraftSaveStatus('saving');
+    try {
+      const equipmentDraftPayload = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, ...rest }) => {
+        return {
+          ...rest,
+          qty: Number(rest.qty) || 1,
+          existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
+        };
+      });
+
+      const draftPayload = {
+        inward_id: currentDraftId,
+        draft_data: {
+          ...formData,
+          srf_no: 'TBD', 
+          equipment_list: equipmentDraftPayload
+        }
+      };
+      const response = await api.patch<DraftSaveResponse>(ENDPOINTS.STAFF.DRAFT, draftPayload);
+
+      if (response.data?.inward_id) {
+        const newDraftId = response.data.inward_id;
+        if (!currentDraftId) {
+          setCurrentDraftId(newDraftId);
+          navigate(`/engineer/create-inward?draft=${newDraftId}`, { replace: true });
+        }
+        setDraftSaveStatus('saved');
+        setLastAutoSaveTime(new Date());
+        lastSavedDataRef.current = serializeDraftState({ formData, equipmentList });
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      setDraftSaveStatus('error');
+    }
   };
+
+  const getDraftStatusIcon = () => {
+    switch (draftSaveStatus) {
+      case 'saving': return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      case 'saved': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'unsaved': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      default: return <CheckCircle2 className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const getDraftStatusText = () => {
+    switch (draftSaveStatus) {
+      case 'saving': return 'Saving...';
+      case 'saved': return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
+      case 'error': return 'Save failed - retrying...';
+      case 'unsaved': return 'Unsaved changes';
+      default: return 'Auto-save active';
+    }
+  };
+
+  // --- FORM HANDLERS ---
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'customer_id') {
       const customerId = parseInt(value);
       const selectedCustomer = customers.find(c => c.customer_id === customerId);
+      
       setFormData(prev => ({
         ...prev,
         customer_id: customerId,
         customer_details: selectedCustomer ? selectedCustomer.customer_details : ''
       }));
       setSelectedCustomerId(customerId);
+      setSelectedCustomerEmail(selectedCustomer?.email || '');
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -540,9 +518,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       
       if (field === 'inspe_status') {
           updatedEquipment.inspe_status = value as 'OK' | 'Not OK';
-          if (value === 'OK') {
-              updatedEquipment.inspe_remarks = '';
-          }
+          if (value === 'OK') updatedEquipment.inspe_remarks = '';
       } else if (field === 'calibration_by') {
           updatedEquipment.calibration_by = value as 'In Lab' | 'Outsource' | 'On-Site';
           if (value !== 'Outsource') {
@@ -553,49 +529,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       } else {
         (updatedEquipment as any)[field] = value;
       }
-      
       updatedList[index] = updatedEquipment;
       return updatedList;
     });
-  };
-
-  const handlePhotoChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const newFiles = Array.from(e.target.files);
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    newPreviews.forEach(url => previewUrlsRef.current.push(url));
-
-    setEquipmentList(currentList => {
-      const updatedList = [...currentList];
-      if (!updatedList[index]) return currentList;
-      const currentEquipment = { ...updatedList[index] };
-      currentEquipment.photos = [...(currentEquipment.photos || []), ...newFiles];
-      currentEquipment.photoPreviews = [...(currentEquipment.photoPreviews || []), ...newPreviews];
-      updatedList[index] = currentEquipment;
-      return updatedList;
-    });
-
-    e.target.value = '';
-  };
-
-  const handleRemovePhoto = (eqIndex: number, photoIndex: number) => {
-    let previewToRemove: string | undefined;
-    setEquipmentList(currentList => {
-      const updatedList = [...currentList];
-      const equipment = updatedList[eqIndex];
-      if (!equipment) return currentList;
-      const nextPhotos = (equipment.photos || []).filter((_, pIndex) => pIndex !== photoIndex);
-      const currentPreviews = equipment.photoPreviews || [];
-      previewToRemove = currentPreviews[photoIndex];
-      const nextPreviews = currentPreviews.filter((_, pIndex) => pIndex !== photoIndex);
-      updatedList[eqIndex] = { ...equipment, photos: nextPhotos, photoPreviews: nextPreviews };
-      return updatedList;
-    });
-
-    if (previewToRemove) {
-      URL.revokeObjectURL(previewToRemove);
-      previewUrlsRef.current = previewUrlsRef.current.filter(url => url !== previewToRemove);
-    }
   };
 
   const addEquipmentRow = () => {
@@ -646,87 +582,281 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
-  const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
+  const handlePhotoChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const newFiles = Array.from(e.target.files);
+    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
+    newPreviews.forEach(url => previewUrlsRef.current.push(url));
 
-  const showMessage = (type: 'success' | 'error', text: string) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage(null), 5000);
+    setEquipmentList(currentList => {
+      const updatedList = [...currentList];
+      if (!updatedList[index]) return currentList;
+      const currentEquipment = { ...updatedList[index] };
+      currentEquipment.photos = [...(currentEquipment.photos || []), ...newFiles];
+      currentEquipment.photoPreviews = [...(currentEquipment.photoPreviews || []), ...newPreviews];
+      updatedList[index] = currentEquipment;
+      return updatedList;
+    });
+
+    e.target.value = '';
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
-    setIsLoading(true);
+  const handleRemovePhoto = (eqIndex: number, photoIndex: number) => {
+    let previewToRemove: string | undefined;
+    setEquipmentList(currentList => {
+      const updatedList = [...currentList];
+      const equipment = updatedList[eqIndex];
+      if (!equipment) return currentList;
+      const nextPhotos = (equipment.photos || []).filter((_, pIndex) => pIndex !== photoIndex);
+      const currentPreviews = equipment.photoPreviews || [];
+      previewToRemove = currentPreviews[photoIndex];
+      const nextPreviews = currentPreviews.filter((_, pIndex) => pIndex !== photoIndex);
+      updatedList[eqIndex] = { ...equipment, photos: nextPhotos, photoPreviews: nextPreviews };
+      return updatedList;
+    });
 
-    if (formData.srf_no === 'Loading...' || formData.srf_no === 'Error!') {
-      showMessage('error', 'SRF Number is not ready. Please refresh.');
-      setIsLoading(false);
-      return;
+    if (previewToRemove) {
+      URL.revokeObjectURL(previewToRemove);
+      previewUrlsRef.current = previewUrlsRef.current.filter(url => url !== previewToRemove);
+    }
+  };
+
+  const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
+
+  // --- PDF GENERATION (DETAILED) ---
+
+  const generatePDF = (isForDownload: boolean, srfOverride?: string) => {
+    const doc = new jsPDF({ orientation: 'l' }); // Landscape to fit details
+    const pageWidth = doc.internal.pageSize.width;
+    
+    const displaySrfNo = srfOverride || formData.srf_no;
+
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(41, 128, 185); 
+    doc.text("NextAge Engineering Private Limited", pageWidth / 2, 15, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Material Inward Receipt (Detailed)", pageWidth / 2, 25, { align: 'center' });
+
+    // Info Block
+    doc.setFontSize(10);
+    const srfSuffix = srfOverride ? "" : " (Provisional)";
+    
+    const infoX = 14;
+    let infoY = 35;
+    
+    doc.text(`SRF No: ${displaySrfNo}${srfSuffix}`, infoX, infoY);
+    doc.text(`Inward Date: ${formData.material_inward_date}`, infoX + 70, infoY);
+    doc.text(`Receiver: ${formData.receiver}`, infoX + 140, infoY);
+    
+    infoY += 6;
+    doc.text(`Customer DC: ${formData.customer_dc_no}`, infoX, infoY);
+    doc.text(`DC Date: ${formData.customer_dc_date || 'N/A'}`, infoX + 70, infoY);
+    
+    infoY += 8;
+    doc.text(`Customer:`, infoX, infoY);
+    const splitDetails = doc.splitTextToSize(formData.customer_details, pageWidth - 40);
+    doc.text(splitDetails, infoX + 20, infoY);
+    
+    const tableStartY = infoY + (splitDetails.length * 5) + 10;
+
+    // Detailed Table
+    const tableColumn = [
+      "#", "NEPL ID", "Description", "Make / Model", "Serial No", "Range", "Qty", 
+      "Cal Type", "Visual / Accs", "Outsource Info"
+    ];
+    
+    const tableRows: any[] = [];
+
+    equipmentList.forEach((eq, index) => {
+      const desc = `${eq.material_desc}`;
+      const makeModel = `${eq.make} / ${eq.model}`;
+      const range = eq.range || '-';
+      const visual = eq.inspe_status === 'Not OK' ? `Defect: ${eq.inspe_remarks}` : 'OK';
+      const accessories = eq.accessories_included ? `Accs: ${eq.accessories_included}` : '';
+      const combinedVisual = accessories ? `${visual}\n${accessories}` : visual;
+      
+      let outsourceInfo = '-';
+      if(eq.calibration_by === 'Outsource') {
+          outsourceInfo = `Sup: ${(eq as any).supplier || '-'}\nDC: ${(eq as any).out_dc || '-'}`;
+      }
+
+      tableRows.push([
+        index + 1,
+        eq.nepl_id || `${displaySrfNo}-${index+1}`,
+        desc,
+        makeModel,
+        eq.serial_no || '-',
+        range,
+        eq.qty,
+        eq.calibration_by,
+        combinedVisual,
+        outsourceInfo
+      ]);
+    });
+
+    autoTable(doc, {
+      startY: tableStartY,
+      head: [tableColumn],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 9 },
+      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 10 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 45 },
+        9: { cellWidth: 35 }
+      }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY + 20;
+    doc.setFontSize(9);
+    doc.text("Authorized Signature", pageWidth - 50, finalY);
+    doc.line(pageWidth - 60, finalY - 5, pageWidth - 10, finalY - 5);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 10, finalY);
+
+    if (isForDownload) {
+      doc.save(`Inward_Receipt_${displaySrfNo}.pdf`);
+    }
+  };
+
+  // --- PREVIEW & SUBMIT FLOW ---
+
+  const handlePreviewClick = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.receiver || formData.customer_id === null) {
+        showMessage('error', 'Please fill in Receiver and select a Company.');
+        return;
+    }
+    if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) {
+        showMessage('error', 'Fill in Material Desc, Make, and Model for all equipment.');
+        return;
     }
 
+    setShowPreviewModal(true);
+  };
+
+  const handleFinalSubmit = async () => {
+    setShowPreviewModal(false);
+    setIsLoading(true);
+    
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current);
+
     try {
-      if (!formData.receiver || formData.customer_id === null) throw new Error('Please fill in Receiver and select a Company Name & Address.');
-      if (equipmentList.some(eq => !eq.material_desc || !eq.make || !eq.model)) throw new Error('Fill in Material Desc, Make, and Model for all equipment.');
-
       const submissionData = new FormData();
-      
-      // FIX: Ensure material_inward_date is always a valid date string
-      // If the user somehow clears the date, we fall back to today's date
-      const finalInwardDate = formData.material_inward_date 
-        ? formData.material_inward_date 
-        : new Date().toISOString().split('T')[0];
+      const finalInwardDate = formData.material_inward_date || new Date().toISOString().split('T')[0];
 
+      // 1. Basic Fields
+      submissionData.append('srf_no', formData.srf_no); // Essential
       submissionData.append('material_inward_date', finalInwardDate);
       submissionData.append('customer_dc_date', formData.customer_dc_date || "");
       submissionData.append('customer_dc_no', formData.customer_dc_no);
       submissionData.append('receiver', formData.receiver);
+      
+      if (!formData.customer_id) throw new Error("Customer ID is missing");
       submissionData.append('customer_id', formData.customer_id.toString());
+      
       submissionData.append('customer_details', formData.customer_details);
 
-      const equipmentDataForJson = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, barcode_image, qrcode_image, inspe_status, inspe_remarks, ...rest }) => ({
-        ...rest,
-        qty: Number(rest.qty),
-        inspe_notes: inspe_status === 'OK' ? 'OK' : inspe_remarks,
-        existing_photo_urls: (existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
-      }));
-      submissionData.append('equipment_list', JSON.stringify(equipmentDataForJson));
-
-      equipmentList.forEach((equipment, index) => {
-        equipment.photos?.forEach((photoFile: File) => submissionData.append(`photos_${index}`, photoFile, photoFile.name));
+      // 2. Equipment List - FIXED KEY NAMES HERE
+      const equipmentDataForJson = equipmentList.map((item) => {
+        const isOutsource = item.calibration_by === 'Outsource';
+        
+        return {
+          nepl_id: item.nepl_id,
+          
+          // FIX 1: Backend expects 'material_desc', NOT 'material_description'
+          material_desc: item.material_desc, 
+          
+          make: item.make,
+          model: item.model,
+          range: item.range || "",
+          serial_no: item.serial_no || "",
+          
+          // FIX 2: Backend expects 'qty', NOT 'quantity'
+          qty: Number(item.qty), 
+          
+          calibration_by: item.calibration_by,
+          visual_inspection_notes: item.inspe_status === 'OK' ? 'OK' : (item.inspe_remarks || "Not OK"),
+          accessories_included: item.accessories_included || "",
+          
+          supplier: isOutsource ? ((item as any).supplier || "") : null, 
+          in_dc: isOutsource ? ((item as any).in_dc || "") : null,
+          out_dc: isOutsource ? ((item as any).out_dc || "") : null,
+          
+          existing_photo_urls: (item.existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
+        };
       });
 
+      submissionData.append('equipment_list', JSON.stringify(equipmentDataForJson));
+
+      // 3. Photos
+      equipmentList.forEach((equipment, index) => {
+        equipment.photos?.forEach((photoFile: File) => {
+            submissionData.append(`photos_${index}`, photoFile, photoFile.name)
+        });
+      });
+
+      let response;
       if (isEditMode && editId) {
-        submissionData.append('srf_no', formData.srf_no);
-        const response = await api.put<InwardResponse>(`${ENDPOINTS.STAFF.INWARDS}/${editId}`, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        showMessage('success', `Inward SRF ${response.data.srf_no} updated successfully!`);
+        response = await api.put<InwardResponse>(`${ENDPOINTS.STAFF.INWARDS}/${editId}`, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        showMessage('success', 'Inward updated successfully!');
         navigate('/engineer/view-inward');
       } else {
-        submissionData.append('srf_no', formData.srf_no);
-
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
-        const response = await api.post<InwardResponse>(ENDPOINTS.STAFF.SUBMIT, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        commitUsedSRFNo(response.data.srf_no.toString().replace('NEPL', ''));
-        showMessage('success', `Inward SRF ${response.data.srf_no} submitted. Please notify the customer.`);
-        setShowEmailModal(true);
-        setLastSavedInwardId(response.data.inward_id);
-        setLastSavedSrfNo(String(response.data.srf_no));
         
-        setReportEmails(['']);
+        response = await api.post<InwardResponse>(ENDPOINTS.STAFF.SUBMIT, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        
+        const realSrfNo = String(response.data.srf_no);
+        
+        showMessage('success', `Inward Submitted! SRF Assigned: ${realSrfNo}`);
+        
+        setLastSavedInwardId(response.data.inward_id);
+        setLastSavedSrfNo(realSrfNo);
+        setReportEmails([selectedCustomerEmail || '']);
+        setFormData(prev => ({ ...prev, srf_no: realSrfNo })); 
+
+        setTimeout(() => {
+            try {
+                generatePDF(true, realSrfNo);
+            } catch (err) {
+                console.error("PDF Generation failed", err);
+            }
+        }, 500);
+        
+        setShowEmailModal(true);
       }
-    } catch (error: unknown) {
-      if (isSimpleAxiosError(error)) {
-        const detail = error.response?.data?.detail;
-        const errorMessage = Array.isArray(detail) ? detail[0].msg : detail || 'An error occurred.';
-        showMessage('error', errorMessage);
-      } else if (error instanceof Error) {
-        showMessage('error', error.message);
-      } else {
-        showMessage('error', 'An unknown error occurred.');
-      }
+    } catch (error: any) {
+        console.error("Submission Error", error);
+        
+        let errorMsg = 'Submission failed';
+        if (error.response?.status === 422 && Array.isArray(error.response.data.detail)) {
+            // Log the raw detail to console to see exactly what keys are missing if it fails again
+            console.log("Validation Details:", error.response.data.detail);
+            errorMsg = `Validation Error: ${error.response.data.detail.map((d: any) => `${d.loc[d.loc.length-1]}: ${d.msg}`).join(' | ')}`;
+        } else if (error.response?.data?.detail) {
+            errorMsg = typeof error.response.data.detail === 'string' ? error.response.data.detail : JSON.stringify(error.response.data.detail);
+        } else if (error.message) {
+            errorMsg = error.message;
+        }
+        
+        showMessage('error', errorMsg);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // --- EMAIL HANDLERS ---
 
   const addEmailField = () => {
     setReportEmails(prev => [...prev, '']);
@@ -736,25 +866,18 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     setReportEmails(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleEmailChange = (index: number, value: string) => {
-    setReportEmails(prev => prev.map((email, i) => i === index ? value : email));
-  };
-
   const handleSendFir = async (e: React.FormEvent) => {
     e.preventDefault();
     const validEmails = reportEmails.filter(email => email.trim() && email.includes('@'));
     if (validEmails.length === 0 || !lastSavedInwardId) return;
-    
     try {
       await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { 
-        emails: validEmails, 
-        send_later: false 
+        emails: validEmails, send_later: false 
       });
-      showMessage('success', `FIR for SRF ${lastSavedSrfNo} sent to ${validEmails.length} recipient(s)!`);
-      setReportEmails(['']);
-      handleCloseEmailModalAndNavigate();
+      showMessage('success', `FIR sent successfully!`);
+      navigate('/engineer/create-inward', { replace: true });
     } catch (error: any) {
-      showMessage('error', error.response?.data?.detail || 'Failed to send FIR.');
+      showMessage('error', 'Failed to send FIR.');
     }
   };
 
@@ -762,44 +885,128 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     if (!lastSavedInwardId) return;
     try {
       await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { send_later: true });
-      showMessage('success', `FIR for SRF ${lastSavedSrfNo} is scheduled.`);
-      handleCloseEmailModalAndNavigate();
+      showMessage('success', `FIR Scheduled.`);
+      navigate('/engineer/create-inward', { replace: true });
     } catch (error: any) {
-      showMessage('error', error.response?.data?.detail || 'Failed to schedule FIR.');
+      showMessage('error', 'Failed to schedule FIR.');
     }
   };
 
-  const getDraftStatusIcon = () => {
-    switch (draftSaveStatus) {
-      case 'saving': return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
-      case 'saved': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'unsaved': return <AlertCircle className="h-4 w-4 text-yellow-500" />;
-      default: return <CheckCircle2 className="h-4 w-4 text-gray-400" />;
-    }
-  };
+  // --- RENDER FUNCTIONS ---
 
-  const getDraftStatusText = () => {
-    switch (draftSaveStatus) {
-      case 'saving': return 'Saving...';
-      case 'saved': return lastAutoSaveTime ? `Saved at ${lastAutoSaveTime.toLocaleTimeString()}` : 'Draft saved';
-      case 'error': return 'Save failed - retrying...';
-      case 'unsaved': return 'Unsaved changes';
-      default: return 'Auto-save active';
-    }
+  const renderPreviewModal = () => {
+    if (!showPreviewModal) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4 overflow-y-auto">
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl my-8 flex flex-col max-h-[90vh]">
+          {/* Header */}
+          <div className="flex justify-between items-center p-6 border-b bg-gray-50 rounded-t-lg">
+            <div className="flex items-center gap-3">
+              <FileText className="text-blue-600" size={28} />
+              <h2 className="text-2xl font-bold text-gray-800">Inward Receipt Preview</h2>
+            </div>
+            <button onClick={() => setShowPreviewModal(false)} className="text-gray-400 hover:text-red-500">
+              <X size={28} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-8 overflow-y-auto bg-gray-50">
+            <div className="bg-white p-8 shadow-sm border border-gray-200 mx-auto max-w-[210mm] min-h-[297mm]">
+              <div className="text-center border-b pb-4 mb-6">
+                <h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wider">NextAge Engineering Pvt Ltd</h1>
+                <p className="text-gray-600 text-sm mt-1">Material Inward Receipt</p>
+              </div>
+
+              <div className="flex justify-between text-sm mb-8 gap-8">
+                <div className="w-1/2 space-y-2">
+                  <div className="flex"><span className="font-semibold w-32">Inward Date:</span> <span>{formData.material_inward_date}</span></div>
+                  <div className="flex"><span className="font-semibold w-32">SRF No:</span> <span className="text-blue-600 font-bold">{formData.srf_no} (Provisional)</span></div>
+                  <div className="flex"><span className="font-semibold w-32">Received By:</span> <span>{formData.receiver}</span></div>
+                </div>
+                <div className="w-1/2 space-y-2">
+                   <div className="flex"><span className="font-semibold w-32">Customer DC:</span> <span>{formData.customer_dc_no}</span></div>
+                   <div className="flex"><span className="font-semibold w-32">DC Date:</span> <span>{formData.customer_dc_date || '-'}</span></div>
+                </div>
+              </div>
+
+              <div className="mb-8 p-4 bg-gray-50 rounded border border-gray-100">
+                <h3 className="font-bold text-gray-700 mb-2 text-sm uppercase">Customer Details</h3>
+                <p className="text-gray-800 whitespace-pre-line text-sm">{formData.customer_details}</p>
+              </div>
+
+              <table className="w-full text-sm border-collapse border border-gray-300 mb-8">
+                <thead>
+                  <tr className="bg-blue-50 text-blue-900">
+                    <th className="border border-gray-300 p-2 w-12 text-center">#</th>
+                    <th className="border border-gray-300 p-2 text-left">Description</th>
+                    <th className="border border-gray-300 p-2 text-left">Make / Model</th>
+                    <th className="border border-gray-300 p-2 text-left">Serial No</th>
+                    <th className="border border-gray-300 p-2 text-center w-16">Qty</th>
+                    <th className="border border-gray-300 p-2 text-left">Remarks / Accessories</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {equipmentList.map((eq, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 p-2 text-center">{idx + 1}</td>
+                      <td className="border border-gray-300 p-2">{eq.material_desc}</td>
+                      <td className="border border-gray-300 p-2">{eq.make} / {eq.model}</td>
+                      <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td>
+                      <td className="border border-gray-300 p-2 text-center">{eq.qty}</td>
+                      <td className="border border-gray-300 p-2 text-gray-600 italic">
+                        {eq.inspe_status === 'Not OK' ? `Defect: ${eq.inspe_remarks}` : (eq.accessories_included || 'OK')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              <div className="mt-12 pt-4 border-t border-gray-300 flex justify-between items-end">
+                 <div className="text-xs text-gray-400">Generated via NEPL Portal</div>
+                 <div className="text-center">
+                    <div className="h-12"></div>
+                    <p className="text-sm font-semibold border-t border-gray-400 px-8 pt-1">Authorized Signature</p>
+                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-6 border-t bg-gray-50 flex justify-end gap-4 rounded-b-lg">
+            <button 
+              onClick={() => setShowPreviewModal(false)} 
+              className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium"
+            >
+              Cancel / Edit
+            </button>
+            <button 
+              onClick={handleFinalSubmit} 
+              className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md"
+            >
+              <Download size={20} />
+              <span>Submit & Download PDF</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderEmailModal = () => !showEmailModal ? null : (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70" onClick={handleCloseEmailModalAndNavigate}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={handleCloseEmailModalAndNavigate} className="absolute top-4 right-4 text-gray-400 hover:text-red-500">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative">
+        <button onClick={() => navigate('/engineer/create-inward', { replace: true })} className="absolute top-4 right-4 text-gray-400 hover:text-red-500">
           <X size={24} />
         </button>
         <div className="flex items-center space-x-4 mb-4">
-          <Send className="text-blue-600" size={36} />
-          <h2 className="text-2xl font-bold text-gray-800">Send Inward Report to Customer</h2>
+          <Send className="text-green-600" size={36} />
+          <h2 className="text-2xl font-bold text-gray-800">Submission Successful!</h2>
         </div>
-        <p className="text-gray-600 mb-6">The inward for SRF <strong>{lastSavedSrfNo}</strong> is complete. You can now notify the customer by sending the First Inspection Report (FIR).</p>
+        <p className="text-gray-600 mb-6">
+          Inward SRF <strong>{lastSavedSrfNo}</strong> has been created.
+          <br/>The PDF receipt has been downloaded. You can now email the FIR to the customer.
+        </p>
         <div className="space-y-6">
           <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50">
             <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label>
@@ -809,50 +1016,29 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => handleEmailChange(index, e.target.value)}
+                    onChange={(e) => {
+                        const newEmails = [...reportEmails];
+                        newEmails[index] = e.target.value;
+                        setReportEmails(newEmails);
+                    }}
                     required
-                    placeholder={index === 0 ? "Primary customer email..." : "Additional email..."}
+                    placeholder="Customer email..."
                     className="flex-grow px-4 py-2 border border-gray-300 rounded-lg"
                   />
                   {reportEmails.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeEmailField(index)}
-                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"
-                    >
-                      <X size={16} />
-                    </button>
+                    <button type="button" onClick={() => removeEmailField(index)} className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"><X size={16} /></button>
                   )}
                 </div>
               ))}
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={addEmailField}
-                  className="px-4 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg font-medium"
-                >
-                  + Add Email
-                </button>
-                <button
-                  type="submit"
-                  disabled={!reportEmails.some(email => email.trim())}
-                  className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 font-bold"
-                >
-                  <Send size={18} />
-                  <span>Send FIR</span>
-                </button>
+                <button type="button" onClick={addEmailField} className="px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">+ Add Email</button>
+                <button type="submit" className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold"><Send size={18} /><span>Send FIR</span></button>
               </div>
             </div>
           </form>
           <div className="p-4 border rounded-lg bg-gray-50">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Schedule for Later</label>
-            <button
-              type="button"
-              onClick={handleScheduleFir}
-              className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"
-            >
-              <Clock size={20} />
-              <span>Add to Scheduled Tasks</span>
+            <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium">
+              <Clock size={20} /><span>Schedule for Later</span>
             </button>
           </div>
         </div>
@@ -884,25 +1070,20 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   return (
     <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100">
+      {/* Header Section */}
       <div className="flex flex-wrap items-center justify-between border-b pb-4 mb-6 gap-4">
         <div className="flex items-center space-x-4">
           <FileText className="h-8 w-8 text-blue-600" />
           <div><h1 className="text-3xl font-bold text-gray-900">{isEditMode ? 'Edit Inward Form' : 'New Inward Form'}</h1></div>
         </div>
         <div className="flex items-center space-x-2 sm:space-x-4">
-          {!isEditMode && (
+           {!isEditMode && (
             <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-lg border border-gray-200">
-              {getDraftStatusIcon()}
-              <span className="font-medium">{getDraftStatusText()}</span>
+              {getDraftStatusIcon()} <span className="font-medium">{getDraftStatusText()}</span>
             </div>
-          )}
-          <button
-            type="button"
-            onClick={handleBackToPortal}
-            className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
-          >
-            <ArrowLeft size={18} />
-            <span>{isEditMode ? 'Back to List' : 'Back to Drafts'}</span>
+           )}
+          <button onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm">
+            <ArrowLeft size={18} /> <span>Back</span>
           </button>
         </div>
       </div>
@@ -918,251 +1099,178 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           </div>
         </div>
       )}
+
       {message && (
         <div className={`my-4 px-4 py-3 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
           {message.text}
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
+      {/* Main Form */}
+      <form onSubmit={handlePreviewClick}>
+        {/* Basic Info Block */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Basic Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border">
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Material Inward Date *</label><input type="date" name="material_inward_date" value={formData.material_inward_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC No. *</label><input type="text" name="customer_dc_no" value={formData.customer_dc_no} onChange={handleFormChange} required placeholder="Enter Customer DC Number" className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
-            <div className="md:col-span-1"><label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-500">(Auto)</span></label><input type="text" value={formData.srf_no} disabled className="w-full px-4 py-2 bg-gray-200 rounded-lg" /></div>
-            <div className="md:col-span-2 lg:col-span-3">
+             {/* SRF No Display */}
+             <div className="md:col-span-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-400">(Next Available)</span></label>
+                <div className="flex items-center px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 font-bold">
+                    {formData.srf_no}
+                </div>
+             </div>
+             
+             {/* Other Fields */}
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Material Inward Date *</label><input type="date" name="material_inward_date" value={formData.material_inward_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC No. *</label><input type="text" name="customer_dc_no" value={formData.customer_dc_no} onChange={handleFormChange} required placeholder="Enter Customer DC Number" className="w-full px-4 py-2 border rounded-lg" /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} className="w-full px-4 py-2 border rounded-lg" /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
+             
+             <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label>
-              <select
-                name="customer_id"
-                value={selectedCustomerId || ''}
-                onChange={handleFormChange}
-                required
-                className="w-full px-4 py-2 border rounded-lg bg-white"
-                disabled={isEditMode}
-              >
+              <select name="customer_id" value={selectedCustomerId || ''} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg bg-white" disabled={isEditMode}>
                 <option value="">Select Company</option>
-                {customers.map(customer => (
-                  <option key={customer.customer_id} value={customer.customer_id}>
-                    {customer.customer_details}
-                  </option>
-                ))}
+                {customers.map(c => <option key={c.customer_id} value={c.customer_id}>{c.customer_details}</option>)}
               </select>
             </div>
           </div>
         </div>
 
+        {/* Equipment Table */}
         <div className="mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><Wrench size={24} className="text-blue-600" />Equipment Details</h2>
-            {!isEditMode && (
-              <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>
-            )}
-          </div>
-          <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
-            <table className="w-full text-sm border-collapse min-w-[2500px]">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="sticky left-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">#</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[160px]">NEPL ID</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[280px]">Material Description *</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Make *</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Model *</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Range</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Serial No</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[100px]">Qty *</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Calibration *</th>
-                  {isAnyOutsourced && (
-                    <>
-                      <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Supplier</th>
-                      <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">In DC</th>
-                      <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Out DC</th>
-                    </>
-                  )}
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Accessories Included</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Visual Inspection</th>
-                  <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Photos</th>
-                  <th className="sticky right-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {equipmentList.map((equipment, index) => (
-                  <React.Fragment key={index}>
-                    <tr className={`hover:bg-slate-50 group ${equipment.inspe_status === 'Not OK' ? 'bg-orange-50' : ''} ${equipment.remarks_and_decision ? 'border-b-0' : ''}`}>
-                      <td className="sticky left-0 z-10 p-3 text-center font-semibold text-slate-500 bg-white group-hover:bg-slate-50">{index + 1}</td>
-                      <td className="p-2"><input type="text" value={equipment.nepl_id} disabled className="w-full bg-slate-100 font-medium px-2 py-1.5 border border-slate-200 rounded-md" /></td>
-                      
-                      {/* BEAUTIFUL NORMAL DROPDOWN FOR MATERIAL DESCRIPTION */}
-                      <td className="p-2">
-                        <select
-                          value={equipment.material_desc}
-                          onChange={(e) => handleEquipmentChange(index, 'material_desc', e.target.value)}
-                          required
-                          className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                        >
-                          <option value="">Select Material Description *</option>
-                          {MATERIAL_DESCRIPTIONS.map((desc) => (
-                            <option key={desc} value={desc}>{desc}</option>
-                          ))}
-                          <option value="Other">Other (Specify in Make/Model)</option>
-                        </select>
-                      </td>
-
-                      <td className="p-2"><input type="text" value={equipment.make} onChange={(e) => handleEquipmentChange(index, 'make', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" required /></td>
-                      <td className="p-2"><input type="text" value={equipment.model} onChange={(e) => handleEquipmentChange(index, 'model', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" required /></td>
-                      <td className="p-2"><input type="text" value={equipment.range || ''} onChange={(e) => handleEquipmentChange(index, 'range', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                      <td className="p-2"><input type="text" value={equipment.serial_no || ''} onChange={(e) => handleEquipmentChange(index, 'serial_no', e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                      <td className="p-2"><input type="number" value={equipment.qty} min={1} onChange={(e) => handleEquipmentChange(index, 'qty', parseInt(e.target.value) || 1)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md text-center focus:ring-1 focus:ring-blue-500" required /></td>
-                      <td className="p-2">
-                        <select className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value={equipment.calibration_by} onChange={(e) => handleEquipmentChange(index, 'calibration_by', e.target.value)}>
-                          <option value="In Lab">In Lab</option>
-                          <option value="Outsource">Outsource</option>
-                          <option value="On-Site">On-Site</option>
-                        </select>
-                      </td>
-                      {equipment.calibration_by === 'Outsource' ? (
-                        <>
-                          <td className="p-2"><input type="text" placeholder="Supplier" value={(equipment as any).supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                          <td className="p-2"><input type="text" placeholder="In DC" value={(equipment as any).in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                          <td className="p-2"><input type="text" placeholder="Out DC" value={(equipment as any).out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc' as any, e.target.value)} className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500" /></td>
-                        </>
-                      ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
-
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          value={equipment.accessories_included || ''}
-                          onChange={(e) => handleEquipmentChange(index, 'accessories_included', e.target.value)}
-                          placeholder="List accessories..."
-                          className="w-full bg-transparent px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500"
-                        />
-                      </td>
-
-                      <td className="p-2">
-                        <div className="flex flex-col gap-1">
-                            <select
-                                value={equipment.inspe_status}
-                                onChange={(e) => handleEquipmentChange(index, 'inspe_status', e.target.value)}
-                                className={`w-full px-3 py-2 text-sm border rounded-md focus:ring-1 focus:ring-blue-500 ${
-                                    equipment.inspe_status === 'OK'
-                                    ? 'bg-green-50 border-green-200 text-green-800'
-                                    : 'bg-orange-50 border-orange-300 text-orange-800'
-                                }`}
-                            >
-                                <option value="OK">OK</option>
-                                <option value="Not OK">Not OK</option>
-                            </select>
-                            {equipment.inspe_status === 'Not OK' && (
-                                <input
-                                    type="text"
-                                    value={equipment.inspe_remarks}
-                                    onChange={(e) => handleEquipmentChange(index, 'inspe_remarks', e.target.value)}
-                                    placeholder="Describe issue..."
-                                    className="w-full mt-1 bg-transparent px-2 py-1.5 border border-orange-300 rounded-md focus:ring-1 focus:ring-orange-500 text-orange-800"
-                                />
-                            )}
-                        </div>
-                      </td>
-
-                      <td className="p-2 align-middle">
-                        <div className="flex items-center gap-2">
-                          <label htmlFor={`photo-upload-${index}`} className="flex-shrink-0 flex items-center justify-center gap-1 cursor-pointer bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold px-3 py-1.5 rounded-md text-xs"><Camera size={14} /> Attach</label>
-                          <input id={`photo-upload-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={(e) => handlePhotoChange(index, e)} />
-                        </div>
-                        {equipment.existingPhotoUrls && equipment.existingPhotoUrls.length > 0 && (
-                          <div className="mt-2">
-                            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Existing</p>
-                            <div className="flex flex-wrap gap-2">
-                              {equipment.existingPhotoUrls.map((url, existingIndex) => {
-                                const resolved = resolvePhotoUrl(url);
-                                if (!resolved) return null;
-                                return (
-                                  <a
-                                    key={`${url}-${existingIndex}`}
-                                    href={resolved}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="block h-16 w-16 overflow-hidden rounded border border-slate-200 hover:border-blue-400"
-                                    title="Open image in new tab"
-                                  >
-                                    <img src={resolved} alt={`Existing equipment image ${existingIndex + 1}`} className="h-full w-full object-cover" />
-                                  </a>
-                                );
-                              })}
-                            </div>
-                          </div>
+           <div className="flex justify-between items-center mb-4">
+             <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><Wrench size={24} className="text-blue-600" />Equipment Details</h2>
+             {!isEditMode && <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>}
+           </div>
+           <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
+              <table className="w-full text-sm border-collapse min-w-[2500px]">
+                <thead className="bg-slate-100">
+                    <tr>
+                        <th className="sticky left-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">#</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[160px]">NEPL ID</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[280px]">Material Description *</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Make *</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Model *</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Range</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Serial No</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[100px]">Qty *</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Calibration *</th>
+                        {isAnyOutsourced && (
+                          <>
+                            <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Supplier</th>
+                            <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">In DC</th>
+                            <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Out DC</th>
+                          </>
                         )}
-                        {equipment.photoPreviews && equipment.photoPreviews.length > 0 && (
-                          <div className="mt-2">
-                            <p className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold mb-1">New Attachments</p>
-                            <div className="flex flex-wrap gap-2">
-                              {equipment.photoPreviews.map((preview, pIndex) => (
-                                <div key={pIndex} className="relative h-16 w-16 overflow-hidden rounded border border-slate-200 shadow-sm">
-                                  <img src={preview} alt={`New equipment image ${pIndex + 1}`} className="h-full w-full object-cover" />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemovePhoto(index, pIndex)}
-                                    className="absolute top-1 right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-red-500 hover:bg-white hover:text-red-600 shadow focus:outline-none focus:ring-2 focus:ring-red-400"
-                                    aria-label={`Remove image ${pIndex + 1}`}
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </td>
-                      <td className="sticky right-0 z-10 p-2 text-center bg-white group-hover:bg-slate-50">
-                        <div className="flex items-center justify-center gap-1">
-                          <button type="button" onClick={() => viewEquipmentDetails(index)} className="p-2 text-slate-500 hover:bg-blue-100 hover:text-blue-600 rounded-full" title="View Full Details"><Eye size={16} /></button>
-                          {!isEditMode && (
-                            <button
-                              type="button"
-                              onClick={() => removeEquipmentRow(index)}
-                              className="p-2 text-slate-500 hover:bg-red-100 hover:text-red-600 rounded-full"
-                              title="Remove Row"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Accessories Included</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Visual Inspection</th>
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Photos</th>
+                        <th className="sticky right-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">Actions</th>
                     </tr>
-
-                    {equipment.remarks_and_decision && equipment.inspe_status === 'Not OK' && (
-                      <tr className="bg-yellow-50/70">
-                        <td className="sticky left-0 z-10 p-2 bg-yellow-50/70"></td>
-                        <td colSpan={isAnyOutsourced ? 13 : 10} className="p-0">
-                          <CustomerRemark remark={equipment.remarks_and_decision} />
+                </thead>
+                <tbody>
+                  {equipmentList.map((equipment, index) => (
+                    <React.Fragment key={index}>
+                      <tr className={`hover:bg-slate-50 group ${equipment.inspe_status === 'Not OK' ? 'bg-orange-50' : ''}`}>
+                        <td className="sticky left-0 z-10 p-3 text-center font-semibold text-slate-500 bg-white group-hover:bg-slate-50">{index + 1}</td>
+                        <td className="p-2"><input type="text" value={equipment.nepl_id} disabled className="w-full bg-slate-100 font-medium px-2 py-1.5 border border-slate-200 rounded-md" /></td>
+                        <td className="p-2">
+                            <select value={equipment.material_desc} onChange={(e) => handleEquipmentChange(index, 'material_desc', e.target.value)} required className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg">
+                                <option value="">Select...</option>
+                                {MATERIAL_DESCRIPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                                <option value="Other">Other</option>
+                            </select>
                         </td>
-                        <td className="sticky right-0 z-10 p-2 bg-yellow-50/70"></td>
+                        <td className="p-2"><input value={equipment.make} onChange={e=>handleEquipmentChange(index,'make',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        <td className="p-2"><input value={equipment.model} onChange={e=>handleEquipmentChange(index,'model',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        <td className="p-2"><input value={equipment.range} onChange={e=>handleEquipmentChange(index,'range',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        <td className="p-2"><input value={equipment.serial_no} onChange={e=>handleEquipmentChange(index,'serial_no',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        <td className="p-2"><input type="number" value={equipment.qty} min={1} onChange={e=>handleEquipmentChange(index,'qty',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md text-center" /></td>
+                        <td className="p-2">
+                           <select value={equipment.calibration_by} onChange={e=>handleEquipmentChange(index,'calibration_by',e.target.value)} className="w-full px-2 py-1.5 border rounded-md">
+                             <option value="In Lab">In Lab</option>
+                             <option value="Outsource">Outsource</option>
+                             <option value="On-Site">On-Site</option>
+                           </select>
+                        </td>
+                        {equipment.calibration_by === 'Outsource' ? (
+                          <>
+                            <td className="p-2"><input placeholder="Supplier" value={(equipment as any).supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                            <td className="p-2"><input placeholder="In DC" value={(equipment as any).in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                            <td className="p-2"><input placeholder="Out DC" value={(equipment as any).out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                          </>
+                        ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
+                        
+                        <td className="p-2"><input value={equipment.accessories_included} onChange={e=>handleEquipmentChange(index,'accessories_included',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        
+                        <td className="p-2">
+                            <div className="flex flex-col gap-1">
+                                <select value={equipment.inspe_status} onChange={e=>handleEquipmentChange(index,'inspe_status',e.target.value)} className={`w-full px-2 py-1.5 border rounded-md ${equipment.inspe_status === 'Not OK' ? 'bg-red-50 border-red-300' : ''}`}>
+                                    <option value="OK">OK</option>
+                                    <option value="Not OK">Not OK</option>
+                                </select>
+                                {equipment.inspe_status === 'Not OK' && <input placeholder="Defect..." value={equipment.inspe_remarks} onChange={e=>handleEquipmentChange(index,'inspe_remarks',e.target.value)} className="w-full px-2 py-1.5 border border-red-300 rounded-md text-xs" />}
+                            </div>
+                        </td>
+
+                        <td className="p-2">
+                           <div className="flex items-center gap-2">
+                              <label htmlFor={`photo-${index}`} className="cursor-pointer bg-gray-200 px-2 py-1 rounded text-xs flex items-center gap-1"><Camera size={12}/> Attach</label>
+                              <input id={`photo-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={e=>handlePhotoChange(index,e)}/>
+                           </div>
+                           {/* Preview Images */}
+                           <div className="flex flex-wrap gap-1 mt-1">
+                              {equipment.existingPhotoUrls?.map((url, i) => (
+                                  <a key={`ex-${i}`} href={resolvePhotoUrl(url)} target="_blank" rel="noreferrer" className="w-8 h-8 border"><img src={resolvePhotoUrl(url)} className="w-full h-full object-cover"/></a>
+                              ))}
+                              {equipment.photoPreviews?.map((url, i) => (
+                                  <div key={`new-${i}`} className="relative w-8 h-8 border">
+                                     <img src={url} className="w-full h-full object-cover"/>
+                                     <button onClick={()=>handleRemovePhoto(index,i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={8}/></button>
+                                  </div>
+                              ))}
+                           </div>
+                        </td>
+
+                        <td className="sticky right-0 z-10 p-2 text-center bg-white group-hover:bg-slate-50">
+                           <div className="flex justify-center gap-2">
+                              <button type="button" onClick={() => viewEquipmentDetails(index)} className="text-blue-600 hover:bg-blue-100 p-1 rounded"><Eye size={16}/></button>
+                              {!isEditMode && <button type="button" onClick={() => removeEquipmentRow(index)} className="text-red-600 hover:bg-red-100 p-1 rounded"><Trash2 size={16}/></button>}
+                           </div>
+                        </td>
                       </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex justify-between items-center mt-4">
-            <p className='text-sm text-slate-500'>Add all incoming equipment and mark any deviations in the Visual Inspection column.</p>
-            {!isEditMode && (
-              <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>
-            )}
-          </div>
+                      
+                      {/* Customer Remark Display if exists (for Edit Mode mainly) */}
+                      {equipment.remarks_and_decision && equipment.inspe_status === 'Not OK' && (
+                        <tr className="bg-yellow-50">
+                          <td className="sticky left-0 bg-yellow-50"></td>
+                          <td colSpan={isAnyOutsourced ? 13 : 10}><CustomerRemark remark={equipment.remarks_and_decision} /></td>
+                          <td className="sticky right-0 bg-yellow-50"></td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+           </div>
         </div>
-        
+
+        {/* Footer Actions */}
         <div className="flex justify-end pt-6 border-t mt-8">
-          <button type="submit" disabled={!isFormReady || isLoading} className="flex items-center space-x-3 bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg text-lg">
-            {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
-            <span>{isLoading ? (isEditMode ? 'Updating...' : 'Submitting...') : (isEditMode ? 'Update Inward' : 'Submit Inward')}</span>
+          <button 
+            type="submit" 
+            disabled={!isFormReady || isLoading} 
+            className="flex items-center space-x-3 bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg text-lg shadow-lg transition-all transform hover:scale-105"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={24} /> : <FileText size={24} />}
+            <span>{isEditMode ? 'Update Inward' : 'Preview & Submit'}</span>
           </button>
         </div>
       </form>
 
+      {/* Modals */}
       {selectedEquipment && <EquipmentDetailsModal equipment={getModalEquipment()!} onClose={() => setSelectedEquipment(null)} />}
+      {renderPreviewModal()}
       {renderEmailModal()}
     </div>
   );

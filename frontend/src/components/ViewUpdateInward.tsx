@@ -27,7 +27,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sortField, setSortField] = useState<keyof InwardDetail>("date");
+  const [sortField, setSortField] = useState<keyof InwardDetail>("material_inward_date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       if (bValue == null) return -1;
 
       let comparison = 0;
-      if (sortField === 'date') {
+      if (sortField === 'material_inward_date') {
         // Create Date objects for accurate comparison
         comparison = new Date(aValue as string).getTime() - new Date(bValue as string).getTime();
       } else {
@@ -234,11 +234,11 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
               </th>
               <th 
                 className="p-4 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
-                onClick={() => handleSort("date")}
+                onClick={() => handleSort("material_inward_date")}
               >
                 <div className="flex items-center gap-2">
                   Date
-                  <SortIcon field="date" />
+                  <SortIcon field="material_inward_date" />
                 </div>
               </th>
               <th 
@@ -285,7 +285,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                   <td className="p-4">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-gray-400" />
-                      <span>{new Date(inward.date).toLocaleDateString()}</span>
+                      <span>{new Date(inward.material_inward_date).toLocaleDateString()}</span>
                     </div>
                   </td>
                   <td className="p-4">
