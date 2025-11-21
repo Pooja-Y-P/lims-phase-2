@@ -263,15 +263,30 @@ class CustomerPortalService:
 
     def get_all_customers_for_dropdown(self) -> List[Dict[str, Any]]:
         """
-        Retrieves all customers with their ID and details for dropdown population.
+        Retrieves all active customers with their ID, details, email, and addresses.
         """
+        # --- UPDATED QUERY TO FETCH ADDRESSES ---
         stmt = (
             select(
-                func.min(Customer.customer_id).label("customer_id"),
-                Customer.customer_details
+                Customer.customer_id,
+                Customer.customer_details,
+                Customer.email,
+                Customer.ship_to_address,
+                Customer.bill_to_address
             )
-            .group_by(Customer.customer_details)
+            .where(Customer.is_active.is_(True))
             .order_by(Customer.customer_details)
         )
+        
         customers = self.db.execute(stmt).all()
-        return [{"customer_id": c.customer_id, "customer_details": c.customer_details} for c in customers]
+        
+        return [
+            {
+                "customer_id": c.customer_id, 
+                "customer_details": c.customer_details,
+                "email": c.email,
+                "ship_to_address": c.ship_to_address,
+                "bill_to_address": c.bill_to_address
+            } 
+            for c in customers
+        ]

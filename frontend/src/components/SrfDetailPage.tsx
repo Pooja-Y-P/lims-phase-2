@@ -69,7 +69,7 @@ const generateNeplSrfNo = (srfNo: number | undefined): string => {
   if (!srfNo) return "";
   const full = srfNo.toString();
   const lastThree = full.slice(-3).padStart(3, "0");
-  return `NEPL - ${full} / SRF-${lastThree}`;
+  return `${full} / SRF-${lastThree}`;
 };
 
 const getTodayDateString = (): string => new Date().toISOString().split("T")[0];

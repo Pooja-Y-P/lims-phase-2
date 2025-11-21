@@ -15,6 +15,8 @@ class Customer(Base):
     email = Column(String(320))
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True))
+    ship_to_address = Column(Text, nullable=False)
+    bill_to_address = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
 
     # --- Relationships ---

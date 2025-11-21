@@ -65,7 +65,9 @@ class InvitationRequest(BaseModel):
     company_name: Optional[str] = None
     company_address: Optional[str] = None
     phone_number: Optional[str] = None
-    customer_id: Optional[int] = None  # Optional: link to an existing customer
+    customer_id: Optional[int] = None 
+    ship_to_address: Optional[str] = None
+    bill_to_address : Optional[str] = None# Optional: link to an existing customer
 
 # ====================================================================
 # RESPONSE SCHEMAS

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useAuth } from '../auth/AuthProvider'; 
 import { User, UserRole } from '../types'; 
 import { api, ENDPOINTS } from '../api/config'; 
-import { Shield, Power, PowerOff, UserPlus, Users, Info, Loader2 } from 'lucide-react';
+import { Shield, Power, PowerOff, UserPlus, Users, Info, Loader2, MapPin, Receipt } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -284,15 +284,34 @@ const StatsCard: React.FC<{ icon: React.ReactNode; title: string; value: number;
 
 const InviteUsersSection: React.FC = () => {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>('customer'); // Default to customer
-  const [invitedName, setInvitedName] = useState(''); // Contact Person for customer, Full Name for others
+  const [role, setRole] = useState<UserRole>('customer');
+  const [invitedName, setInvitedName] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [companyAddress, setCompanyAddress] = useState('');
+  
+  // New Address State
+  const [shipToAddress, setShipToAddress] = useState('');
+  const [billToAddress, setBillToAddress] = useState('');
+  const [sameAsShip, setSameAsShip] = useState(false);
+
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isCustomerRole = role === 'customer';
+
+  const handleSameAsShipChange = (checked: boolean) => {
+    setSameAsShip(checked);
+    if (checked) {
+      setBillToAddress(shipToAddress);
+    }
+  };
+
+  const handleShipAddressChange = (value: string) => {
+    setShipToAddress(value);
+    if (sameAsShip) {
+      setBillToAddress(value);
+    }
+  };
 
   const handleInvite = async (e: FormEvent) => {
     e.preventDefault();
@@ -301,14 +320,15 @@ const InviteUsersSection: React.FC = () => {
     let payload: any = { email, role };
 
     if (isCustomerRole) {
-      if (!email || !companyName.trim() || !companyAddress.trim() || !invitedName.trim() || !phoneNumber.trim()) {
+      if (!email || !companyName.trim() || !shipToAddress.trim() || !billToAddress.trim() || !invitedName.trim() || !phoneNumber.trim()) {
         setInviteMessage({ type: 'error', text: 'Please fill in all required fields for customer invitation.' });
         return;
       }
       payload = {
         ...payload,
         company_name: companyName.trim(),
-        company_address: companyAddress.trim(),
+        ship_to_address: shipToAddress.trim(),
+        bill_to_address: billToAddress.trim(),
         invited_name: invitedName.trim(), // Contact Person
         phone_number: phoneNumber.trim(),
       };
@@ -329,12 +349,15 @@ const InviteUsersSection: React.FC = () => {
       const response = await api.post<InvitationResponse>(ENDPOINTS.INVITATIONS.SEND, payload);
 
       setInviteMessage({ type: 'success', text: response.data.message || `Invitation sent successfully to ${email}!` });
+      
       // Reset form fields
       setEmail('');
       setRole('customer');
       setInvitedName('');
       setCompanyName('');
-      setCompanyAddress('');
+      setShipToAddress('');
+      setBillToAddress('');
+      setSameAsShip(false);
       setPhoneNumber('');
     } catch (error) {
       console.error('Invitation failed:', error);
@@ -366,7 +389,7 @@ const InviteUsersSection: React.FC = () => {
           </div>
         )}
 
-        {/* Assign Role - Always visible and first */}
+        {/* Assign Role */}
         <div>
           <label htmlFor="role" className="block text-sm font-medium text-gray-700">
             Assign Role
@@ -439,21 +462,54 @@ const InviteUsersSection: React.FC = () => {
                 placeholder="ABC Corp"
               />
             </div>
+
+            {/* Address Section */}
             <div>
-              <label htmlFor="companyAddress" className="block text-sm font-medium text-gray-700">
-                Company Address
+              <label htmlFor="shipToAddress" className="block text-sm font-medium text-gray-700 flex items-center gap-2">
+                 <MapPin size={14}/> Ship To Address
               </label>
-              <input
-                type="text"
-                id="companyAddress"
-                value={companyAddress}
-                onChange={(e) => setCompanyAddress(e.target.value)}
+              <textarea
+                id="shipToAddress"
+                value={shipToAddress}
+                onChange={(e) => handleShipAddressChange(e.target.value)}
                 required={isCustomerRole}
                 disabled={isInviting}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
-                placeholder="123 Main St, Anytown"
+                rows={2}
+                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 resize-none"
+                placeholder="Shipping location..."
               />
             </div>
+
+            <div>
+               <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="billToAddress" className="block text-sm font-medium text-gray-700 flex items-center gap-2">
+                    <Receipt size={14}/> Bill To Address
+                  </label>
+                  <div className="flex items-center">
+                    <input
+                      id="sameAsShip"
+                      type="checkbox"
+                      checked={sameAsShip}
+                      onChange={(e) => handleSameAsShipChange(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="sameAsShip" className="ml-2 block text-xs text-gray-900 cursor-pointer">
+                      Same as Ship To
+                    </label>
+                  </div>
+               </div>
+              <textarea
+                id="billToAddress"
+                value={billToAddress}
+                onChange={(e) => setBillToAddress(e.target.value)}
+                required={isCustomerRole}
+                disabled={isInviting || sameAsShip}
+                rows={2}
+                className={`mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 resize-none ${sameAsShip ? 'bg-gray-100 text-gray-500' : ''}`}
+                placeholder="Billing location..."
+              />
+            </div>
+
             <div>
               <label htmlFor="invitedName" className="block text-sm font-medium text-gray-700">
                 Contact Person (Full Name)

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from backend.db import get_db
 from backend.schemas.user_schemas import InvitationRequest, UserResponse
 from backend.services.invitation_service import InvitationService
-from backend.auth import get_current_user  # Your existing auth dependency
+from backend.auth import get_current_user
 
 router = APIRouter(
     prefix="/invitations",
@@ -30,12 +30,14 @@ async def send_invitation(
     invitation_service = InvitationService(db)
     try:
         # Await the async service method
+        # UPDATED: Passing ship_to_address and bill_to_address instead of generic company_address
         result = await invitation_service.create_invitation(
             email=invitation_request.email,
             role=invitation_request.role,
             invited_name=invitation_request.invited_name,
             company_name=invitation_request.company_name,
-            company_address=invitation_request.company_address,
+            ship_to_address=invitation_request.ship_to_address,
+            bill_to_address=invitation_request.bill_to_address,
             phone_number=invitation_request.phone_number,
             created_by=current_user.user_id,
             background_tasks=background_tasks,

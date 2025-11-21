@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import aiofiles
 import pandas as pd
@@ -175,25 +175,18 @@ class InwardService:
     async def update_draft(self, user_id: int, inward_id: Optional[int], draft_data: Dict[str, Any]) -> DraftResponse:
         try:
             current_time = datetime.now(timezone.utc)
-            
             material_date = draft_data.get('material_inward_date') or draft_data.get('date')
-            
-            # --- FIXED: Handle SRF No for Drafts to prevent using real numbers or constraint errors ---
             incoming_srf = draft_data.get('srf_no')
             
-            # If SRF is TBD, Loading, or Missing, assign a temp DRAFT ID
+            # Handle SRF No for Drafts
             if not incoming_srf or incoming_srf in ['TBD', 'Loading...', 'Error!']:
                 if inward_id:
-                     # If updating an existing draft, check if it already has a DRAFT-xxx ID
                     existing_draft = self.db.get(Inward, inward_id)
                     srf_to_save = existing_draft.srf_no if existing_draft else f"DRAFT-{uuid.uuid4().hex[:8]}"
                 else:
-                    # New draft, assign temp ID
                     srf_to_save = f"DRAFT-{uuid.uuid4().hex[:8]}"
             else:
-                # If user somehow has a specific number (rare for new flow), use it
                 srf_to_save = incoming_srf
-            # ----------------------------------------------------------------------------------------
 
             if inward_id:
                 draft = self.db.get(Inward, inward_id)
@@ -251,7 +244,6 @@ class InwardService:
         draft_inward_id: Optional[int] = None,
         customer_details_value: Optional[str] = None
     ) -> Inward:
-        # Generates the REAL, authoritative number only on final submit
         authoritative_srf_no = SrfService(self.db).generate_next_srf_no()
         try:
             customer_details = getattr(inward_data, "customer_details", customer_details_value)
@@ -262,7 +254,6 @@ class InwardService:
                 if not db_inward or db_inward.created_by != user_id or not db_inward.is_draft:
                     raise HTTPException(status_code=404, detail="Draft not found or access denied.")
                 
-                # Overwrite temporary DRAFT ID with real SRF ID
                 db_inward.srf_no = authoritative_srf_no
                 db_inward.material_inward_date = inward_data.material_inward_date
                 db_inward.customer_dc_date = inward_data.customer_dc_date
@@ -481,7 +472,7 @@ class InwardService:
             raise HTTPException(status_code=500, detail="Failed to generate export.")
 
     # === Customer Notification Methods ===
-    async def process_customer_notification(self, inward_id: int, creator_id: int, background_tasks: BackgroundTasks, customer_emails: Optional[List[str]] = None, send_later: bool = False):
+    async def process_customer_notification(self, inward_id: int, creator_id: int, background_tasks: BackgroundTasks, customer_emails: Optional[Union[List[str], str]] = None, send_later: bool = False):
         db_inward = await self.get_inward_by_id(inward_id)
         if not db_inward.customer: raise HTTPException(status_code=400, detail="Inward is not linked to a valid customer.")
         creator = self.db.get(User, creator_id)
@@ -495,8 +486,15 @@ class InwardService:
             return {"message": f"FIR for SRF {db_inward.srf_no} is scheduled."}
 
         # Handle multiple email addresses
-        if not customer_emails:
-            customer_emails = [db_inward.customer.email] if db_inward.customer and db_inward.customer.email else []
+        if customer_emails is None:
+            customer_emails = []
+        
+        # FIX: If a single string is passed (e.g. from delayed email service), wrap it in a list
+        if isinstance(customer_emails, str):
+            customer_emails = [customer_emails]
+
+        if not customer_emails and db_inward.customer and db_inward.customer.email:
+            customer_emails = [db_inward.customer.email]
         
         if not customer_emails:
             raise HTTPException(status_code=422, detail="At least one customer email is required.")
@@ -505,7 +503,10 @@ class InwardService:
         success_count = 0
         errors = []
         
-        for email in customer_emails:
+        # Remove duplicates and empty strings
+        unique_emails = list(set(email.strip() for email in customer_emails if email and email.strip()))
+
+        for email in unique_emails:
             try:
                 existing_user = self.db.scalars(select(User).where(User.email == email)).first()
                 if existing_user:

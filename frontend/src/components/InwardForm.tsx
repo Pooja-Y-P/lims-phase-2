@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, Download } from 'lucide-react';
+import { 
+  Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, 
+  Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, 
+  Download, UserPlus, MapPin, Receipt 
+} from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { InwardForm as InwardFormType, EquipmentDetail as BaseEquipmentDetail, InwardDetail } from '../types/inward';
@@ -22,10 +26,24 @@ interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'cal
   accessories_included?: string;
 }
 
+// UPDATED: Include address fields from backend
 interface CustomerDropdownItem {
   customer_id: number;
   customer_details: string;
   email?: string;
+  ship_to_address?: string;
+  bill_to_address?: string;
+}
+
+// New Interface for the Add Customer Form
+interface NewCustomerForm {
+  company_name: string;
+  contact_person: string;
+  email: string;
+  phone: string;
+  ship_to_address: string;
+  bill_to_address: string;
+  same_as_ship: boolean;
 }
 
 interface InwardResponse {
@@ -96,6 +114,19 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   
+  // --- NEW CUSTOMER MODAL STATE ---
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [newCustomerData, setNewCustomerData] = useState<NewCustomerForm>({
+    company_name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+    ship_to_address: '',
+    bill_to_address: '',
+    same_as_ship: false
+  });
+
   const [reportEmails, setReportEmails] = useState<string[]>(['']);
   const [lastSavedInwardId, setLastSavedInwardId] = useState<number | null>(null);
   const [lastSavedSrfNo, setLastSavedSrfNo] = useState<string>('');
@@ -112,6 +143,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+
+  // Derived state for address display
+  const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomerId);
 
   const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
   const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
@@ -488,11 +522,101 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  // --- NEW CUSTOMER LOGIC ---
+
+  const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setNewCustomerData(prev => {
+        const updated = { ...prev, [name]: checked };
+        if (name === 'same_as_ship' && checked) {
+          updated.bill_to_address = updated.ship_to_address;
+        }
+        return updated;
+      });
+    } else {
+      setNewCustomerData(prev => {
+        const updated = { ...prev, [name]: value };
+        if (prev.same_as_ship && name === 'ship_to_address') {
+          updated.bill_to_address = value;
+        }
+        return updated;
+      });
+    }
+  };
+
+  const handleCreateCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingCustomer(true);
+
+    try {
+      const payload = {
+        email: newCustomerData.email,
+        role: 'customer',
+        invited_name: newCustomerData.contact_person,
+        company_name: newCustomerData.company_name,
+        // Pass ship_to and bill_to explicitly
+        ship_to_address: newCustomerData.ship_to_address,
+        bill_to_address: newCustomerData.bill_to_address, 
+        phone_number: newCustomerData.phone
+      };
+
+      await api.post('/invitations/send', payload);
+
+      showMessage('success', 'Company registered and invitation sent successfully!');
+      
+      // Refresh customer list and close modal
+      await fetchCustomers();
+      setShowAddCustomerModal(false);
+      
+      // Reset form
+      setNewCustomerData({
+        company_name: '',
+        contact_person: '',
+        email: '',
+        phone: '',
+        ship_to_address: '',
+        bill_to_address: '',
+        same_as_ship: false
+      });
+
+      // Attempt auto-selection
+      const updatedCustomersRes = await api.get<CustomerDropdownItem[]>(ENDPOINTS.PORTAL.CUSTOMERS_DROPDOWN);
+      const newCust = updatedCustomersRes.data.find(c => c.email === payload.email);
+      
+      if (newCust) {
+        setCustomers(updatedCustomersRes.data);
+        setFormData(prev => ({
+            ...prev,
+            customer_id: newCust.customer_id,
+            customer_details: newCust.customer_details
+        }));
+        setSelectedCustomerId(newCust.customer_id);
+        setSelectedCustomerEmail(newCust.email || '');
+      }
+
+    } catch (error: any) {
+      console.error("Failed to create customer", error);
+      showMessage('error', error.response?.data?.detail || 'Failed to register company.');
+    } finally {
+      setIsCreatingCustomer(false);
+    }
+  };
+
+
   // --- FORM HANDLERS ---
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
+    
+    // INTERCEPT CUSTOMER DROPDOWN CHANGE
     if (name === 'customer_id') {
+      if (value === 'new') {
+        setShowAddCustomerModal(true);
+        return; // Stop further processing
+      }
+
       const customerId = parseInt(value);
       const selectedCustomer = customers.find(c => c.customer_id === customerId);
       
@@ -894,6 +1018,142 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   // --- RENDER FUNCTIONS ---
 
+  const renderAddCustomerModal = () => {
+    if (!showAddCustomerModal) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative">
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl">
+            <div className="flex items-center gap-3">
+              <UserPlus className="text-blue-600" size={24} />
+              <h2 className="text-xl font-bold text-gray-800">Register New Company</h2>
+            </div>
+            <button 
+              onClick={() => setShowAddCustomerModal(false)} 
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          
+          <form onSubmit={handleCreateCustomer} className="p-6 space-y-5">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Company Name *</label>
+                <input 
+                  name="company_name" 
+                  required 
+                  value={newCustomerData.company_name} 
+                  onChange={handleNewCustomerChange}
+                  placeholder="e.g., ACME Industries Pvt Ltd"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" 
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Contact Person *</label>
+                  <input 
+                    name="contact_person" 
+                    required 
+                    value={newCustomerData.contact_person} 
+                    onChange={handleNewCustomerChange}
+                    placeholder="Full Name"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number *</label>
+                  <input 
+                    name="phone" 
+                    required 
+                    value={newCustomerData.phone} 
+                    onChange={handleNewCustomerChange}
+                    placeholder="Mobile/Landline"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Email (for Invitation) *</label>
+                <input 
+                  type="email"
+                  name="email" 
+                  required 
+                  value={newCustomerData.email} 
+                  onChange={handleNewCustomerChange}
+                  placeholder="admin@company.com"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" 
+                />
+                <p className="text-xs text-gray-500 mt-1">An invitation to access the portal will be sent here.</p>
+              </div>
+
+              <div className="pt-2 border-t">
+                <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                  <MapPin size={16} className="text-gray-500"/> Ship To Address *
+                </label>
+                <textarea 
+                  name="ship_to_address" 
+                  required 
+                  value={newCustomerData.ship_to_address} 
+                  onChange={handleNewCustomerChange}
+                  rows={2}
+                  placeholder="Shipping location..."
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none" 
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-semibold text-gray-700">Bill To Address *</label>
+                  <label className="flex items-center space-x-2 text-sm text-blue-600 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      name="same_as_ship" 
+                      checked={newCustomerData.same_as_ship}
+                      onChange={handleNewCustomerChange}
+                      className="rounded text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Same as Ship To</span>
+                  </label>
+                </div>
+                <textarea 
+                  name="bill_to_address" 
+                  required 
+                  value={newCustomerData.bill_to_address} 
+                  onChange={handleNewCustomerChange}
+                  disabled={newCustomerData.same_as_ship}
+                  rows={2}
+                  placeholder="Billing location..."
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none ${newCustomerData.same_as_ship ? 'bg-gray-100 text-gray-500' : ''}`} 
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+               <button 
+                 type="button"
+                 onClick={() => setShowAddCustomerModal(false)}
+                 className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700"
+               >
+                 Cancel
+               </button>
+               <button 
+                 type="submit" 
+                 disabled={isCreatingCustomer}
+                 className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-400 flex justify-center items-center gap-2"
+               >
+                 {isCreatingCustomer ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />}
+                 <span>Register & Invite</span>
+               </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   const renderPreviewModal = () => {
     if (!showPreviewModal) return null;
     return (
@@ -1114,7 +1374,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border">
              {/* SRF No Display */}
              <div className="md:col-span-1">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">SRF No <span className="text-gray-400">(Next Available)</span></label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">SRF No </label>
                 <div className="flex items-center px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 font-bold">
                     {formData.srf_no}
                 </div>
@@ -1131,8 +1391,31 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
               <select name="customer_id" value={selectedCustomerId || ''} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg bg-white" disabled={isEditMode}>
                 <option value="">Select Company</option>
                 {customers.map(c => <option key={c.customer_id} value={c.customer_id}>{c.customer_details}</option>)}
+                <option value="new" className="font-bold text-blue-600 bg-blue-50">+ Add New Company</option>
               </select>
             </div>
+
+            {/* Display Addresses when a customer is selected */}
+            {selectedCustomerData && (
+              <>
+                <div className="md:col-span-2 lg:col-span-1.5">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                        <MapPin size={16} className="text-gray-500" /> Ship To Address
+                    </label>
+                    <div className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg text-gray-700 text-sm min-h-[80px] whitespace-pre-wrap">
+                        {selectedCustomerData.ship_to_address || 'N/A'}
+                    </div>
+                </div>
+                <div className="md:col-span-2 lg:col-span-1.5">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                        <Receipt size={16} className="text-gray-500" /> Bill To Address
+                    </label>
+                    <div className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg text-gray-700 text-sm min-h-[80px] whitespace-pre-wrap">
+                        {selectedCustomerData.bill_to_address || 'N/A'}
+                    </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -1140,7 +1423,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         <div className="mb-6">
            <div className="flex justify-between items-center mb-4">
              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><Wrench size={24} className="text-blue-600" />Equipment Details</h2>
-             {!isEditMode && <button type="button" onClick={addEquipmentRow} className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold"><Plus size={20} /><span>Add Equipment</span></button>}
+             {/* Header button removed to prefer the large one at bottom, can be kept if desired */}
            </div>
            <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
               <table className="w-full text-sm border-collapse min-w-[2500px]">
@@ -1253,6 +1536,18 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                 </tbody>
               </table>
            </div>
+           
+           {/* Add Equipment Button Below Table */}
+           {!isEditMode && (
+             <button 
+                type="button" 
+                onClick={addEquipmentRow} 
+                className="mt-4 w-full py-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 font-semibold hover:bg-blue-50 hover:border-blue-500 transition-colors flex items-center justify-center gap-2"
+             >
+                <Plus size={20} />
+                <span>Add New Equipment Row</span>
+             </button>
+           )}
         </div>
 
         {/* Footer Actions */}
@@ -1272,8 +1567,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       {selectedEquipment && <EquipmentDetailsModal equipment={getModalEquipment()!} onClose={() => setSelectedEquipment(null)} />}
       {renderPreviewModal()}
       {renderEmailModal()}
+      {renderAddCustomerModal()}
     </div>
   );
 };
-
+ 
 export default InwardForm;
