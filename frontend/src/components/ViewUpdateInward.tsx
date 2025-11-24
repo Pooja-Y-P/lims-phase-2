@@ -53,17 +53,20 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
     }
   };
 
-  // --- FIX: Corrected filtering and sorting logic to be type-safe ---
   const filterAndSortInwards = () => {
     let filtered = inwards.filter(inward => {
       const searchTermLower = searchTerm.toLowerCase();
+      
       // Safely access properties that might be null/undefined
       const srfNoString = inward.srf_no?.toString().toLowerCase() ?? '';
       const customerDetailsString = inward.customer_details?.toLowerCase() ?? '';
+      // --- NEW: Add DC Number to search logic ---
+      const dcNoString = inward.customer_dc_no?.toString().toLowerCase() ?? '';
 
       const matchesSearch = 
         srfNoString.includes(searchTermLower) ||
-        customerDetailsString.includes(searchTermLower);
+        customerDetailsString.includes(searchTermLower) ||
+        dcNoString.includes(searchTermLower); // Check against DC Number
       
       const matchesStatus = statusFilter === "all" || inward.status === statusFilter;
       
@@ -75,16 +78,14 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       const aValue = a[sortField];
       const bValue = b[sortField];
 
-      // Handle null or undefined values to prevent crashes and satisfy TypeScript
-      if (aValue == null) return 1; // Sort nulls to the end
+      // Handle null or undefined values
+      if (aValue == null) return 1;
       if (bValue == null) return -1;
 
       let comparison = 0;
       if (sortField === 'material_inward_date') {
-        // Create Date objects for accurate comparison
         comparison = new Date(aValue as string).getTime() - new Date(bValue as string).getTime();
       } else {
-        // Generic comparison for strings and numbers
         if (aValue < bValue) {
           comparison = -1;
         } else if (aValue > bValue) {
@@ -92,7 +93,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
         }
       }
 
-      // Apply sort order
       return sortOrder === 'desc' ? comparison * -1 : comparison;
     });
 
@@ -104,7 +104,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortOrder("desc"); // Default to descending for new columns, especially dates
+      setSortOrder("desc");
     }
   };
 
@@ -124,7 +124,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
     switch (status?.toLowerCase()) {
       case "created": return "bg-blue-100 text-blue-800";
       case "in_progress": return "bg-yellow-100 text-yellow-800";
-      
       case "cancelled": return "bg-red-100 text-red-800";
       default: return "bg-gray-100 text-gray-800";
     }
@@ -189,7 +188,8 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder="Search by SRF No or Customer..."
+            // --- UPDATE: Placeholder text ---
+            placeholder="Search by SRF, Customer or DC No..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -291,7 +291,13 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                   <td className="p-4">
                     <div className="flex items-start gap-2">
                       <Building className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <span className="text-gray-800 line-clamp-2">{inward.customer_details}</span>
+                      <div className="flex flex-col">
+                        <span className="text-gray-800 line-clamp-2">{inward.customer_details}</span>
+                        {/* --- NEW: Display DC Number in table --- */}
+                        {inward.customer_dc_no && (
+                           <span className="text-xs text-gray-500">DC: {inward.customer_dc_no}</span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="p-4 text-center">

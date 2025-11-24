@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, ENDPOINTS, BACKEND_ROOT_URL } from "../api/config";
 import { InwardDetail, ViewInwardEquipment } from "../types/inward";
-import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit, X } from "lucide-react";
+import { Loader2, HardHat, Building, Calendar, Barcode, ArrowLeft, Edit, X, FileText } from "lucide-react";
 import { StickerSheet } from "./StickerSheet";
 
 export const ViewInward: React.FC = () => {
@@ -81,7 +81,7 @@ export const ViewInward: React.FC = () => {
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        {/* --- MODIFICATION START: Redesigned Header Section --- */}
+        {/* --- Header Section --- */}
         <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 mb-6">
           <div className="flex justify-between items-center">
             {/* Left Side: Title */}
@@ -118,7 +118,9 @@ export const ViewInward: React.FC = () => {
               </button>
             </div>
           </div>
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6 border-t pt-6">
+
+          {/* --- Info Grid with Added Customer DC Section --- */}
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 border-t pt-6">
             <div className="flex items-center gap-3">
               <Building className="h-8 w-8 text-gray-400" />
               <div>
@@ -126,6 +128,7 @@ export const ViewInward: React.FC = () => {
                 <p className="font-semibold text-gray-700">{inward.customer_details}</p>
               </div>
             </div>
+            
             <div className="flex items-center gap-3">
               <Calendar className="h-8 w-8 text-gray-400" />
               <div>
@@ -133,6 +136,23 @@ export const ViewInward: React.FC = () => {
                 <p className="font-semibold text-gray-700">{new Date(inward.material_inward_date).toLocaleDateString()}</p>
               </div>
             </div>
+
+            {/* New DC Number Section */}
+            <div className="flex items-center gap-3">
+              <FileText className="h-8 w-8 text-gray-400" />
+              <div>
+                <p className="text-sm text-gray-500">Customer DC</p>
+                <p className="font-semibold text-gray-700">
+                  {inward.customer_dc_no || 'N/A'}
+                  {inward.customer_dc_date && (
+                    <span className="text-xs text-gray-500 block font-normal">
+                      Date: {inward.customer_dc_date}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
             <div className="flex items-center gap-3">
               <HardHat className="h-8 w-8 text-gray-400" />
               <div>
@@ -144,7 +164,6 @@ export const ViewInward: React.FC = () => {
             </div>
           </div>
         </div>
-        {/* --- MODIFICATION END --- */}
 
         {/* Equipment List Table */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200">

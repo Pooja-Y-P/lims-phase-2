@@ -52,7 +52,8 @@ export interface ViewInwardEquipment {
   status?: string;
 
   // FIX: Changed 'remarks' to 'remarks_and_decision' and allowed null
-  remarks_and_decision?: string | null;
+  customer_remarks?: string | null;
+  engineer_remarks?: string | null;
 }
 
 // Interface for the main inward form's top-level data
@@ -72,6 +73,7 @@ export interface InwardDetail {
   srf_no: number | string;
   material_inward_date: string;
   customer_dc_date?: string;
+  customer_dc_no?: string;
   customer_id: number; // Added customer_id
   customer_details: string;
   status: string;

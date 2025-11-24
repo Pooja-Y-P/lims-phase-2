@@ -41,7 +41,8 @@ class UpdatedInwardSummary(BaseModel):
     ref_manufacturer_manual: Optional[bool] = None
     ref_customer_requirement: Optional[bool] = None
     turnaround_time: Optional[int] = None
-    remarks: Optional[str] = None
+    customer_remarks: Optional[str] = None
+    engineer_remarks: Optional[str] = None # Fixed typo from 'enginner' to 'engineer'
 
     @field_validator('srf_no', mode='before')
     @classmethod
@@ -59,7 +60,7 @@ class EquipmentCreate(BaseModel):
     range: Optional[str] = None
     serial_no: Optional[str] = None
     qty: int
-    inspe_notes: Optional[str] = "OK"
+    visual_inspection_notes: Optional[str] = "OK"
     calibration_by: str
     supplier: Optional[str] = None
     out_dc: Optional[str] = None
@@ -91,6 +92,10 @@ class InwardEquipmentResponse(BaseModel):
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
     engineer_remarks: Optional[str] = Field(None, alias='engineer_remarks')
+    
+    # --- FIX: Added this field so it shows up in the Inward Form ---
+    customer_remarks: Optional[str] = None 
+    # ---------------------------------------------------------------
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -129,11 +134,7 @@ class DraftResponse(BaseModel):
 class InwardCreate(BaseModel):
     srf_no: Optional[str] = None
     
-    # --- FIX STARTS HERE ---
-    # 1. Use default_factory to dynamically generate today's date if missing
     material_inward_date: datetime.date = Field(default_factory=datetime.date.today)
-    
-    # 2. Allow empty strings for date fields (React forms often send "" for empty dates)
     customer_dc_date: Optional[str] = "" 
     
     customer_dc_no: str
@@ -142,16 +143,12 @@ class InwardCreate(BaseModel):
     receiver: str
     equipment_list: List[EquipmentCreate]
 
-    # 3. Add Validator to intercept empty strings or bad defaults BEFORE validation
     @field_validator('material_inward_date', mode='before')
     @classmethod
     def parse_material_inward_date(cls, v):
-        # This fixes the "input_value=<class 'datetime.date'>" error
-        # and handles empty strings sent by FormData
         if v == "" or v is None or v == datetime.date:
             return datetime.date.today()
         return v
-    # --- FIX ENDS HERE ---
 
     @field_validator('equipment_list', mode='before')
     @classmethod

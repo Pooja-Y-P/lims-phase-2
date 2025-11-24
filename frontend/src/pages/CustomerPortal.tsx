@@ -18,13 +18,15 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { api } from '../api/config';
 import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
-import CustomerSrfDetailView from "../components/CustomerSrfDetailView"; // Import the detail view
+import CustomerSrfDetailView from "../components/CustomerSrfDetailView"; 
 
 // --- LOCAL TYPE DEFINITIONS ---
 interface FirForReview {
   inward_id: number;
   srf_no: string;
-  date: string;
+  // Updated interface to allow optional or multiple date fields
+  date?: string; 
+  material_inward_date?: string;
   status: string;
 }
 
@@ -41,6 +43,18 @@ interface SrfApiResponse {
   approved: Srf[];
   rejected: Srf[];
 }
+
+// --- HELPER: Safe Date Formatter ---
+const formatSafeDate = (dateStr?: string | null) => {
+  if (!dateStr) return "N/A";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+};
 
 // --- FIR List View Component ---
 const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
@@ -83,7 +97,10 @@ const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
                                         <AlertTriangle className="h-3 w-3" /> Requires Your Review
                                     </span>
                                 </td>
-                                <td className="p-4 align-top text-slate-600">{new Date(fir.date).toLocaleDateString()}</td>
+                                <td className="p-4 align-top text-slate-600">
+                                    {/* Use helper to format either material_inward_date or date */}
+                                    {formatSafeDate(fir.material_inward_date || fir.date)}
+                                </td>
                                 <td className="p-4 align-top">
                                     <Link to={`/customer/fir-remarks/${fir.inward_id}`} className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm transition-colors">
                                         <FileText className="h-4 w-4" /> Review & Add Remarks
@@ -144,7 +161,10 @@ const CustomerSrfListView: React.FC<{ srfs: Srf[] }> = ({ srfs }) => {
                             <tr key={srf.srf_id} className="hover:bg-slate-50">
                                 <td className="p-4 align-top font-medium text-slate-800">{srf.nepl_srf_no}</td>
                                 <td className="p-4 align-top capitalize text-slate-700">{srf.status.replace(/_/g, " ")}</td>
-                                <td className="p-4 align-top text-slate-600">{new Date(srf.date).toLocaleDateString()}</td>
+                                <td className="p-4 align-top text-slate-600">
+                                     {/* Use helper to format date */}
+                                    {formatSafeDate(srf.date)}
+                                </td>
                                 <td className="p-4 align-top">
                                     <Link to={`/customer/srfs/${srf.srf_id}`} className="text-indigo-600 font-semibold hover:underline">View & Approve</Link>
                                 </td>
@@ -161,7 +181,7 @@ const CustomerSrfListView: React.FC<{ srfs: Srf[] }> = ({ srfs }) => {
 const ViewDeviationsPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">View Deviations</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
 const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">Certificates</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
 
-// --- Dashboard UI Components (IMPLEMENTED) ---
+// --- Dashboard UI Components ---
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; description: string; gradient: string; bgGradient: string; }> = ({ icon, label, value, description, gradient, bgGradient }) => ( 
     <div className={`relative bg-white rounded-2xl p-8 shadow-lg border border-gray-100 hover:shadow-xl group`}> 
         <div className={`absolute inset-0 bg-gradient-to-r ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity`} /> 
@@ -301,7 +321,6 @@ const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
                 <Routes>
                     <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
                     <Route path="view-srf" element={<CustomerSrfListView srfs={srfs} />} />
-                    {/* Correctly import and use the detail view component */}
                     <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
                     <Route path="view-firs" element={<FirListView firs={firs} />} />
                     <Route path="fir-remarks/:inwardId" element={<CustomerRemarksPortal />} />

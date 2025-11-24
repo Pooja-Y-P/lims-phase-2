@@ -87,47 +87,78 @@ class InwardService:
         return None
 
     def _build_inward_export_rows(self, inward: Inward) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Builds rows for Excel export. Safely handles cases where Inward exists but SRF is None.
+        """
         customer_details = inward.customer.customer_details if inward.customer else inward.customer_details
         srf = inward.srf
         receiver_name = inward.received_by if inward.received_by else "N/A"
 
+        # Helper to safely get SRF attributes (handle srf being None)
+        def get_srf_attr(attr_name):
+            return getattr(srf, attr_name, None) if srf else None
+
         base_row = self._sanitize_row({
-            "Inward ID": inward.inward_id, "SRF No": str(inward.srf_no), "Customer": customer_details,
-            "Status": inward.status, "Received By": receiver_name, "Material Inward Date": inward.material_inward_date,
-            "Customer DC No": inward.customer_dc_no, "Customer DC Date": inward.customer_dc_date,
+            "Inward ID": inward.inward_id, 
+            "SRF No": str(inward.srf_no), 
+            "Customer": customer_details,
+            "Status": inward.status, 
+            "Received By": receiver_name, 
+            "Material Inward Date": inward.material_inward_date,
+            "Customer DC No": inward.customer_dc_no, 
+            "Customer DC Date": inward.customer_dc_date,
             "Updated At": inward.updated_at,
-            "Calibration Frequency": getattr(srf, "calibration_frequency", None),
-            "Statement Of Conformity": self._bool_to_text(getattr(srf, "statement_of_conformity", None)),
-            "Decision Rule - ISO/IS Doc": self._bool_to_text(getattr(srf, "ref_iso_is_doc", None)),
-            "Decision Rule - Manufacturer Manual": self._bool_to_text(getattr(srf, "ref_manufacturer_manual", None)),
-            "Decision Rule - Customer Requirement": self._bool_to_text(getattr(srf, "ref_customer_requirement", None)),
-            "Turnaround Time (Days)": getattr(srf, "turnaround_time", None),
-            "Special Remarks": getattr(srf, "remarks", None),
+            # Safely access SRF fields
+            "Calibration Frequency": get_srf_attr("calibration_frequency"),
+            "Statement Of Conformity": self._bool_to_text(get_srf_attr("statement_of_conformity")),
+            "Decision Rule - ISO/IS Doc": self._bool_to_text(get_srf_attr("ref_iso_is_doc")),
+            "Decision Rule - Manufacturer Manual": self._bool_to_text(get_srf_attr("ref_manufacturer_manual")),
+            "Decision Rule - Customer Requirement": self._bool_to_text(get_srf_attr("ref_customer_requirement")),
+            "Turnaround Time (Days)": get_srf_attr("turnaround_time"),
+            "Special Remarks": get_srf_attr("remarks"),
         })
+        
         rows: List[Dict[str, Any]] = []
-        srf_equipment_map: Dict[int, Any] = {
-            srf_eqp.inward_eqp_id: srf_eqp for srf_eqp in (srf.equipments or []) if srf_eqp.inward_eqp_id
-        }
+        
+        # Safely build SRF Equipment map (only if srf exists and has equipments)
+        srf_equipment_map: Dict[int, Any] = {}
+        if srf and getattr(srf, "equipments", None):
+            srf_equipment_map = {
+                srf_eqp.inward_eqp_id: srf_eqp 
+                for srf_eqp in srf.equipments 
+                if srf_eqp.inward_eqp_id
+            }
         
         equipment_items = sorted(inward.equipments, key=lambda eq: eq.nepl_id) if inward.equipments else []
 
         if equipment_items:
             for index, equipment in enumerate(equipment_items, start=1):
+                # Get associated SRF equipment info if available
                 srf_equipment = srf_equipment_map.get(getattr(equipment, "inward_eqp_id", None))
+                
                 rows.append(self._sanitize_row({
-                    **base_row, "Equipment Row": index, "Equipment NEPL ID": equipment.nepl_id,
-                    "Material Description": equipment.material_description, "Make": equipment.make,
-                    "Model": equipment.model, "Range": equipment.range, "Serial No": equipment.serial_no,
-                    "Quantity": equipment.quantity, "Inspection Notes": equipment.visual_inspection_notes,
-                    "Calibration By": equipment.calibration_by, "Supplier": equipment.supplier,
-                    "Out DC": equipment.out_dc, "In DC": equipment.in_dc,
+                    **base_row, 
+                    "Equipment Row": index, 
+                    "Equipment NEPL ID": equipment.nepl_id,
+                    "Material Description": equipment.material_description, 
+                    "Make": equipment.make,
+                    "Model": equipment.model, 
+                    "Range": equipment.range, 
+                    "Serial No": equipment.serial_no,
+                    "Quantity": equipment.quantity, 
+                    "Inspection Notes": equipment.visual_inspection_notes,
+                    "Calibration By": equipment.calibration_by, 
+                    "Supplier": equipment.supplier, 
+                    "Out DC": equipment.out_dc, 
+                    "In DC": equipment.in_dc,
                     "Nextage Reference": equipment.nextage_contract_reference,
                     "Accessories Included": equipment.accessories_included,
                     "Engineer Remark / Decision": equipment.engineer_remarks,
                     "Customer Remark": equipment.customer_remarks,
-                    "Equipment Unit": getattr(srf_equipment, "unit", None),
-                    "Calibration Points": getattr(srf_equipment, "no_of_calibration_points", None),
-                    "Mode of Calibration": getattr(srf_equipment, "mode_of_calibration", None),
+                    # Safely access srf_equipment fields
+                    "Equipment Unit": getattr(srf_equipment, "unit", None) if srf_equipment else None,
+                    "Calibration Points": getattr(srf_equipment, "no_of_calibration_points", None) if srf_equipment else None,
+                    "Mode of Calibration": getattr(srf_equipment, "mode_of_calibration", None) if srf_equipment else None,
                 }))
         else:
             rows.append(self._sanitize_row({**base_row, "Equipment Row": 1}))
@@ -355,7 +386,7 @@ class InwardService:
                 material_description=eqp_model.material_desc,
                 make=eqp_model.make, model=eqp_model.model, range=eqp_model.range,
                 serial_no=eqp_model.serial_no, quantity=eqp_model.qty,
-                visual_inspection_notes=eqp_model.inspe_notes or "OK",
+                visual_inspection_notes=eqp_model.visual_inspection_notes,
                 calibration_by=eqp_model.calibration_by,
                 supplier=eqp_model.supplier, out_dc=eqp_model.out_dc, in_dc=eqp_model.in_dc,
                 nextage_contract_reference=eqp_model.nextage_ref,
@@ -395,13 +426,13 @@ class InwardService:
                     "customer_details": i.customer.customer_details if i.customer else i.customer_details,
                     "status": i.status, "received_by": i.received_by if i.received_by else 'N/A',
                     "updated_at": i.updated_at, "equipment_count": len(i.equipments or []),
-                    "calibration_frequency": getattr(i.srf, "calibration_frequency", None),
-                    "statement_of_conformity": getattr(i.srf, "statement_of_conformity", None),
-                    "ref_iso_is_doc": getattr(i.srf, "ref_iso_is_doc", None),
-                    "ref_manufacturer_manual": getattr(i.srf, "ref_manufacturer_manual", None),
-                    "ref_customer_requirement": getattr(i.srf, "ref_customer_requirement", None),
-                    "turnaround_time": getattr(i.srf, "turnaround_time", None),
-                    "remarks": getattr(i.srf, "remarks", None),
+                    "calibration_frequency": getattr(i.srf, "calibration_frequency", None) if i.srf else None,
+                    "statement_of_conformity": getattr(i.srf, "statement_of_conformity", None) if i.srf else None,
+                    "ref_iso_is_doc": getattr(i.srf, "ref_iso_is_doc", None) if i.srf else None,
+                    "ref_manufacturer_manual": getattr(i.srf, "ref_manufacturer_manual", None) if i.srf else None,
+                    "ref_customer_requirement": getattr(i.srf, "ref_customer_requirement", None) if i.srf else None,
+                    "turnaround_time": getattr(i.srf, "turnaround_time", None) if i.srf else None,
+                    "remarks": getattr(i.srf, "remarks", None) if i.srf else None,
                 } for i in inwards
             ]
         except Exception as e:
@@ -450,8 +481,10 @@ class InwardService:
     async def generate_multiple_inwards_export(self, inward_ids: List[int]) -> BytesIO:
         unique_ids = [i for i in sorted(list(set(i for i in inward_ids if i is not None)))]
         if not unique_ids: raise HTTPException(status_code=400, detail="Select at least one inward to export.")
+        
         output = BytesIO()
         try:
+            has_content = False
             with pd.ExcelWriter(output, engine="openpyxl") as writer:
                 sheet_names: Set[str] = set()
                 all_rows: List[Dict[str, Any]] = []
@@ -461,10 +494,17 @@ class InwardService:
                     unique_sheet_name = self._ensure_unique_sheet_name(sheet_label, sheet_names)
                     pd.DataFrame(rows).to_excel(writer, index=False, sheet_name=unique_sheet_name)
                     all_rows.extend(rows)
+                    has_content = True
+                    
                 if all_rows:
                     summary_title = self._sanitize_sheet_title("Selected Inwards", fallback="Selected")
                     summary_sheet_name = self._ensure_unique_sheet_name(summary_title, sheet_names)
                     pd.DataFrame(all_rows).to_excel(writer, index=False, sheet_name=summary_sheet_name)
+                
+                # Safety check to ensure at least one sheet is visible to prevent crashes
+                if not has_content:
+                    pd.DataFrame(["No Data Found"]).to_excel(writer, index=False, sheet_name="Error")
+                    
             output.seek(0)
             return output
         except Exception as exc:

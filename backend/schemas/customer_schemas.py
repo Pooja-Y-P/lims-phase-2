@@ -30,6 +30,13 @@ class EquipmentForCustomer(BaseModel):
     serial_no: Optional[str]
     
     visual_inspection_notes: Optional[str] = None
+    
+    # --- FIX: Added engineer_remarks so it is included in the response ---
+    engineer_remarks: Optional[str] = None 
+    
+    # Note: DB uses plural 'customer_remarks', frontend usually expects/maps to this
+    customer_remarks: Optional[str] = Field(None, alias='customer_remarks')
+    
     remarks_and_decision: Optional[str] = None
     photos: Optional[List[str]] = None
     
@@ -71,7 +78,6 @@ class CustomerDropdownResponse(BaseModel):
     """Schema for customer data to be used in dropdowns."""
     customer_id: int
     customer_details: str
-    # --- Added fields for address population ---
     email: Optional[str] = None
     ship_to_address: Optional[str] = None
     bill_to_address: Optional[str] = None

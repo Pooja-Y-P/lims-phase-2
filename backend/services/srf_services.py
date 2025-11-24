@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import List, Dict, Any
 
@@ -59,12 +60,14 @@ class SrfService:
 
     def create_srf_from_inward(self, inward_id: int, srf_data: Dict[str, Any]) -> Srf:
         """
-        Creates a new SRF from a pending inward and updates the inward's status.
+        Creates a new SRF from a pending inward. 
+        It uses the EXISTING srf_no from the Inward record, does NOT generate a new one.
         """
         inward = self.db.get(Inward, inward_id)
         if not inward:
             raise HTTPException(status_code=404, detail="Inward not found")
 
+        # Ensure strict status check
         allowed_statuses = ['updated']
         if inward.status not in allowed_statuses:
             raise HTTPException(
@@ -77,14 +80,30 @@ class SrfService:
             raise HTTPException(status_code=409, detail="SRF already exists for this inward. Please refresh the list.")
 
         customer = self.db.get(Customer, inward.customer_id)
-        if not customer:
-            raise HTTPException(status_code=400, detail="Associated customer not found for this inward.")
+        
+        # Extract integer from inward.srf_no string (e.g., "NEPL25006" -> 25006)
+        srf_no_int = 0
+        if inward.srf_no:
+            digits = re.findall(r'\d+', str(inward.srf_no))
+            if digits:
+                srf_no_int = int("".join(digits))
+
+        # Use the existing Inward SRF string (e.g., "NEPL25006") for the SRF record
+        # We do NOT generate a new number here.
+        srf_string_id = str(inward.srf_no)
 
         new_srf = Srf(
             inward_id=inward_id,
-            srf_no=inward.srf_no,
-            date=srf_data.get('date', inward.date),
-            certificate_issue_name=srf_data.get('certificate_issue_name', customer.customer_details),
+            srf_no=srf_no_int,  # Integer value for sorting/indexing
+            nepl_srf_no=srf_string_id, # String value (Matches Inward)
+            date=srf_data.get('date', inward.material_inward_date),
+            
+            # Map fields from payload
+            telephone=srf_data.get('telephone'),
+            contact_person=srf_data.get('contact_person'),
+            email=srf_data.get('email'),
+            certificate_issue_name=srf_data.get('certificate_issue_name', customer.customer_details if customer else ""),
+            
             status='created'
         )
         self.db.add(new_srf)
@@ -102,7 +121,7 @@ class SrfService:
                 srf_id=new_srf.srf_id,
                 inward_eqp_id=inward_eq.inward_eqp_id,
                 unit=eq_payload.get('unit'),
-                no_of_calibration_points=eq_payload.get('no_of_calibration_points'),
+                no_of_calibration_points=str(eq_payload.get('no_of_calibration_points', '')),
                 mode_of_calibration=eq_payload.get('mode_of_calibration')
             )
             self.db.add(srf_eq)
@@ -115,8 +134,10 @@ class SrfService:
         srf = self.db.scalars(
             select(Srf)
             .options(
-                selectinload(Srf.inward).selectinload(Inward.customer),
-                selectinload(Srf.equipments).selectinload(SrfEquipment.inward_equipment)
+                selectinload(Srf.inward).options(
+                    selectinload(Inward.customer),
+                    selectinload(Inward.equipments).selectinload(InwardEquipment.srf_equipment)
+                )
             )
             .where(Srf.srf_id == srf_id)
         ).first()
@@ -132,16 +153,17 @@ class SrfService:
             raise HTTPException(status_code=404, detail="SRF not found")
 
         updatable_fields = [
-            "nepl_srf_no", "certificate_issue_name", "status",
+            "nepl_srf_no", "certificate_issue_name", "status", 
+            "telephone", "email", "contact_person",
             "calibration_frequency", "statement_of_conformity",
             "ref_iso_is_doc", "ref_manufacturer_manual",
             "ref_customer_requirement", "turnaround_time", "remarks"
         ]
-        for field, value in update_data.items():
-            if field in updatable_fields and hasattr(srf, field):
-                setattr(srf, field, value)
+        for field in updatable_fields:
+            if field in update_data:
+                setattr(srf, field, update_data[field])
 
-        equipment_details_payload = update_data.get('equipment_details')
+        equipment_details_payload = update_data.get('equipments')
         if equipment_details_payload:
             srf_equipments_map = {
                 eq.inward_eqp_id: eq
@@ -155,19 +177,29 @@ class SrfService:
 
                 srf_eq = srf_equipments_map.get(inward_eqp_id)
                 if srf_eq:
-                    srf_eq.unit = details.get('unit', srf_eq.unit)
-                    srf_eq.no_of_calibration_points = details.get('no_of_calibration_points', srf_eq.no_of_calibration_points)
-                    srf_eq.mode_of_calibration = details.get('mode_of_calibration', srf_eq.mode_of_calibration)
+                    if 'unit' in details: srf_eq.unit = details['unit']
+                    if 'no_of_calibration_points' in details: 
+                        srf_eq.no_of_calibration_points = str(details['no_of_calibration_points'])
+                    if 'mode_of_calibration' in details: 
+                        srf_eq.mode_of_calibration = details['mode_of_calibration']
+                else:
+                    new_srf_eq = SrfEquipment(
+                        srf_id=srf_id,
+                        inward_eqp_id=inward_eqp_id,
+                        unit=details.get('unit'),
+                        no_of_calibration_points=str(details.get('no_of_calibration_points', '')),
+                        mode_of_calibration=details.get('mode_of_calibration')
+                    )
+                    self.db.add(new_srf_eq)
 
         self.db.commit()
         self.db.refresh(srf)
-        return srf
+        return self.get_srf_by_id(srf_id)
 
     def generate_next_srf_no(self) -> str:
         """
-        Generate the next SRF number in format NEPL25001.
-        Uses both tables to find the true maximum to avoid skipping or collisions.
-        Strictly EXCLUDES drafts from calculation.
+        Generate the next SRF number based ONLY on the Inward table.
+        Format: NEPL{YY}{NNN} (e.g., NEPL25001)
         """
         try:
             current_year = datetime.now().year
@@ -175,21 +207,14 @@ class SrfService:
             prefix = f"NEPL{year_suffix}"
             year_pattern = f"{prefix}%"
 
-            # 1. Check Inward table - IMPORTANT: Exclude Drafts
+            # 1. Check Inward table (excluding drafts) - THIS IS THE ONLY SOURCE OF TRUTH
             latest_inward_srf = self.db.scalars(
                 select(Inward.srf_no)
                 .where(
                     Inward.srf_no.like(year_pattern),
-                    Inward.is_draft.is_(False)  # <--- CRITICAL FIX: Ignore drafts
+                    Inward.is_draft.is_(False)
                 )
                 .order_by(desc(Inward.srf_no))
-            ).first()
-
-            # 2. Check SRF table
-            latest_srf_table_no = self.db.scalars(
-                select(Srf.nepl_srf_no)
-                .where(Srf.nepl_srf_no.like(year_pattern))
-                .order_by(desc(Srf.nepl_srf_no))
             ).first()
 
             def extract_sequence(srf_str: str | None) -> int:
@@ -198,7 +223,6 @@ class SrfService:
                 try:
                     srf_str = str(srf_str).strip()
                     if srf_str.startswith(prefix):
-                        # Only extract if the length is correct to avoid parsing "NEPL25ABC"
                         numeric_part = srf_str[len(prefix):]
                         if numeric_part.isdigit():
                             return int(numeric_part)
@@ -206,16 +230,13 @@ class SrfService:
                 except (ValueError, AttributeError):
                     return 0
 
+            # Calculate next number based solely on Inward table
             max_inward = extract_sequence(latest_inward_srf)
-            max_srf = extract_sequence(latest_srf_table_no)
-
-            # Take the highest number found
-            current_max = max(max_inward, max_srf)
-            next_number = current_max + 1
-
+            
+            next_number = max_inward + 1
             next_srf_no = f"{prefix}{next_number:03d}"
 
-            logger.info(f"Generated SRF: {next_srf_no} (Inward Max: {max_inward}, SRF Max: {max_srf})")
+            logger.info(f"Generated SRF: {next_srf_no} (Based on Inward Max: {max_inward})")
             return next_srf_no
 
         except Exception as e:

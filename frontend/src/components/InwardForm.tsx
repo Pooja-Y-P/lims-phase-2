@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { 
   Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, 
   Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, 
-  Download, UserPlus, MapPin, Receipt 
+  Download, UserPlus, MapPin, Receipt, 
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -21,12 +21,14 @@ interface ExtendedInwardFormType extends InwardFormType {
 
 interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'calibration_by'> {
   inspe_status: 'OK' | 'Not OK';
-  inspe_remarks: string;
+  inspe_remarks: string; 
+  engineer_remarks?: string; 
   calibration_by: 'In Lab' | 'Outsource' | 'On-Site';
   accessories_included?: string;
+  // Explicitly adding remarks_and_decision to ensure it's recognized
+  remarks_and_decision?: string | null;
 }
 
-// UPDATED: Include address fields from backend
 interface CustomerDropdownItem {
   customer_id: number;
   customer_details: string;
@@ -35,7 +37,6 @@ interface CustomerDropdownItem {
   bill_to_address?: string;
 }
 
-// New Interface for the Add Customer Form
 interface NewCustomerForm {
   company_name: string;
   contact_person: string;
@@ -77,7 +78,6 @@ type InwardFormProps = {
   initialDraftId: number | null;
 };
 
-// MATERIAL DESCRIPTION OPTIONS
 const MATERIAL_DESCRIPTIONS = [
   "Hydraulic Torque Wrench",
   "Pressure Gauge",
@@ -85,6 +85,16 @@ const MATERIAL_DESCRIPTIONS = [
   "Vernier Caliper",
   "Micrometer",
 ];
+
+// --- HELPER: Safe Date Parsing ---
+const safeDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '';
+  try {
+    return dateStr.split('T')[0];
+  } catch (e) {
+    return '';
+  }
+};
 
 // --- COMPONENT ---
 export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
@@ -113,10 +123,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   // Modals & Flow State
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
-  
-  // --- NEW CUSTOMER MODAL STATE ---
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  
   const [newCustomerData, setNewCustomerData] = useState<NewCustomerForm>({
     company_name: '',
     contact_person: '',
@@ -136,7 +145,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const lastSavedDataRef = useRef<string>('');
   const previewUrlsRef = useRef<string[]>([]);
 
-  // Draft State
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
@@ -144,11 +152,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
 
-  // Derived state for address display
   const selectedCustomerData = customers.find(c => c.customer_id === selectedCustomerId);
 
   const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
   const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
+  
+  // Show Engineer Remarks column if item is Not OK OR we are in Edit Mode
+  const showEngineerRemarks = equipmentList.some(eq => eq.inspe_status === 'Not OK') || isEditMode;
+
   const hasFormData =
     (formData.customer_id !== null && formData.customer_id !== undefined) ||
     (formData.customer_dc_date ?? '').trim().length > 0 ||
@@ -202,7 +213,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       const response = await api.get<{ next_srf_no: string }>(`${ENDPOINTS.STAFF.INWARDS}/next-no`);
       return response.data.next_srf_no;
     } catch (e) {
-      console.warn("Next SRF fetch failed, UI will show TBD");
       return "TBD";
     }
   };
@@ -221,10 +231,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     try {
       const response = await api.get<InwardDetail>(`${ENDPOINTS.STAFF.INWARDS}/${inwardId}`);
       const inward = response.data;
+      
       setFormData({
         srf_no: inward.srf_no.toString(),
-        material_inward_date: inward.material_inward_date,
-        customer_dc_date: inward.customer_dc_date ?? inward.material_inward_date ?? '',
+        material_inward_date: safeDate(inward.material_inward_date),
+        customer_dc_date: safeDate(inward.customer_dc_date),
         customer_dc_no: (inward as any).customer_dc_no ?? '',
         receiver: inward.receiver || '',
         customer_id: inward.customer_id,
@@ -262,13 +273,20 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           qty: eq.quantity,
           calibration_by: calibrationBy,
           inspe_status: isOk ? 'OK' : 'Not OK',
-          inspe_remarks: isOk ? '' : visualNotes,
+          inspe_remarks: '', 
+          engineer_remarks: (eq as any).engineer_remarks || eq.engineer_remarks || '', 
           accessories_included: (eq as any).accessories_included || '',
-          remarks_and_decision: eq.remarks_and_decision,
+          
+          // FIX: Mapping customer remarks correctly
+          remarks_and_decision: (eq as any).customer_remarks || null,
+          
           photos: [],
           photoPreviews: [],
-          existingPhotoUrls
-        };
+          existingPhotoUrls,
+          supplier: (eq as any).supplier,
+          in_dc: (eq as any).in_dc,
+          out_dc: (eq as any).out_dc
+        } as EquipmentDetail;
       });
 
       cleanupAllPreviews();
@@ -281,6 +299,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         calibration_by: 'In Lab' as const,
         inspe_status: 'OK' as const,
         inspe_remarks: '',
+        engineer_remarks: '',
         accessories_included: '',
         photos: [],
         photoPreviews: [],
@@ -305,8 +324,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       if (draftData) {
         const newFormData: ExtendedInwardFormType = {
           srf_no: nextSrf,
-          material_inward_date: draftData.material_inward_date || new Date().toISOString().split('T')[0],
-          customer_dc_date: draftData.customer_dc_date ?? '',
+          material_inward_date: safeDate(draftData.material_inward_date),
+          customer_dc_date: safeDate(draftData.customer_dc_date),
           customer_dc_no: draftData.customer_dc_no ?? '',
           customer_id: draftData.customer_id || null,
           customer_details: draftData.customer_details || '',
@@ -365,7 +384,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       
       const newFormData: ExtendedInwardFormType = {
         srf_no: displaySrf,
-        material_inward_date: new Date().toISOString().split('T')[0],
+        material_inward_date: safeDate(new Date().toISOString()),
         customer_dc_date: '',
         customer_dc_no: '',
         receiver: user?.full_name || user?.username || '',
@@ -383,6 +402,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         calibration_by: 'In Lab' as const,
         inspe_status: 'OK' as const,
         inspe_remarks: '',
+        engineer_remarks: '',
         accessories_included: '',
         photos: [],
         photoPreviews: [],
@@ -635,25 +655,25 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const handleEquipmentChange = (index: number, field: keyof EquipmentDetail, value: string | number) => {
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
-      const equipmentToUpdate = updatedList[index];
-      if (!equipmentToUpdate) return currentList;
-
-      const updatedEquipment = { ...equipmentToUpdate };
+      const equipmentToUpdate = { ...updatedList[index] };
       
       if (field === 'inspe_status') {
-          updatedEquipment.inspe_status = value as 'OK' | 'Not OK';
-          if (value === 'OK') updatedEquipment.inspe_remarks = '';
+          equipmentToUpdate.inspe_status = value as 'OK' | 'Not OK';
+          // If OK, clear engineer remarks
+          if (value === 'OK') {
+             equipmentToUpdate.engineer_remarks = ''; 
+          }
       } else if (field === 'calibration_by') {
-          updatedEquipment.calibration_by = value as 'In Lab' | 'Outsource' | 'On-Site';
+          (equipmentToUpdate as any).calibration_by = value as 'In Lab' | 'Outsource' | 'On-Site';
           if (value !== 'Outsource') {
-            delete (updatedEquipment as any).supplier;
-            delete (updatedEquipment as any).in_dc;
-            delete (updatedEquipment as any).out_dc;
+            delete (equipmentToUpdate as any).supplier;
+            delete (equipmentToUpdate as any).in_dc;
+            delete (equipmentToUpdate as any).out_dc;
           }
       } else {
-        (updatedEquipment as any)[field] = value;
+        (equipmentToUpdate as any)[field] = value;
       }
-      updatedList[index] = updatedEquipment;
+      updatedList[index] = equipmentToUpdate;
       return updatedList;
     });
   };
@@ -671,6 +691,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         calibration_by: 'In Lab' as const,
         inspe_status: 'OK' as const,
         inspe_remarks: '',
+        engineer_remarks: '', // Init as empty
         accessories_included: '',
         photos: [],
         photoPreviews: [],
@@ -798,7 +819,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       const desc = `${eq.material_desc}`;
       const makeModel = `${eq.make} / ${eq.model}`;
       const range = eq.range || '-';
-      const visual = eq.inspe_status === 'Not OK' ? `Defect: ${eq.inspe_remarks}` : 'OK';
+      // UPDATED: Just show status, not remarks
+      const visual = eq.inspe_status === 'Not OK' ? 'Not OK' : 'OK';
       const accessories = eq.accessories_included ? `Accs: ${eq.accessories_included}` : '';
       const combinedVisual = accessories ? `${visual}\n${accessories}` : visual;
       
@@ -881,7 +903,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       const finalInwardDate = formData.material_inward_date || new Date().toISOString().split('T')[0];
 
       // 1. Basic Fields
-      submissionData.append('srf_no', formData.srf_no); // Essential
+      submissionData.append('srf_no', formData.srf_no); 
       submissionData.append('material_inward_date', finalInwardDate);
       submissionData.append('customer_dc_date', formData.customer_dc_date || "");
       submissionData.append('customer_dc_no', formData.customer_dc_no);
@@ -892,32 +914,26 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       
       submissionData.append('customer_details', formData.customer_details);
 
-      // 2. Equipment List - FIXED KEY NAMES HERE
+      // 2. Equipment List
       const equipmentDataForJson = equipmentList.map((item) => {
         const isOutsource = item.calibration_by === 'Outsource';
         
         return {
           nepl_id: item.nepl_id,
-          
-          // FIX 1: Backend expects 'material_desc', NOT 'material_description'
           material_desc: item.material_desc, 
-          
           make: item.make,
           model: item.model,
           range: item.range || "",
           serial_no: item.serial_no || "",
-          
-          // FIX 2: Backend expects 'qty', NOT 'quantity'
           qty: Number(item.qty), 
-          
           calibration_by: item.calibration_by,
-          visual_inspection_notes: item.inspe_status === 'OK' ? 'OK' : (item.inspe_remarks || "Not OK"),
+          // UPDATED: Just send "OK" or "Not OK" based on status
+          visual_inspection_notes: item.inspe_status,
+          engineer_remarks: item.engineer_remarks || "", // Include Engineer Remarks
           accessories_included: item.accessories_included || "",
-          
           supplier: isOutsource ? ((item as any).supplier || "") : null, 
           in_dc: isOutsource ? ((item as any).in_dc || "") : null,
           out_dc: isOutsource ? ((item as any).out_dc || "") : null,
-          
           existing_photo_urls: (item.existingPhotoUrls || []).filter((url): url is string => Boolean(url?.trim()))
         };
       });
@@ -965,7 +981,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         
         let errorMsg = 'Submission failed';
         if (error.response?.status === 422 && Array.isArray(error.response.data.detail)) {
-            // Log the raw detail to console to see exactly what keys are missing if it fails again
             console.log("Validation Details:", error.response.data.detail);
             errorMsg = `Validation Error: ${error.response.data.detail.map((d: any) => `${d.loc[d.loc.length-1]}: ${d.msg}`).join(' | ')}`;
         } else if (error.response?.data?.detail) {
@@ -1215,7 +1230,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                       <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td>
                       <td className="border border-gray-300 p-2 text-center">{eq.qty}</td>
                       <td className="border border-gray-300 p-2 text-gray-600 italic">
-                        {eq.inspe_status === 'Not OK' ? `Defect: ${eq.inspe_remarks}` : (eq.accessories_included || 'OK')}
+                        {/* UPDATED: Show 'Not OK' directly if status is not ok */}
+                        {eq.inspe_status === 'Not OK' ? 'Not OK' : (eq.accessories_included || 'OK')}
                       </td>
                     </tr>
                   ))}
@@ -1314,7 +1330,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     const modalEquipment: BaseEquipmentDetail = {
       ...rest,
       calibration_by: selectedEquipment.calibration_by === 'On-Site' ? 'Out Lab' : selectedEquipment.calibration_by,
-      inspe_notes: inspe_status === 'OK' ? 'OK' : inspe_remarks,
+      inspe_notes: inspe_status === 'OK' ? 'OK' : (inspe_status === 'Not OK' ? 'Not OK' : inspe_remarks),
     };
     return modalEquipment;
   }
@@ -1423,7 +1439,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         <div className="mb-6">
            <div className="flex justify-between items-center mb-4">
              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2"><Wrench size={24} className="text-blue-600" />Equipment Details</h2>
-             {/* Header button removed to prefer the large one at bottom, can be kept if desired */}
            </div>
            <div className="overflow-x-auto border rounded-lg bg-white shadow-sm">
               <table className="w-full text-sm border-collapse min-w-[2500px]">
@@ -1447,6 +1462,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         )}
                         <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Accessories Included</th>
                         <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Visual Inspection</th>
+                        
+                        {/* CONDITIONAL HEADER FOR ENGINEER REMARKS */}
+                        {showEngineerRemarks && (
+                           <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Engineer Remarks</th>
+                        )}
+
                         <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Photos</th>
                         <th className="sticky right-0 z-20 p-3 text-center text-xs font-semibold text-slate-600 uppercase bg-slate-100 border-b border-slate-200">Actions</th>
                     </tr>
@@ -1492,9 +1513,25 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                                     <option value="OK">OK</option>
                                     <option value="Not OK">Not OK</option>
                                 </select>
-                                {equipment.inspe_status === 'Not OK' && <input placeholder="Defect..." value={equipment.inspe_remarks} onChange={e=>handleEquipmentChange(index,'inspe_remarks',e.target.value)} className="w-full px-2 py-1.5 border border-red-300 rounded-md text-xs" />}
                             </div>
                         </td>
+
+                        {/* CONDITIONAL COLUMN: ENGINEER REMARKS */}
+                        {showEngineerRemarks && (
+                           <td className="p-2">
+                               {equipment.inspe_status === 'Not OK' || (isEditMode && equipment.engineer_remarks) ? (
+                                   <textarea 
+                                      placeholder="Enter remarks..." 
+                                      value={equipment.engineer_remarks || ''} 
+                                      onChange={e => handleEquipmentChange(index, 'engineer_remarks', e.target.value)} 
+                                      rows={2}
+                                      className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-xs bg-yellow-50" 
+                                   />
+                               ) : (
+                                   <div className="text-center text-gray-400 text-xs">-</div>
+                               )}
+                           </td>
+                        )}
 
                         <td className="p-2">
                            <div className="flex items-center gap-2">
@@ -1523,11 +1560,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         </td>
                       </tr>
                       
-                      {/* Customer Remark Display if exists (for Edit Mode mainly) */}
-                      {equipment.remarks_and_decision && equipment.inspe_status === 'Not OK' && (
-                        <tr className="bg-yellow-50">
+                      {/* Customer Remark Display */}
+                      {equipment.remarks_and_decision && (
+                        <tr className="bg-yellow-50 border-b border-yellow-100">
                           <td className="sticky left-0 bg-yellow-50"></td>
-                          <td colSpan={isAnyOutsourced ? 13 : 10}><CustomerRemark remark={equipment.remarks_and_decision} /></td>
+                          <td colSpan={11 + (isAnyOutsourced ? 3 : 0) + (showEngineerRemarks ? 1 : 0)}>
+                            <CustomerRemark remark={equipment.remarks_and_decision} />
+                          </td>
                           <td className="sticky right-0 bg-yellow-50"></td>
                         </tr>
                       )}
