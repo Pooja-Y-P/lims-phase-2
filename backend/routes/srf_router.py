@@ -37,55 +37,46 @@ def get_srf_with_full_details(srf_id: int, db: Session) -> Optional[models.Srf]:
 # GET: All SRFs (List View)
 # =====================================================================
 @router.get("/", response_model=List[SrfSummary])
-def get_srfs(
-    db: Session = Depends(get_db),
-    status: Optional[str] = Query(None)
-):
+def get_srfs(db: Session = Depends(get_db), inward_status: Optional[str] = Query(None)):
     """
-    Returns SRF summaries.
+    Retrieves a list of SRF summaries.
+    Updated to include inward details (Customer DC No).
     """
     try:
+        # 1. Query Database
         query = (
             db.query(models.Srf)
             .join(models.Inward, models.Srf.inward_id == models.Inward.inward_id)
             .options(joinedload(models.Srf.inward).joinedload(models.Inward.customer))
-            .filter(models.Inward.status == "updated")
         )
-
-        if status:
-            query = query.filter(models.Srf.status == status)
-
+ 
+        if inward_status:
+            query = query.filter(models.Inward.status == inward_status)
+ 
         srfs_from_db = query.order_by(models.Srf.srf_id.desc()).all()
-
-        # FIX: Manually construct SrfSummary to avoid Pydantic validation error
-        # due to type mismatch between DB srf_no (int) and Schema srf_no (str).
+ 
+        # 2. Helper to format response
         def create_summary(srf: models.Srf) -> SrfSummary:
-            # Determine the string SRF number to display
-            display_srf_no = str(srf.srf_no) # Default to the int converted to string
-            
-            # If inward exists, prefer the Inward's SRF No (e.g., "NEPL25006")
-            if srf.inward and srf.inward.srf_no:
-                display_srf_no = str(srf.inward.srf_no)
-            elif srf.nepl_srf_no:
-                # Fallback to NEPL ID from SRF table
-                display_srf_no = srf.nepl_srf_no
-
-            customer_name = None
-            if srf.inward and srf.inward.customer:
-                customer_name = srf.inward.customer.customer_details
-
-            return SrfSummary(
-                srf_id=srf.srf_id,
-                srf_no=display_srf_no,
-                date=srf.date,
-                status=srf.status,
-                customer_name=customer_name
-            )
-
+            summary = SrfSummary.model_validate(srf, from_attributes=True)
+           
+            # CRITICAL FIX: Manually attach the inward object
+            if srf.inward:
+                summary.inward = srf.inward  # <--- This sends the DC No to Frontend
+               
+                # Handle SRF No conversion
+                summary.srf_no = str(srf.inward.srf_no)
+               
+                # Attach Customer Name
+                if srf.inward.customer:
+                    summary.customer_name = srf.inward.customer.customer_details
+           
+            return summary
+ 
         return [create_summary(srf) for srf in srfs_from_db]
-
+ 
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+ 
 
 # =====================================================================
 # GET: Single SRF (Detail View)

@@ -14,6 +14,7 @@ class Srf(Base):
     contact_person = Column(String(255))
     email = Column(String(320))
     certificate_issue_name = Column(String(255))
+    certificate_issue_adress = Column(Text)
     calibration_frequency = Column(String(100))
     statement_of_conformity = Column(Boolean, default=False)
     ref_iso_is_doc = Column(Boolean, default=False)

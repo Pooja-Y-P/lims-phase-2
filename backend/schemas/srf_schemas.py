@@ -17,6 +17,10 @@ class CustomerSchema(BaseModel):
    
     model_config = ConfigDict(from_attributes=True)
 
+class InwardListSummary(BaseModel):
+    """Lightweight schema to just send DC No to the list view."""
+    customer_dc_no: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
 
 class SrfEquipmentSchema(BaseModel):
     srf_eqp_id: int
@@ -68,18 +72,25 @@ class SrfBase(BaseModel):
     contact_person: Optional[str] = None
     email: Optional[str] = None
     certificate_issue_name: Optional[str] = None
+    certificate_issue_adress: Optional[str] = None
     status: str = 'created'
     is_draft: bool = False  # Added draft flag
 
 
 class SrfEquipmentUpdateSchema(BaseModel):
     inward_eqp_id: int
+    srf_eqp_id: Optional[int] = None
     unit: Optional[str] = None
     no_of_calibration_points: Optional[str] = None 
     mode_of_calibration: Optional[str] = None
 
+    @field_validator('no_of_calibration_points', mode='before')
+    @classmethod
+    def to_string_points(cls, v):
+        return str(v) if v is not None else None
 
 class SrfCreate(SrfBase):
+
     inward_id: int
     equipments: Optional[List[SrfEquipmentUpdateSchema]] = None
     

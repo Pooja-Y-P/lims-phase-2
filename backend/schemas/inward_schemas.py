@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, field_validator, EmailStr, Field
 # To avoid complex dependencies, using a simple placeholder for CustomerSchema
 class CustomerSchema(BaseModel):
     customer_id: int
+    customer_details: Optional[str] = None
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    bill_to_address: Optional[str] = None
+    ship_to_address: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 # === This schema is for the nested 'customer' object in responses ===

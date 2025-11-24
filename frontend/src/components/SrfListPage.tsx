@@ -1,10 +1,8 @@
-// FILE: frontend/src/components/SrfListPage.tsx
-
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileText, Inbox, ChevronRight, ArrowLeft } from "lucide-react";
+import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3 } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
-
+ 
 // Interface for inwards that are ready for SRF creation
 interface PendingInward {
   inward_id: number;
@@ -13,16 +11,17 @@ interface PendingInward {
   date: string;
   status: "updated";
 }
-
+ 
 // Interface for existing SRF documents
 interface SrfSummary {
   srf_id: number;
-  srf_no: number;
+  srf_no: string; // Changed to string to handle NEPL...
   customer_name: string | null;
   date: string;
-  status: "created" | "approved" | "rejected" | null;
+  // Updated to include all possible statuses
+  status: "created" | "inward_completed" | "generated" | "approved" | "rejected" | null;
 }
-
+ 
 // A unified interface for items displayed in the list
 interface WorkItem {
   id: number;
@@ -31,36 +30,38 @@ interface WorkItem {
   customer_name: string | null;
   date: string;
   status: "pending_creation" | "customer_review" | "approved" | "rejected";
+  isDraft?: boolean; // Helper to show a "Draft" badge
 }
-
+ 
 const STATUS_KEYS = {
   PENDING: "pending_creation",
   REVIEW: "customer_review",
   APPROVED: "approved",
   REJECTED: "rejected",
 } as const;
-
+ 
 type StatusKey = (typeof STATUS_KEYS)[keyof typeof STATUS_KEYS];
-
+ 
 export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+ 
   const [activeTab, setActiveTab] = useState<StatusKey>(STATUS_KEYS.PENDING);
   const navigate = useNavigate();
-
+ 
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
       setError(null);
-
+ 
       try {
         const inwardsResponse = await api.get<PendingInward[]>(
           `${ENDPOINTS.STAFF.INWARDS}/updated`
         );
         const srfsResponse = await api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`);
-
+ 
+        // 1. Map Fresh Inwards (Never created) -> Pending Tab
         const pendingItems: WorkItem[] = inwardsResponse.data.map((inward) => ({
           id: inward.inward_id,
           type: "inward",
@@ -68,21 +69,32 @@ export const SrfListPage: React.FC = () => {
           customer_name: inward.customer_name,
           date: inward.date,
           status: STATUS_KEYS.PENDING,
+          isDraft: false,
         }));
-
-        // 🎯 FIX 1: Explicit return type added to the map's callback function.
+ 
+        // 2. Map Existing SRFs based on status
         const srfItems = srfsResponse.data
           .map((srf): WorkItem | null => {
             let workItemStatus: StatusKey | null = null;
-
+            let isDraft = false;
+ 
+            // --- LOGIC CHANGE HERE ---
             if (srf.status === "created") {
+              // Drafts go to PENDING tab
+              workItemStatus = STATUS_KEYS.PENDING;
+              isDraft = true;
+            } else if (
+              srf.status === "inward_completed" ||
+              srf.status === "generated"
+            ) {
+              // Completed forms go to REVIEW tab
               workItemStatus = STATUS_KEYS.REVIEW;
             } else if (srf.status === "approved") {
               workItemStatus = STATUS_KEYS.APPROVED;
             } else if (srf.status === "rejected") {
               workItemStatus = STATUS_KEYS.REJECTED;
             }
-
+ 
             if (workItemStatus) {
               return {
                 id: srf.srf_id,
@@ -91,12 +103,17 @@ export const SrfListPage: React.FC = () => {
                 customer_name: srf.customer_name,
                 date: srf.date,
                 status: workItemStatus,
+                isDraft: isDraft,
               };
             }
             return null;
           })
           .filter((item): item is WorkItem => item !== null);
-
+ 
+        // Combine both lists
+        // Note: You might want to filter pendingItems to remove duplicates if the backend
+        // returns an Inward even after an SRF is created.
+        // For now, we assume backend filters them, or we simply display both.
         setWorkItems([...pendingItems, ...srfItems]);
       } catch (err: any) {
         console.error("Failed to fetch data:", err);
@@ -109,17 +126,17 @@ export const SrfListPage: React.FC = () => {
         setLoading(false);
       }
     };
-
+ 
     fetchAllData();
   }, []);
-
+ 
   const statuses: StatusKey[] = [
     STATUS_KEYS.PENDING,
     STATUS_KEYS.REVIEW,
     STATUS_KEYS.APPROVED,
     STATUS_KEYS.REJECTED,
   ];
-
+ 
   const groupedWorkItems = workItems.reduce(
     (groups: Partial<Record<StatusKey, WorkItem[]>>, item) => {
       if (!groups[item.status]) {
@@ -130,30 +147,30 @@ export const SrfListPage: React.FC = () => {
     },
     {}
   );
-  
+ 
   const currentWorkItems = groupedWorkItems[activeTab] || [];
-
+ 
   const statusLabels: Record<StatusKey, string> = {
     [STATUS_KEYS.PENDING]: "Pending SRF Creation",
     [STATUS_KEYS.REVIEW]: "Customer Review Pending",
     [STATUS_KEYS.APPROVED]: "Approved",
     [STATUS_KEYS.REJECTED]: "Rejected",
   };
-
+ 
   const tabColors: Record<StatusKey, string> = {
     [STATUS_KEYS.PENDING]: "text-yellow-600 border-yellow-500",
     [STATUS_KEYS.REVIEW]: "text-blue-600 border-blue-500",
     [STATUS_KEYS.APPROVED]: "text-green-600 border-green-500",
     [STATUS_KEYS.REJECTED]: "text-red-600 border-red-500",
   };
-
+ 
   if (loading)
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center text-gray-600 text-lg">Loading Data...</div>
       </div>
     );
-
+ 
   if (error)
     return (
       <div className="flex items-center justify-center h-screen bg-red-50">
@@ -162,37 +179,37 @@ export const SrfListPage: React.FC = () => {
         </div>
       </div>
     );
-
+ 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-10">
       <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
-
-        {/* --- MODIFICATION: Redesigned Header --- */}
+       
+        {/* Header */}
         <div className="flex items-center justify-between gap-4 mb-8 border-b pb-5">
-            <div className="flex items-center gap-4">
-                <div className="bg-blue-100 p-3 rounded-full">
-                    <FileText className="h-8 w-8 text-blue-600" />
-                </div>
-                <div>
-                    <h1 className="text-3xl font-semibold text-gray-800">
-                    SRF Status Overview
-                    </h1>
-                    <p className="text-sm text-gray-500">
-                    Create new SRFs and track the status of existing ones.
-                    </p>
-                </div>
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-100 p-3 rounded-full">
+              <FileText className="h-8 w-8 text-blue-600" />
             </div>
-            <button
-                type="button"
-                onClick={() => navigate('/engineer')}
-                className="flex-shrink-0 flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
-            >
-                <ArrowLeft size={18} />
-                <span>Back to Dashboard</span>
-            </button>
+            <div>
+              <h1 className="text-3xl font-semibold text-gray-800">
+                SRF Status Overview
+              </h1>
+              <p className="text-sm text-gray-500">
+                Create new SRFs and track the status of existing ones.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/engineer")}
+            className="flex-shrink-0 flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+          >
+            <ArrowLeft size={18} />
+            <span>Back to Dashboard</span>
+          </button>
         </div>
-        {/* --- END MODIFICATION --- */}
-
+ 
+        {/* Tabs */}
         <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-8">
           {statuses.map((status) => (
             <button
@@ -211,12 +228,15 @@ export const SrfListPage: React.FC = () => {
             </button>
           ))}
         </div>
-
+ 
+        {/* List */}
         <div className="space-y-3">
           {currentWorkItems.length > 0 ? (
             currentWorkItems.map((item) => (
               <Link
                 key={`${item.type}-${item.id}`}
+                // If it's an inward (type='inward'), go to new-...
+                // If it's an SRF (type='srf'), go to normal ID
                 to={
                   item.type === "inward"
                     ? `/engineer/srfs/new-${item.id}`
@@ -224,16 +244,38 @@ export const SrfListPage: React.FC = () => {
                 }
                 className="flex items-center justify-between p-5 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl transition-all duration-200 group shadow-sm hover:shadow-md"
               >
-                <div>
-                  <p className="font-semibold text-lg text-gray-800">
-                    {item.displayNumber}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {item.customer_name || "N/A"} — Received on{" "}
-                    <span className="font-medium text-gray-700">
-                      {new Date(item.date).toLocaleDateString()}
-                    </span>
-                  </p>
+                <div className="flex items-start gap-4">
+                  {/* Icon differentiating fresh inward vs draft srf */}
+                  <div className="mt-1">
+                    {item.isDraft ? (
+                       <div title="Draft in Progress" className="bg-yellow-100 p-2 rounded-full text-yellow-600">
+                          <Edit3 size={20} />
+                       </div>
+                    ) : (
+                       <div title="New Request" className="bg-blue-100 p-2 rounded-full text-blue-600">
+                          <Clock size={20} />
+                       </div>
+                    )}
+                  </div>
+                 
+                  <div>
+                    <div className="flex items-center gap-3">
+                        <p className="font-semibold text-lg text-gray-800">
+                        {item.displayNumber}
+                        </p>
+                        {item.isDraft && (
+                            <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                                Draft
+                            </span>
+                        )}
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {item.customer_name || "N/A"} — Received on{" "}
+                      <span className="font-medium text-gray-700">
+                        {new Date(item.date).toLocaleDateString()}
+                      </span>
+                    </p>
+                  </div>
                 </div>
                 <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
               </Link>
@@ -255,6 +297,6 @@ export const SrfListPage: React.FC = () => {
     </div>
   );
 };
-
-// 🎯 FIX 2: A default export has been added for the component.
+ 
 export default SrfListPage;
+ 
