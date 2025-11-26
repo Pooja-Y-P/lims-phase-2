@@ -16,7 +16,7 @@ from backend.services.inward_services import InwardService
 from backend.services.delayed_email_services import DelayedEmailService
 from backend.services.notification_services import NotificationService
 from backend.services.srf_services import SrfService
-from backend.auth import get_current_user
+from backend.auth import get_current_user, check_staff_role
 from backend.schemas.user_schemas import User as UserSchema
 
 # --- IMPORTING from your central schema file ---
@@ -40,10 +40,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_ROLES = ["staff", "admin", "engineer"]
 router = APIRouter(prefix="/staff/inwards", tags=["Inwards"])
 
-def check_staff_role(current_user: UserSchema = Depends(get_current_user)):
-    if not current_user or current_user.role.lower() not in ALLOWED_ROLES:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operation forbidden.")
-    return current_user
+# check_staff_role is now imported from auth module (no need to define it here)
 
 # =========================================================
 # 1. STATIC ROUTES (MUST BE DEFINED FIRST)
@@ -57,6 +54,17 @@ def get_next_srf_no(db: Session = Depends(get_db)):
     caused by catching this string in dynamic int routes.
     """
     return {"next_srf_no": SrfService(db).generate_next_srf_no()}
+
+@router.get("/materials-history", response_model=List[str])
+async def get_materials_history(
+    db: Session = Depends(get_db), 
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    """
+    Returns a list of unique material descriptions used in previous inwards.
+    Used for the dynamic 'Add New Item' dropdown in the frontend.
+    """
+    return await InwardService(db).get_material_history()
 
 @router.get("/drafts", response_model=List[DraftResponse])
 async def get_drafts(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -187,9 +195,13 @@ async def delete_draft(draft_id: int, db: Session = Depends(get_db), current_use
 
 # --- GENERAL LISTING ENDPOINTS ---
 
-@router.get("/", response_model=List[InwardResponse])
-async def get_all_inward_records(db: Session = Depends(get_db)):
-    return await InwardService(db).get_all_inwards()
+@router.get("", response_model=List[InwardResponse], include_in_schema=True)
+async def get_all_inward_records(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    return await InwardService(db).get_all_inwards(start_date=start_date, end_date=end_date)
 
 @router.get("/reviewed-firs", response_model=List[ReviewedFirResponse])
 async def get_reviewed_firs(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
@@ -226,6 +238,23 @@ async def export_inwards_batch(
     excel_stream = await inward_service.generate_multiple_inwards_export(request_data.inward_ids)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"inwards_export_{timestamp}.xlsx"
+    return StreamingResponse(
+        excel_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+@router.post("/export-batch-inward-only")
+async def export_inwards_batch_inward_only(
+    request_data: BatchExportRequest,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(check_staff_role)
+):
+    """Export inwards with only Inward and InwardEquipment data (no SRF data). Used for 'View and Update Inward' feature."""
+    inward_service = InwardService(db)
+    excel_stream = await inward_service.generate_multiple_inwards_export_inward_only(request_data.inward_ids)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"inwards_export_inward_only_{timestamp}.xlsx"
     return StreamingResponse(
         excel_stream,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

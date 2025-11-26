@@ -1,16 +1,18 @@
 # This file contains the FastAPI router for SRF-related operations.
 
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
  
 # Import schemas, models, and dependencies
-from ..schemas.srf_schemas import Srf, SrfCreate, SrfDetailUpdate, SrfSummary
+from ..schemas.srf_schemas import Srf, SrfCreate, SrfDetailUpdate, SrfSummary, InwardListSummary
 from .. import models
 from ..db import get_db
 from ..services.srf_services import SrfService
-from ..auth import get_current_user
+from ..auth import get_current_user, check_staff_role
 from ..schemas.user_schemas import UserResponse
 
 router = APIRouter(
@@ -59,23 +61,33 @@ def get_srfs(db: Session = Depends(get_db), inward_status: Optional[str] = Query
         def create_summary(srf: models.Srf) -> SrfSummary:
             summary = SrfSummary.model_validate(srf, from_attributes=True)
            
-            # CRITICAL FIX: Manually attach the inward object
+            # CRITICAL FIX: Manually attach the inward object as InwardListSummary
             if srf.inward:
-                summary.inward = srf.inward  # <--- This sends the DC No to Frontend
+                # Create InwardListSummary from the inward model
+                summary.inward = InwardListSummary(
+                    customer_dc_no=srf.inward.customer_dc_no
+                )
                
                 # Handle SRF No conversion
-                summary.srf_no = str(srf.inward.srf_no)
+                if srf.inward.srf_no is not None:
+                    summary.srf_no = str(srf.inward.srf_no)
                
                 # Attach Customer Name
                 if srf.inward.customer:
                     summary.customer_name = srf.inward.customer.customer_details
            
             return summary
- 
+
         return [create_summary(srf) for srf in srfs_from_db]
- 
+
     except SQLAlchemyError as e:
+        print(f"Database error in get_srfs: {e}")
         raise HTTPException(status_code=500, detail=f"Database query failed: {e}")
+    except Exception as e:
+        print(f"Unexpected error in get_srfs: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
  
 
 # =====================================================================
@@ -120,7 +132,13 @@ def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depe
         )
  
     try:
-        update_data = srf_update_data.model_dump(exclude={'equipments'}, exclude_unset=True)
+        # --- FIXED: Exclude 'srf_no' and 'inward_id' to prevent DB Integer Error ---
+        update_data = srf_update_data.model_dump(
+            exclude={'equipments', 'srf_no', 'inward_id'}, 
+            exclude_unset=True
+        )
+        # ---------------------------------------------------------------------------
+
         for key, value in update_data.items():
             if hasattr(srf_to_update, key):
                 setattr(srf_to_update, key, value)
@@ -147,6 +165,7 @@ def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depe
  
     except SQLAlchemyError as e:
         db.rollback()
+        print(f"DB Error: {e}") # Useful for debugging in console
         raise HTTPException(status_code=500, detail=f"Database error while updating SRF: {e}")
  
 # =====================================================================
@@ -204,3 +223,60 @@ def get_srfs_for_current_customer(
     except Exception as e:
         print(f"An unexpected error occurred in get_srfs_for_current_customer: {e}")
         raise HTTPException(status_code=500, detail="An internal server error occurred.")
+
+# =====================================================================
+# Export Endpoints for SRF Management Sections
+# =====================================================================
+
+@router.get("/export/pending")
+async def export_pending_srf_section(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(check_staff_role)
+):
+    """Export Pending SRF Creation section data."""
+    srf_service = SrfService(db)
+    excel_stream = srf_service.export_pending_srf_section(
+        start_date=start_date,
+        end_date=end_date,
+        search_term=search
+    )
+    from datetime import datetime
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"pending_srf_export_{timestamp}.xlsx"
+    return StreamingResponse(
+        excel_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+@router.get("/export/{status_filter}")
+async def export_srf_section(
+    status_filter: str,
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(check_staff_role)
+):
+    """Export SRF section data by status (customer_review, approved, rejected)."""
+    if status_filter not in ["customer_review", "approved", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid status filter. Must be: customer_review, approved, or rejected")
+    
+    srf_service = SrfService(db)
+    excel_stream = srf_service.export_srf_section_by_status(
+        status_filter=status_filter,
+        start_date=start_date,
+        end_date=end_date,
+        search_term=search
+    )
+    from datetime import datetime
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"srf_{status_filter}_export_{timestamp}.xlsx"
+    return StreamingResponse(
+        excel_stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

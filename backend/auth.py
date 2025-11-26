@@ -62,3 +62,16 @@ def get_current_user(
     user_response.refresh_token = None
 
     return user_response
+
+
+def check_staff_role(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
+    """
+    Dependency that ensures the current user has staff, engineer, or admin role.
+    """
+    allowed_roles = ["staff", "engineer", "admin"]
+    if current_user.role.lower() not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation forbidden: Insufficient privileges. Staff, engineer, or admin role required."
+        )
+    return current_user

@@ -209,9 +209,9 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       }
 
       const statusUrl = token ? `/portal/direct-fir/${inwardId}/status?token=${token}` : `/portal/firs/${inwardId}/status`;
-      await api.put(statusUrl, { status: 'customer_reviewed' });
+      await api.put(statusUrl, { status: 'reviewed' });
 
-      setInwardDetails(prev => prev ? { ...prev, status: 'customer_reviewed' } : null);
+      setInwardDetails(prev => prev ? { ...prev, status: 'reviewed' } : null);
       alert('Report finalized successfully. Thank you.');
       
       if (!directAccess && !token) navigate('/customer');
@@ -219,7 +219,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     } catch (error: any) {
       console.error('Error finalizing:', error);
       alert('Report finalized (or updated). If you see this message, your remarks were saved.');
-      setInwardDetails(prev => prev ? { ...prev, status: 'customer_reviewed' } : null);
+      setInwardDetails(prev => prev ? { ...prev, status: 'reviewed' } : null);
     } finally {
       setFinalizing(false);
     }
@@ -259,7 +259,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     );
   }
 
-  const isLocked = inwardDetails.status === 'customer_reviewed' || inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
+  const isLocked = inwardDetails.status === 'reviewed' || inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
   const deviatedCount = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK').length;
 
   // FIX: Resolve the correct date field

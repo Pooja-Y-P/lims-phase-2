@@ -37,6 +37,7 @@ export const ENDPOINTS = {
     INWARDS_EXPORTABLE: `/staff/inwards/exportable-list`, // <-- NEW ENDPOINT ADDED
     INWARD_EXPORT: (id: number) => `/staff/inwards/${id}/export`,
     INWARD_EXPORT_BATCH: `/staff/inwards/export-batch`,
+    INWARD_EXPORT_BATCH_INWARD_ONLY: `/staff/inwards/export-batch-inward-only`, // For "View and Update Inward" - exports only inward data (no SRF)
     INWARD_SEND_REPORT: (id: number) => `/staff/inwards/${id}/send-report`,
     
     // Simplified Draft endpoints

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { 
   Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, 
   Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, 
-  Download, UserPlus, MapPin, Receipt, 
+  Download, UserPlus, MapPin, Receipt, PackagePlus
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,7 +25,6 @@ interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'cal
   engineer_remarks?: string; 
   calibration_by: 'In Lab' | 'Outsource' | 'On-Site';
   accessories_included?: string;
-  // Explicitly adding remarks_and_decision to ensure it's recognized
   remarks_and_decision?: string | null;
 }
 
@@ -78,7 +77,8 @@ type InwardFormProps = {
   initialDraftId: number | null;
 };
 
-const MATERIAL_DESCRIPTIONS = [
+// Initial static list (Always shown)
+const INITIAL_MATERIAL_DESCRIPTIONS = [
   "Hydraulic Torque Wrench",
   "Pressure Gauge",
   "Temperature Gauge",
@@ -126,6 +126,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   
+  // --- MATERIAL DESCRIPTION STATE ---
+  const [materialOptions, setMaterialOptions] = useState<string[]>(INITIAL_MATERIAL_DESCRIPTIONS);
+  const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
+  const [newMaterialInput, setNewMaterialInput] = useState("");
+  const [activeRowForNewMaterial, setActiveRowForNewMaterial] = useState<number | null>(null);
+
   const [newCustomerData, setNewCustomerData] = useState<NewCustomerForm>({
     company_name: '',
     contact_person: '',
@@ -157,8 +163,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const isFormReady = !isLoadingData && formData.srf_no !== 'Loading...';
   const isAnyOutsourced = equipmentList.some(eq => eq.calibration_by === 'Outsource');
   
-  // Show Engineer Remarks column if item is Not OK OR we are in Edit Mode
-  const showEngineerRemarks = equipmentList.some(eq => eq.inspe_status === 'Not OK') || isEditMode;
+  // --- CONDITIONAL COLUMN LOGIC ---
+  const showEngineerRemarksColumn = isEditMode || equipmentList.some(eq => eq.inspe_status === 'Not OK' || (eq.engineer_remarks && eq.engineer_remarks.trim() !== ''));
 
   const hasFormData =
     (formData.customer_id !== null && formData.customer_id !== undefined) ||
@@ -208,6 +214,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   // --- DATA LOADING ---
 
+  const fetchMaterials = useCallback(async () => {
+    try {
+        // Fetch materials history from backend (ensure backend is running and returning data)
+        const response = await api.get<string[]>(`${ENDPOINTS.STAFF.INWARDS}/materials-history?t=${Date.now()}`);
+        const history = Array.isArray(response.data) ? response.data : [];
+        
+        setMaterialOptions(prev => {
+            // 1. Combine Defaults + History + Any currently in local state
+            const combined = new Set([...INITIAL_MATERIAL_DESCRIPTIONS, ...history, ...prev]);
+            // 2. Convert to array, remove empty/null, sort
+            return Array.from(combined).filter(Boolean).sort();
+        });
+    } catch (error) {
+        console.error("Could not load material history from backend:", error);
+        // Fallback: Just keep defaults and whatever was already there
+        setMaterialOptions(prev => {
+             const combined = new Set([...INITIAL_MATERIAL_DESCRIPTIONS, ...prev]);
+             return Array.from(combined).filter(Boolean).sort();
+        });
+    }
+  }, []);
+
   const fetchNextSrfNo = async (): Promise<string> => {
     try {
       const response = await api.get<{ next_srf_no: string }>(`${ENDPOINTS.STAFF.INWARDS}/next-no`);
@@ -249,6 +277,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
          if (found?.email) setSelectedCustomerEmail(found.email);
       }
 
+      // Merge existing materials from this inward into options
+      const usedMaterials = new Set((inward.equipments || []).map(eq => eq.material_description));
+      setMaterialOptions(prev => {
+         const combined = new Set([...prev, ...usedMaterials]);
+         return Array.from(combined).filter(Boolean).sort();
+      });
+
       const equipmentData: EquipmentDetail[] = (inward.equipments ?? []).map((eq) => {
         let rawCalibBy = eq.calibration_by || 'In Lab';
         if (rawCalibBy === 'Out Lab') rawCalibBy = 'On-Site';
@@ -276,10 +311,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           inspe_remarks: '', 
           engineer_remarks: (eq as any).engineer_remarks || eq.engineer_remarks || '', 
           accessories_included: (eq as any).accessories_included || '',
-          
-          // FIX: Mapping customer remarks correctly
           remarks_and_decision: (eq as any).customer_remarks || null,
-          
           photos: [],
           photoPreviews: [],
           existingPhotoUrls,
@@ -332,6 +364,15 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           receiver: draftData.receiver || '',
           status: 'created' as const
         };
+        
+        if (draftData.equipment_list) {
+            const draftMaterials = new Set(draftData.equipment_list.map((eq: any) => eq.material_desc));
+            setMaterialOptions(prev => {
+                 const combined = new Set([...prev, ...draftMaterials]);
+                 return Array.from(combined).filter(Boolean).sort();
+            });
+        }
+
         const newEquipmentList: EquipmentDetail[] = (draftData.equipment_list || []).map(eq => {
           const existingPhotoUrls = (() => {
             if (Array.isArray((eq as any).existingPhotoUrls)) return (eq as any).existingPhotoUrls;
@@ -426,6 +467,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   useEffect(() => {
     fetchCustomers();
+    fetchMaterials(); // Load history on mount
+    
     if (isEditMode && editId) {
       loadInwardData(parseInt(editId));
     } else if (initialDraftId) {
@@ -445,7 +488,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       cleanupAllPreviews();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode, editId, initialDraftId, fetchCustomers]);
+  }, [isEditMode, editId, initialDraftId, fetchCustomers, fetchMaterials]);
 
   useEffect(() => {
     if (!isEditMode && isFormReady && hasFormData) {
@@ -542,6 +585,33 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  // --- NEW MATERIAL LOGIC (DYNAMIC) ---
+
+  const handleAddCustomMaterial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMaterialInput.trim()) return;
+    
+    const newItem = newMaterialInput.trim();
+    
+    // Update Local State immediately so it appears in dropdown for THIS form
+    setMaterialOptions(prev => {
+        // Use case-insensitive check to avoid duplicates
+        if(prev.some(item => item.toLowerCase() === newItem.toLowerCase())) return prev;
+        return [...prev, newItem].sort();
+    });
+
+    // Set the value for the specific row
+    if (activeRowForNewMaterial !== null) {
+        handleEquipmentChange(activeRowForNewMaterial, 'material_desc', newItem);
+    }
+    
+    // 3. Reset UI
+    setNewMaterialInput("");
+    setShowAddMaterialModal(false);
+    setActiveRowForNewMaterial(null);
+    showMessage('success', 'Item added! Submit this form to save it permanently.');
+  };
+
   // --- NEW CUSTOMER LOGIC ---
 
   const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -576,7 +646,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         role: 'customer',
         invited_name: newCustomerData.contact_person,
         company_name: newCustomerData.company_name,
-        // Pass ship_to and bill_to explicitly
         ship_to_address: newCustomerData.ship_to_address,
         bill_to_address: newCustomerData.bill_to_address, 
         phone_number: newCustomerData.phone
@@ -586,11 +655,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
       showMessage('success', 'Company registered and invitation sent successfully!');
       
-      // Refresh customer list and close modal
       await fetchCustomers();
       setShowAddCustomerModal(false);
       
-      // Reset form
       setNewCustomerData({
         company_name: '',
         contact_person: '',
@@ -601,7 +668,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         same_as_ship: false
       });
 
-      // Attempt auto-selection
       const updatedCustomersRes = await api.get<CustomerDropdownItem[]>(ENDPOINTS.PORTAL.CUSTOMERS_DROPDOWN);
       const newCust = updatedCustomersRes.data.find(c => c.email === payload.email);
       
@@ -630,11 +696,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
-    // INTERCEPT CUSTOMER DROPDOWN CHANGE
     if (name === 'customer_id') {
       if (value === 'new') {
         setShowAddCustomerModal(true);
-        return; // Stop further processing
+        return; 
       }
 
       const customerId = parseInt(value);
@@ -691,7 +756,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         calibration_by: 'In Lab' as const,
         inspe_status: 'OK' as const,
         inspe_remarks: '',
-        engineer_remarks: '', // Init as empty
+        engineer_remarks: '',
         accessories_included: '',
         photos: [],
         photoPreviews: [],
@@ -768,107 +833,215 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
 
-  // --- PDF GENERATION (DETAILED) ---
+  // --- PDF GENERATION (PROFESSIONAL A4 SIZE) ---
 
   const generatePDF = (isForDownload: boolean, srfOverride?: string) => {
-    const doc = new jsPDF({ orientation: 'l' }); // Landscape to fit details
+    // 1. Explicitly set format to A4 Landscape to fit all columns
+    const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
     
     const displaySrfNo = srfOverride || formData.srf_no;
+    const primaryColor = [44, 62, 80] as [number, number, number]; // Dark Blue
+    const accentColor = [240, 240, 240] as [number, number, number]; // Light Gray
+    
+    let cursorY = 15;
 
-    // Header
+    // --- HEADER SECTION ---
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.setTextColor(41, 128, 185); 
-    doc.text("NextAge Engineering Private Limited", pageWidth / 2, 15, { align: 'center' });
+    doc.setTextColor(...primaryColor);
+    doc.text("NextAge Engineering Private Limited", pageWidth / 2, cursorY, { align: 'center' });
     
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0);
-    doc.text("Material Inward Receipt (Detailed)", pageWidth / 2, 25, { align: 'center' });
-
-    // Info Block
+    cursorY += 6;
     doc.setFontSize(10);
-    const srfSuffix = srfOverride ? "" : " (Provisional)";
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(80, 80, 80);
+    doc.text("Plot No. 39, KIADB Industrial Area, Hoskote, Bangalore - 562114", pageWidth / 2, cursorY, { align: 'center' });
     
-    const infoX = 14;
-    let infoY = 35;
+    cursorY += 10;
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("MATERIAL INWARD RECEIPT", pageWidth / 2, cursorY, { align: 'center' });
     
-    doc.text(`SRF No: ${displaySrfNo}${srfSuffix}`, infoX, infoY);
-    doc.text(`Inward Date: ${formData.material_inward_date}`, infoX + 70, infoY);
-    doc.text(`Receiver: ${formData.receiver}`, infoX + 140, infoY);
+    cursorY += 3;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(10, cursorY, pageWidth - 10, cursorY);
     
-    infoY += 6;
-    doc.text(`Customer DC: ${formData.customer_dc_no}`, infoX, infoY);
-    doc.text(`DC Date: ${formData.customer_dc_date || 'N/A'}`, infoX + 70, infoY);
+    // --- INFO BOXES ---
+    cursorY += 5;
+    const boxWidth = (pageWidth - 25) / 2;
+    const boxHeight = 30;
     
-    infoY += 8;
-    doc.text(`Customer:`, infoX, infoY);
-    const splitDetails = doc.splitTextToSize(formData.customer_details, pageWidth - 40);
-    doc.text(splitDetails, infoX + 20, infoY);
+    doc.setFillColor(...accentColor);
+    doc.roundedRect(10, cursorY, boxWidth, boxHeight, 2, 2, 'F');
     
-    const tableStartY = infoY + (splitDetails.length * 5) + 10;
+    doc.setFontSize(11);
+    doc.setTextColor(...primaryColor);
+    doc.text("Inward Details", 15, cursorY + 6);
+    
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`SRF No:`, 15, cursorY + 13);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${displaySrfNo} ${srfOverride ? "" : "(Prov.)"}`, 45, cursorY + 13);
+    
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date:`, 15, cursorY + 19);
+    doc.text(`${formData.material_inward_date}`, 45, cursorY + 19);
 
-    // Detailed Table
-    const tableColumn = [
-      "#", "NEPL ID", "Description", "Make / Model", "Serial No", "Range", "Qty", 
-      "Cal Type", "Visual / Accs", "Outsource Info"
-    ];
+    doc.text(`Received By:`, 15, cursorY + 25);
+    doc.text(`${formData.receiver}`, 45, cursorY + 25);
+
+    // Box 2: Customer Details
+    doc.setFillColor(...accentColor);
+    doc.roundedRect(15 + boxWidth, cursorY, boxWidth, boxHeight, 2, 2, 'F');
     
+    doc.setFontSize(11);
+    doc.setTextColor(...primaryColor);
+    doc.setFont("helvetica", "bold");
+    doc.text("Customer Details", 20 + boxWidth, cursorY + 6);
+    
+    doc.setFontSize(9);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    
+    doc.setFont("helvetica", "bold");
+    const custName = doc.splitTextToSize(formData.customer_details.split(',')[0], boxWidth - 10);
+    doc.text(custName, 20 + boxWidth, cursorY + 13);
+    
+    doc.setFont("helvetica", "normal");
+    doc.text(`Customer DC:`, 20 + boxWidth, cursorY + 22);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${formData.customer_dc_no}`, 50 + boxWidth, cursorY + 22);
+    
+    doc.setFont("helvetica", "normal");
+    doc.text(`DC Date:`, 90 + boxWidth, cursorY + 22);
+    doc.text(`${formData.customer_dc_date || '-'}`, 110 + boxWidth, cursorY + 22);
+
+    cursorY += boxHeight + 8;
+
+    // --- DETAILED TABLE ---
+    
+    const tableColumn = [
+      "#", "NEPL ID", "Description", "Make", "Model", "Serial No", "Range", "Qty", 
+      "Cal Type", "Accessories", "Visual"
+    ];
+
+    // Dynamically add Remarks column to PDF only if needed
+    if (showEngineerRemarksColumn) {
+        tableColumn.push("Eng. Remarks");
+    }
+    
+    const hasOutsource = equipmentList.some(eq => eq.calibration_by === 'Outsource');
+    if(hasOutsource) tableColumn.push("Supplier / DC");
+
     const tableRows: any[] = [];
 
     equipmentList.forEach((eq, index) => {
-      const desc = `${eq.material_desc}`;
-      const makeModel = `${eq.make} / ${eq.model}`;
-      const range = eq.range || '-';
-      // UPDATED: Just show status, not remarks
-      const visual = eq.inspe_status === 'Not OK' ? 'Not OK' : 'OK';
-      const accessories = eq.accessories_included ? `Accs: ${eq.accessories_included}` : '';
-      const combinedVisual = accessories ? `${visual}\n${accessories}` : visual;
-      
-      let outsourceInfo = '-';
-      if(eq.calibration_by === 'Outsource') {
-          outsourceInfo = `Sup: ${(eq as any).supplier || '-'}\nDC: ${(eq as any).out_dc || '-'}`;
-      }
-
-      tableRows.push([
+      const rowData = [
         index + 1,
         eq.nepl_id || `${displaySrfNo}-${index+1}`,
-        desc,
-        makeModel,
+        eq.material_desc,
+        eq.make,
+        eq.model,
         eq.serial_no || '-',
-        range,
+        eq.range || '-',
         eq.qty,
         eq.calibration_by,
-        combinedVisual,
-        outsourceInfo
-      ]);
+        eq.accessories_included || '-',
+        eq.inspe_status, // Column 11: Visual Status
+      ];
+      
+      // Add remarks data if column exists
+      if (showEngineerRemarksColumn) {
+        rowData.push(eq.engineer_remarks || '-');
+      }
+      
+      if(hasOutsource) {
+          if(eq.calibration_by === 'Outsource') {
+             rowData.push(`${(eq as any).supplier || ''}\n${(eq as any).out_dc || ''}`);
+          } else {
+             rowData.push('-');
+          }
+      }
+      
+      tableRows.push(rowData);
     });
 
     autoTable(doc, {
-      startY: tableStartY,
+      startY: cursorY,
       head: [tableColumn],
       body: tableRows,
       theme: 'grid',
-      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontSize: 9 },
-      styles: { fontSize: 8, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { 
+          fillColor: primaryColor, 
+          textColor: 255, 
+          fontSize: 8, 
+          fontStyle: 'bold',
+          halign: 'center'
+      },
+      styles: { 
+          fontSize: 8, 
+          cellPadding: 2, 
+          overflow: 'linebreak',
+          valign: 'middle',
+          lineColor: [200, 200, 200],
+          lineWidth: 0.1
+      },
+      // Adjusted column widths to fit A4 Landscape
       columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 40 },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 25 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 10 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 45 },
-        9: { cellWidth: 35 }
+        0: { cellWidth: 8, halign: 'center' },  // #
+        1: { cellWidth: 20 }, // NEPL ID
+        2: { cellWidth: 35 }, // Desc
+        3: { cellWidth: 18 }, // Make
+        4: { cellWidth: 18 }, // Model
+        5: { cellWidth: 18 }, // Serial
+        6: { cellWidth: 15 }, // Range
+        7: { cellWidth: 10, halign: 'center' }, // Qty
+        8: { cellWidth: 18 }, // Cal Type
+        9: { cellWidth: 25 }, // Accessories
+        10: { cellWidth: 15, halign: 'center' }, // Visual
+        // If Remarks column is present, give it width, otherwise ignore
+        ...(showEngineerRemarksColumn ? { 11: { cellWidth: 35 } } : {})
       }
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 20;
+    // --- FOOTER & SIGNATURES ---
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+    
+    if (finalY > pageHeight - 40) {
+        doc.addPage();
+        cursorY = 20;
+    } else {
+        cursorY = finalY;
+    }
+
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text("Note: This is a computer generated receipt. Discrepancies must be reported within 24 hours.", 10, cursorY);
+    
+    cursorY += 15;
+    
+    doc.setDrawColor(0, 0, 0);
     doc.setFontSize(9);
-    doc.text("Authorized Signature", pageWidth - 50, finalY);
-    doc.line(pageWidth - 60, finalY - 5, pageWidth - 10, finalY - 5);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 10, finalY);
+    doc.setTextColor(0, 0, 0);
+    
+    doc.text("Received By:", 20, cursorY);
+    doc.text(formData.receiver, 20, cursorY + 15);
+    doc.line(20, cursorY + 16, 70, cursorY + 16);
+    
+    doc.text("Authorized Signatory:", pageWidth - 70, cursorY);
+    doc.line(pageWidth - 70, cursorY + 16, pageWidth - 20, cursorY + 16); 
+    doc.text("NextAge Engineering Pvt Ltd", pageWidth - 70, cursorY + 20);
+
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 20, pageHeight - 10, { align: 'right' });
+    }
 
     if (isForDownload) {
       doc.save(`Inward_Receipt_${displaySrfNo}.pdf`);
@@ -927,7 +1100,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           serial_no: item.serial_no || "",
           qty: Number(item.qty), 
           calibration_by: item.calibration_by,
-          // UPDATED: Just send "OK" or "Not OK" based on status
+          // Just send "OK" or "Not OK" based on status
           visual_inspection_notes: item.inspe_status,
           engineer_remarks: item.engineer_remarks || "", // Include Engineer Remarks
           accessories_included: item.accessories_included || "",
@@ -1032,6 +1205,59 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   // --- RENDER FUNCTIONS ---
+
+  const renderAddMaterialModal = () => {
+    if (!showAddMaterialModal) return null;
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-60 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-y-auto relative">
+          <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <PackagePlus className="text-blue-600" size={20} />
+              <h2 className="text-lg font-bold text-gray-800">Add New Material</h2>
+            </div>
+            <button 
+              onClick={() => setShowAddMaterialModal(false)} 
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          
+          <form onSubmit={handleAddCustomMaterial} className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Material Name</label>
+              <input 
+                type="text"
+                autoFocus
+                value={newMaterialInput}
+                onChange={(e) => setNewMaterialInput(e.target.value)}
+                placeholder="e.g. Digital Multimeter"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" 
+              />
+              <p className="text-xs text-gray-500 mt-2">This will be added to the history list after you submit the form.</p>
+            </div>
+            <div className="flex gap-2 pt-2">
+               <button 
+                 type="button"
+                 onClick={() => setShowAddMaterialModal(false)}
+                 className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700"
+               >
+                 Cancel
+               </button>
+               <button 
+                 type="submit" 
+                 disabled={!newMaterialInput.trim()}
+                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300"
+               >
+                 Add Item
+               </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
 
   const renderAddCustomerModal = () => {
     if (!showAddCustomerModal) return null;
@@ -1218,7 +1444,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                     <th className="border border-gray-300 p-2 text-left">Make / Model</th>
                     <th className="border border-gray-300 p-2 text-left">Serial No</th>
                     <th className="border border-gray-300 p-2 text-center w-16">Qty</th>
-                    <th className="border border-gray-300 p-2 text-left">Remarks / Accessories</th>
+                    <th className="border border-gray-300 p-2 text-left">Accessories</th>
+                    <th className="border border-gray-300 p-2 text-left">Visual</th>
+                    {showEngineerRemarksColumn && <th className="border border-gray-300 p-2 text-left">Eng. Remarks</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1230,9 +1458,18 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                       <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td>
                       <td className="border border-gray-300 p-2 text-center">{eq.qty}</td>
                       <td className="border border-gray-300 p-2 text-gray-600 italic">
-                        {/* UPDATED: Show 'Not OK' directly if status is not ok */}
-                        {eq.inspe_status === 'Not OK' ? 'Not OK' : (eq.accessories_included || 'OK')}
+                        {eq.accessories_included || '-'}
                       </td>
+                      <td className="border border-gray-300 p-2">
+                         <span className={eq.inspe_status === 'Not OK' ? 'text-red-600 font-bold' : 'text-green-600'}>
+                            {eq.inspe_status}
+                         </span>
+                      </td>
+                      {showEngineerRemarksColumn && (
+                        <td className="border border-gray-300 p-2 text-gray-600 text-xs">
+                           {eq.engineer_remarks || '-'}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1461,11 +1698,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                           </>
                         )}
                         <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Accessories Included</th>
-                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Visual Inspection</th>
                         
-                        {/* CONDITIONAL HEADER FOR ENGINEER REMARKS */}
-                        {showEngineerRemarks && (
-                           <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[200px]">Engineer Remarks</th>
+                        {/* SEPARATED COLUMNS */}
+                        <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[150px]">Visual Inspection</th>
+                        
+                        {/* CONDITIONALLY RENDER ENGINEER REMARKS COLUMN HEADER */}
+                        {showEngineerRemarksColumn && (
+                             <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Engineer Remarks</th>
                         )}
 
                         <th className="p-3 text-left text-xs font-semibold text-slate-600 uppercase border-b border-slate-200 min-w-[250px]">Photos</th>
@@ -1479,9 +1718,22 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         <td className="sticky left-0 z-10 p-3 text-center font-semibold text-slate-500 bg-white group-hover:bg-slate-50">{index + 1}</td>
                         <td className="p-2"><input type="text" value={equipment.nepl_id} disabled className="w-full bg-slate-100 font-medium px-2 py-1.5 border border-slate-200 rounded-md" /></td>
                         <td className="p-2">
-                            <select value={equipment.material_desc} onChange={(e) => handleEquipmentChange(index, 'material_desc', e.target.value)} required className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg">
+                            <select 
+                              value={equipment.material_desc} 
+                              onChange={(e) => {
+                                if (e.target.value === 'ADD_NEW_CUSTOM') {
+                                    setActiveRowForNewMaterial(index);
+                                    setShowAddMaterialModal(true);
+                                } else {
+                                    handleEquipmentChange(index, 'material_desc', e.target.value);
+                                }
+                              }} 
+                              required 
+                              className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg"
+                            >
                                 <option value="">Select...</option>
-                                {MATERIAL_DESCRIPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
+                                {materialOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                                <option value="ADD_NEW_CUSTOM" className="font-bold text-blue-600 bg-blue-50">+ Add New Item</option>
                                 <option value="Other">Other</option>
                             </select>
                         </td>
@@ -1505,32 +1757,33 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                           </>
                         ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
                         
-                        <td className="p-2"><input value={equipment.accessories_included} onChange={e=>handleEquipmentChange(index,'accessories_included',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                        <td className="p-2"><input value={equipment.accessories_included} onChange={e=>handleEquipmentChange(index,'accessories_included',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" placeholder="e.g. Carry Case" /></td>
                         
-                        <td className="p-2">
-                            <div className="flex flex-col gap-1">
-                                <select value={equipment.inspe_status} onChange={e=>handleEquipmentChange(index,'inspe_status',e.target.value)} className={`w-full px-2 py-1.5 border rounded-md ${equipment.inspe_status === 'Not OK' ? 'bg-red-50 border-red-300' : ''}`}>
-                                    <option value="OK">OK</option>
-                                    <option value="Not OK">Not OK</option>
-                                </select>
-                            </div>
+                        {/* VISUAL INSPECTION COLUMN */}
+                        <td className="p-2 align-top">
+                             <select value={equipment.inspe_status} onChange={e=>handleEquipmentChange(index,'inspe_status',e.target.value)} className={`w-full px-2 py-1.5 border rounded-md ${equipment.inspe_status === 'Not OK' ? 'bg-red-50 border-red-300' : ''}`}>
+                                 <option value="OK">OK</option>
+                                 <option value="Not OK">Not OK</option>
+                             </select>
                         </td>
 
-                        {/* CONDITIONAL COLUMN: ENGINEER REMARKS */}
-                        {showEngineerRemarks && (
-                           <td className="p-2">
-                               {equipment.inspe_status === 'Not OK' || (isEditMode && equipment.engineer_remarks) ? (
-                                   <textarea 
-                                      placeholder="Enter remarks..." 
-                                      value={equipment.engineer_remarks || ''} 
-                                      onChange={e => handleEquipmentChange(index, 'engineer_remarks', e.target.value)} 
-                                      rows={2}
-                                      className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-xs bg-yellow-50" 
-                                   />
-                               ) : (
-                                   <div className="text-center text-gray-400 text-xs">-</div>
-                               )}
-                           </td>
+                        {/* CONDITIONALLY RENDER ENGINEER REMARKS CELL */}
+                        {showEngineerRemarksColumn && (
+                            <td className="p-2 align-top">
+                                {equipment.inspe_status === 'Not OK' ? (
+                                     <textarea 
+                                        placeholder="Describe the issue..." 
+                                        value={equipment.engineer_remarks || ''} 
+                                        onChange={e => handleEquipmentChange(index, 'engineer_remarks', e.target.value)} 
+                                        rows={2}
+                                        className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-xs bg-yellow-50 focus:ring-2 focus:ring-yellow-200" 
+                                     />
+                                ) : (
+                                    <div className="flex justify-center items-center h-full pt-2">
+                                        <span className="text-gray-300 text-lg">-</span>
+                                    </div>
+                                )}
+                            </td>
                         )}
 
                         <td className="p-2">
@@ -1564,7 +1817,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                       {equipment.remarks_and_decision && (
                         <tr className="bg-yellow-50 border-b border-yellow-100">
                           <td className="sticky left-0 bg-yellow-50"></td>
-                          <td colSpan={11 + (isAnyOutsourced ? 3 : 0) + (showEngineerRemarks ? 1 : 0)}>
+                          {/* Adjust colspan based on visibility of columns */}
+                          <td colSpan={11 + (isAnyOutsourced ? 3 : 0) + (showEngineerRemarksColumn ? 1 : 0)}>
                             <CustomerRemark remark={equipment.remarks_and_decision} />
                           </td>
                           <td className="sticky right-0 bg-yellow-50"></td>
@@ -1607,8 +1861,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       {renderPreviewModal()}
       {renderEmailModal()}
       {renderAddCustomerModal()}
+      {renderAddMaterialModal()}
     </div>
   );
 };
  
-export default InwardForm;
+export default InwardForm;5

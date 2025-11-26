@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3 } from "lucide-react";
+import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, Filter, X } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
  
 // Interface for inwards that are ready for SRF creation
@@ -19,7 +19,7 @@ interface SrfSummary {
   customer_name: string | null;
   date: string;
   // Updated to include all possible statuses
-  status: "created" | "inward_completed" | "generated" | "approved" | "rejected" | null;
+  status: "draft" | "inward_completed" | "generated" | "approved" | "rejected" | null;
 }
  
 // A unified interface for items displayed in the list
@@ -46,9 +46,23 @@ export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
- 
+
   const [activeTab, setActiveTab] = useState<StatusKey>(STATUS_KEYS.PENDING);
   const navigate = useNavigate();
+  
+  // Filter states
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // Helper function to format date for input
+  const formatDateForInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
  
   useEffect(() => {
     const fetchAllData = async () => {
@@ -79,7 +93,7 @@ export const SrfListPage: React.FC = () => {
             let isDraft = false;
  
             // --- LOGIC CHANGE HERE ---
-            if (srf.status === "created") {
+            if (srf.status === "draft") {
               // Drafts go to PENDING tab
               workItemStatus = STATUS_KEYS.PENDING;
               isDraft = true;
@@ -147,8 +161,83 @@ export const SrfListPage: React.FC = () => {
     },
     {}
   );
- 
-  const currentWorkItems = groupedWorkItems[activeTab] || [];
+
+  // Apply filters to current tab items
+  const filteredWorkItems = useMemo(() => {
+    const items = groupedWorkItems[activeTab] || [];
+    let filtered = items;
+    
+    // Date filter
+    if (startDate || endDate) {
+      filtered = filtered.filter(item => {
+        const itemDate = new Date(item.date);
+        if (startDate && itemDate < new Date(startDate)) return false;
+        if (endDate && itemDate > new Date(endDate)) return false;
+        return true;
+      });
+    }
+    
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(item => {
+        const searchableText = `${item.displayNumber} ${item.customer_name || ""}`.toLowerCase();
+        return searchableText.includes(searchLower);
+      });
+    }
+    
+    return filtered;
+  }, [groupedWorkItems, activeTab, startDate, endDate, searchTerm]);
+
+  const currentWorkItems = filteredWorkItems;
+  
+  // Export handler
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.append("start_date", startDate);
+      if (endDate) params.append("end_date", endDate);
+      if (searchTerm) params.append("search", searchTerm);
+      
+      let endpoint = "";
+      const basePath = ENDPOINTS.SRFS.endsWith('/') ? ENDPOINTS.SRFS.slice(0, -1) : ENDPOINTS.SRFS;
+      if (activeTab === STATUS_KEYS.PENDING) {
+        endpoint = `${basePath}/export/pending?${params.toString()}`;
+      } else {
+        endpoint = `${basePath}/export/${activeTab}?${params.toString()}`;
+      }
+      
+      const response = await api.get(endpoint, { responseType: "blob" });
+      
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"] || 
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      link.href = url;
+      link.download = `srf_${activeTab}_export_${timestamp}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to export:", error);
+      alert("Failed to export data. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  const resetFilters = () => {
+    setStartDate("");
+    setEndDate("");
+    setSearchTerm("");
+  };
+  
+  const hasActiveFilters = startDate || endDate || searchTerm;
  
   const statusLabels: Record<StatusKey, string> = {
     [STATUS_KEYS.PENDING]: "Pending SRF Creation",
@@ -210,7 +299,7 @@ export const SrfListPage: React.FC = () => {
         </div>
  
         {/* Tabs */}
-        <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-8">
+        <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-6">
           {statuses.map((status) => (
             <button
               key={status}
@@ -227,6 +316,83 @@ export const SrfListPage: React.FC = () => {
               </span>
             </button>
           ))}
+        </div>
+
+        {/* Filters and Export Section */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Search Filter */}
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by SRF No or Customer..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Date Filters */}
+            <div className="flex gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </button>
+              )}
+              <button
+                onClick={handleExport}
+                disabled={isExporting || currentWorkItems.length === 0}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                {isExporting ? "Exporting..." : "Export"}
+              </button>
+            </div>
+          </div>
+          
+          {/* Filter Summary */}
+          {hasActiveFilters && (
+            <div className="mt-3 text-sm text-gray-600">
+              Showing {currentWorkItems.length} of {(groupedWorkItems[activeTab] || []).length} items
+              {searchTerm && ` matching "${searchTerm}"`}
+            </div>
+          )}
         </div>
  
         {/* List */}
@@ -299,4 +465,3 @@ export const SrfListPage: React.FC = () => {
 };
  
 export default SrfListPage;
- 

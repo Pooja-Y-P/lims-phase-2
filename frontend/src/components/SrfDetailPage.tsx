@@ -3,12 +3,12 @@ import type { AxiosResponse } from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import axios from "axios";
-import { BookOpen, AlertTriangle, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Phone, Mail, FileText, MapPin, Building, Award, Home } from "lucide-react";
+import { BookOpen, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Phone, Mail, FileText, MapPin, Building, Award, Home } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
- 
+
 const API_BASE = "http://localhost:8000/api/";
- 
+
 // --- Interfaces ---
 interface SrfEquipmentDetail {
   srf_eqp_id?: number;
@@ -16,7 +16,7 @@ interface SrfEquipmentDetail {
   no_of_calibration_points?: string;
   mode_of_calibration?: string;
 }
- 
+
 interface EquipmentDetail {
   inward_eqp_id: number;
   nepl_id: string;
@@ -28,7 +28,7 @@ interface EquipmentDetail {
   range?: string;
   srf_equipment?: SrfEquipmentDetail | null;
 }
- 
+
 interface CustomerData {
   customer_id: number;
   customer_details: string;
@@ -38,7 +38,7 @@ interface CustomerData {
   bill_to_address?: string;
   ship_to_address?: string;
 }
- 
+
 interface InwardDetail {
   inward_id: number;
   customer_details: string;
@@ -49,34 +49,34 @@ interface InwardDetail {
   customer_dc_date?: string;
   material_inward_date?: string;
 }
- 
+
 interface SrfDetail {
   srf_id: number;
   inward_id: number;
   srf_no: string;
   nepl_srf_no?: string;
   date: string;
- 
+
   company_name: string;
   customer_name?: string;
- 
+
   // Address split (Internal UI State)
   bill_to_address: string;
   ship_to_address: string;
- 
+
   phone: string;
   telephone?: string;
- 
+
   contact_person: string;
   email: string;
- 
+
   // Certificate Info
   certificate_issue_name: string;
   certificate_issue_adress: string; // Backend spelling
- 
+
   status: string;
   inward?: InwardDetail;
- 
+
   // Special Instructions
   calibration_frequency?: string | null;
   statement_of_conformity?: boolean | null;
@@ -86,7 +86,7 @@ interface SrfDetail {
   turnaround_time?: string | null;
   remarks?: string | null;
 }
- 
+
 // Helper function handles Strings (NEPL25001)
 const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
   if (!srfNo) return "";
@@ -96,14 +96,14 @@ const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
   const lastDigits = match ? match[0].slice(-3) : "000";
   return `${srfStr} / SRF-${lastDigits}`;
 };
- 
+
 const getTodayDateString = (): string => new Date().toISOString().split("T")[0];
- 
+
 export const SrfDetailPage: React.FC = () => {
   const { srfId: paramSrfId } = useParams<{ srfId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
- 
+
   const [activeSrfId, setActiveSrfId] = useState<number | null>(null);
   const [srfData, setSrfData] = useState<SrfDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -111,14 +111,14 @@ export const SrfDetailPage: React.FC = () => {
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<string>("");
   const [hasUserEdited, setHasUserEdited] = useState(false);
- 
+
   // Ref to track if we just created a form to prevent re-fetching/overwriting
   const justCreatedRef = useRef(false);
- 
+
   const isEngineer = user?.role === "engineer";
   const isNewSrfFromUrl = paramSrfId?.startsWith("new-");
   const inwardIdFromUrl = isNewSrfFromUrl ? parseInt(paramSrfId!.split("new-")[1]) : undefined;
- 
+
   const token = localStorage.getItem("token");
   const axiosAuth = useMemo(
     () =>
@@ -128,43 +128,46 @@ export const SrfDetailPage: React.FC = () => {
       }),
     [token]
   );
- 
+
   // --- PDF Generation ---
   const generatePDF = useCallback(() => {
     if (!srfData) return;
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.width;
- 
+
     doc.setFontSize(16);
     doc.text("Service Request Form (SRF)", pageWidth / 2, 15, { align: "center" });
- 
+
     doc.setFontSize(10);
     doc.text(`SRF No: ${srfData.nepl_srf_no || srfData.srf_no}`, 14, 25);
     doc.text(`Date: ${srfData.date}`, pageWidth - 50, 25);
- 
+
     const startY = 35;
     doc.text(`Company: ${srfData.company_name}`, 14, startY);
     doc.text(`Contact: ${srfData.contact_person}`, 14, startY + 6);
-   
+
     const billToLines = doc.splitTextToSize(`Bill To: ${srfData.bill_to_address}`, 80);
     doc.text(billToLines, 14, startY + 12);
-   
+
     doc.text(`DC No: ${srfData.inward?.customer_dc_no || "-"}`, pageWidth - 80, startY);
     doc.text(`DC Date: ${srfData.inward?.customer_dc_date || "-"}`, pageWidth - 80, startY + 6);
- 
+
     const tableColumn = ["Equipment", "Make/Model", "Serial No", "Range", "Unit", "Cal Points", "Mode of Calibration"];
+    
+    // --- FIX: Added fallback '|| "-"' to all optional fields to prevent undefined errors ---
     const tableRows = srfData.inward?.equipments.map((eq) => [
-      eq.material_description,
-      `${eq.make} / ${eq.model}`,
-      eq.serial_no,
-      eq.range,
+      eq.material_description || "",
+      `${eq.make || ""} / ${eq.model || ""}`,
+      eq.serial_no || "",
+      eq.range || "-", 
       eq.srf_equipment?.unit || "-",
       eq.srf_equipment?.no_of_calibration_points || "-",
       eq.srf_equipment?.mode_of_calibration || "-"
     ]) || [];
- 
+    // ---------------------------------------------------------------------------------------
+
     const tableStartY = startY + 15 + (billToLines.length * 5);
- 
+
     autoTable(doc, {
       startY: tableStartY,
       head: [tableColumn],
@@ -173,10 +176,10 @@ export const SrfDetailPage: React.FC = () => {
       headStyles: { fillColor: [41, 128, 185], textColor: 255 },
       styles: { fontSize: 8 }
     });
- 
+
     doc.save(`SRF_${srfData.nepl_srf_no || srfData.srf_no}.pdf`);
   }, [srfData]);
- 
+
   // --- Load SRF Data ---
   const loadSrfData = useCallback(
     async (id: number, signal: AbortSignal) => {
@@ -186,23 +189,23 @@ export const SrfDetailPage: React.FC = () => {
         const response = await axiosAuth.get<SrfDetail>(`/srfs/${id}`, { signal } as any);
         const data = response.data;
         const rawData = data as any;
- 
+
         data.inward?.equipments?.forEach((eq) => {
           if (!eq.srf_equipment) eq.srf_equipment = {};
           if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "";
         });
- 
+
         const companyName = data.customer_name || data.inward?.customer?.customer_details || "";
         const contactPerson = data.contact_person || data.inward?.customer?.contact_person || "";
         const email = data.email || data.inward?.customer?.email || "";
         const phone = data.telephone || data.inward?.customer?.phone || data.phone || "";
-       
+        
         const billTo = rawData.address || data.bill_to_address || data.inward?.customer?.bill_to_address || "";
         const shipTo = data.ship_to_address || data.inward?.customer?.ship_to_address || "";
- 
+
         const displaySrfNo = data.nepl_srf_no || generateNeplSrfNo(data.srf_no);
         const certAddress = rawData.certificate_issue_adress || data.certificate_issue_adress || "";
- 
+
         const sanitizedData: SrfDetail = {
           ...data,
           date: data.date ? data.date.split("T")[0] : "",
@@ -235,11 +238,11 @@ export const SrfDetailPage: React.FC = () => {
     },
     [axiosAuth]
   );
- 
+
   // --- Initial Load Effect ---
   useEffect(() => {
     const controller = new AbortController();
- 
+
     if (isNewSrfFromUrl && inwardIdFromUrl) {
       setActiveSrfId(null);
       setLoading(true);
@@ -250,20 +253,20 @@ export const SrfDetailPage: React.FC = () => {
             { signal: controller.signal } as any
           );
           const inward = response.data;
- 
+
           inward.equipments?.forEach((eq) => {
             if (!eq.srf_equipment) eq.srf_equipment = {};
             if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "1";
           });
- 
+
           const initialDate = inward.material_inward_date
             ? inward.material_inward_date.split("T")[0]
             : getTodayDateString();
- 
+
           const billTo = inward.customer?.bill_to_address || "";
           const shipTo = inward.customer?.ship_to_address || "";
           const generatedRef = generateNeplSrfNo(inward.srf_no);
- 
+
           const newSrfInitialData: SrfDetail = {
             srf_id: 0,
             inward_id: inward.inward_id,
@@ -298,11 +301,11 @@ export const SrfDetailPage: React.FC = () => {
         }
       };
       fetchInwardData();
- 
+
     } else if (!isNewSrfFromUrl && paramSrfId) {
       const id = parseInt(paramSrfId);
       setActiveSrfId(id);
- 
+
       if (justCreatedRef.current) {
         justCreatedRef.current = false;
         setLoading(false);
@@ -312,16 +315,16 @@ export const SrfDetailPage: React.FC = () => {
     } else {
       setLoading(false);
     }
- 
+
     return () => controller.abort();
   }, [paramSrfId, isNewSrfFromUrl, inwardIdFromUrl, loadSrfData, axiosAuth]);
- 
+
   // --- Handle Changes ---
   const handleSrfChange = (key: keyof SrfDetail, value: any) => {
     setHasUserEdited(true);
     setSrfData((prev) => (prev ? { ...prev, [key]: value } : null));
   };
- 
+
   const handleSrfEquipmentChange = (inward_eqp_id: number, field: keyof SrfEquipmentDetail, value: any) => {
     setHasUserEdited(true);
     setSrfData((prevData) => {
@@ -336,7 +339,7 @@ export const SrfDetailPage: React.FC = () => {
       return { ...prevData, inward: { ...prevData.inward, equipments: updatedEquipments } };
     });
   };
- 
+
   // --- Save Function ---
   const handleSaveSrf = useCallback(
     async (newStatus: string, showAlert: boolean = false) => {
@@ -344,7 +347,7 @@ export const SrfDetailPage: React.FC = () => {
       setAutoSaving(true);
       setAutoSaveStatus("Saving...");
       setError(null);
- 
+
       try {
         const normalizedTurnaroundTime = (() => {
           const value = srfData.turnaround_time;
@@ -355,7 +358,7 @@ export const SrfDetailPage: React.FC = () => {
           const parsed = Number(trimmed);
           return Number.isNaN(parsed) ? undefined : parsed;
         })();
- 
+
         const payload = {
           srf_no: srfData.srf_no,
           date: srfData.date,
@@ -384,31 +387,31 @@ export const SrfDetailPage: React.FC = () => {
             mode_of_calibration: eq.srf_equipment?.mode_of_calibration,
           })),
         };
- 
+
         console.log("Saving SRF Payload:", payload);
- 
+
         if (activeSrfId || (srfData.srf_id && srfData.srf_id > 0)) {
           const targetId = activeSrfId || srfData.srf_id;
           await axiosAuth.put(`/srfs/${targetId}`, payload);
           setSrfData((prev) => (prev ? { ...prev, status: newStatus } : prev));
         } else {
-          const res = await axiosAuth.post(`/srfs`, payload);
+          const res = await axiosAuth.post(`/srfs/`, payload);
           const newId = res.data.srf_id;
-         
+          
           // Optionally call PUT immediately to confirm full data persistence if POST is partial
           await axiosAuth.put(`/srfs/${newId}`, payload);
-         
+          
           justCreatedRef.current = true;
           setActiveSrfId(newId);
           setSrfData((prev) => (prev ? { ...prev, srf_id: newId, status: newStatus } : prev));
           navigate(`/engineer/srfs/${newId}`, { replace: true });
         }
- 
+
         if (showAlert) {
           alert("✅ SRF saved successfully!");
           navigate("/engineer/srfs");
         }
- 
+
         setHasUserEdited(false);
         setAutoSaveStatus("All changes saved successfully ✔️");
         setTimeout(() => setAutoSaveStatus(""), 2000);
@@ -425,39 +428,39 @@ export const SrfDetailPage: React.FC = () => {
     },
     [axiosAuth, activeSrfId, srfData, navigate]
   );
- 
+
   // --- Auto-Save Effect ---
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!isEngineer || !srfData || !hasUserEdited) return;
- 
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       // CHANGED: If status is 'created' or 'draft', force it to save as 'draft'
       const statusToSave = (srfData.status === "created" || srfData.status === "draft") ? "draft" : srfData.status;
       handleSaveSrf(statusToSave, false);
     }, 1200);
- 
+
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [srfData, hasUserEdited, isEngineer, handleSaveSrf]);
- 
+
   const unitOptions = ["Nm", "lbs in", "lbs ft", "Kgf cm", "cNm", "g.cm", "Kgf m", "in lb", "ft lb", "lbf in", "lbf ft"];
- 
+
   if (loading) return <div className="p-12 text-center text-gray-500">Loading SRF Details...</div>;
   if (error) return <div className="p-12 text-center text-red-600 bg-red-50 rounded-lg">Error: {error}</div>;
   if (!srfData) return <div className="p-12 text-center text-gray-500">SRF not found.</div>;
- 
+
   const canEdit = isEngineer;
   const isApproved = srfData.status === "approved";
   const isRejected = srfData.status === "rejected";
   const showSpecialInstructions = isApproved || isRejected;
- 
+
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4">
       <div className="w-full max-w-6xl bg-white rounded-2xl shadow-lg border border-gray-200 p-6 md:p-10 relative">
-       
+        
         {/* Auto Save Status */}
         <div className={`absolute top-4 right-6 text-sm font-medium transition-all duration-300 px-3 py-1 rounded-lg shadow-sm ${
             autoSaveStatus.includes("Saving") ? "bg-blue-50 text-blue-700"
@@ -467,7 +470,7 @@ export const SrfDetailPage: React.FC = () => {
         >
           {autoSaveStatus || "Saved"}
         </div>
- 
+
         {/* Header */}
         <header className="flex items-center justify-between border-b pb-4 mb-6">
           <div>
@@ -485,7 +488,7 @@ export const SrfDetailPage: React.FC = () => {
             </button>
           </div>
         </header>
- 
+
         {/* Status Banner */}
         {(isApproved || isRejected) && (
           <div className={`p-4 mb-8 border-l-4 rounded-r-lg ${isRejected ? "bg-red-50 text-red-800 border-red-400" : "bg-green-50 text-green-800 border-green-400"}`}>
@@ -505,13 +508,13 @@ export const SrfDetailPage: React.FC = () => {
             </div>
           </div>
         )}
- 
+
         {/* Customer Details - Improved UI Layout */}
         <fieldset className="border border-gray-300 rounded-2xl p-6 mb-10 bg-white shadow-sm">
           <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm border border-gray-200">
             Customer Details
           </legend>
- 
+
           {/* Row 1: Document Info (DC No, Date, Ref, Inward Date) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6 mt-2">
              <div className="relative">
@@ -529,14 +532,14 @@ export const SrfDetailPage: React.FC = () => {
                    {srfData.inward?.customer_dc_date || "-"}
                 </div>
              </div>
- 
+
              <div className="relative">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reference (SRF No)</label>
                 <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                    <span className="font-mono text-blue-600">{srfData.nepl_srf_no}</span>
                 </div>
              </div>
- 
+
              <div className="relative">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Material Inward Date</label>
                 <input
@@ -548,7 +551,7 @@ export const SrfDetailPage: React.FC = () => {
                 />
              </div>
           </div>
- 
+
           {/* Row 2: Company Name */}
           <div className="mb-6">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Company Name</label>
@@ -557,7 +560,7 @@ export const SrfDetailPage: React.FC = () => {
                  {srfData.company_name}
               </div>
           </div>
- 
+
           {/* Row 3: Addresses (Read Only - Side by Side) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               {/* Bill To */}
@@ -573,7 +576,7 @@ export const SrfDetailPage: React.FC = () => {
                     className="block w-full rounded border-0 bg-transparent text-sm text-gray-600 resize-none focus:ring-0 p-0"
                  />
               </div>
- 
+
               {/* Ship To */}
               <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 relative">
                  <div className="flex items-center gap-2 mb-2">
@@ -588,7 +591,7 @@ export const SrfDetailPage: React.FC = () => {
                  />
               </div>
           </div>
- 
+
           {/* Row 4: Contact Information */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div>
@@ -606,7 +609,7 @@ export const SrfDetailPage: React.FC = () => {
                    />
                 </div>
               </div>
- 
+
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Phone</label>
                 <div className="relative">
@@ -622,7 +625,7 @@ export const SrfDetailPage: React.FC = () => {
                    />
                 </div>
               </div>
- 
+
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Email</label>
                 <div className="relative">
@@ -639,7 +642,7 @@ export const SrfDetailPage: React.FC = () => {
                 </div>
               </div>
           </div>
- 
+
           {/* Row 5: Certificate Issue Details (Stacked Vertically) */}
           <div className="space-y-6">
               {/* Certificate Issue Name */}
@@ -658,7 +661,7 @@ export const SrfDetailPage: React.FC = () => {
                      />
                  </div>
               </div>
- 
+
               {/* Certificate Issue Address */}
               <div>
                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Certificate Issue Address</label>
@@ -678,14 +681,14 @@ export const SrfDetailPage: React.FC = () => {
               </div>
           </div>
         </fieldset>
-       
+        
         {/* --- SPECIAL INSTRUCTIONS (Visible ONLY when Approved/Rejected, and always Read Only) --- */}
         {showSpecialInstructions && (
           <fieldset className="mb-10 border border-gray-300 rounded-2xl bg-gray-50 p-6">
             <legend className="flex items-center gap-2 px-3 py-1.5 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">
               <BookOpen className="h-5 w-5 text-indigo-600" /> Special Instructions from customer for calibration
             </legend>
- 
+
             {/* 1. Calibration Frequency */}
             <div className="mb-6">
               <strong className="text-gray-800 text-sm block mb-3">1. Calibration Frequency:</strong>
@@ -700,7 +703,7 @@ export const SrfDetailPage: React.FC = () => {
                   />
                   As per Standard
                 </label>
-               
+                
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2">
                     <input
@@ -723,7 +726,7 @@ export const SrfDetailPage: React.FC = () => {
                 </div>
               </div>
             </div>
- 
+
             {/* 2. Statement of Conformity */}
             <div className="mb-6">
               <strong className="text-gray-800 text-sm block mb-3">2. Required 'Statement of conformity' to be reported in the Calibration Certificate?</strong>
@@ -748,7 +751,7 @@ export const SrfDetailPage: React.FC = () => {
                 </label>
               </div>
             </div>
- 
+
             {/* 2.1 Decision Rules (Conditional) */}
             {srfData.statement_of_conformity && (
               <div className="mb-6 ml-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
@@ -772,7 +775,7 @@ export const SrfDetailPage: React.FC = () => {
                 </div>
               </div>
             )}
- 
+
             {/* 3. Turnaround Time & Remarks */}
             <div className="grid gap-6 md:grid-cols-2 mt-6 border-t pt-6">
               <div>
@@ -796,7 +799,7 @@ export const SrfDetailPage: React.FC = () => {
             </div>
           </fieldset>
         )}
- 
+
         {/* Equipment Table */}
         <fieldset className="border border-gray-300 rounded-2xl p-6 bg-gray-50 mb-10">
           <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">Equipment Details</legend>
@@ -829,7 +832,7 @@ export const SrfDetailPage: React.FC = () => {
             </table>
           </div>
         </fieldset>
- 
+
         {/* Actions */}
         {canEdit && (
           <div className="flex justify-end items-center gap-4 pt-8 mt-8 border-t border-gray-200">
@@ -848,6 +851,5 @@ export const SrfDetailPage: React.FC = () => {
     </div>
   );
 };
- 
+
 export default SrfDetailPage;
- 

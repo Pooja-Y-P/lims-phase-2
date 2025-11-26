@@ -88,57 +88,98 @@ class InwardService:
 
     def _build_inward_export_rows(self, inward: Inward) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        Builds rows for Excel export. Safely handles cases where Inward exists but SRF is None.
+        Builds rows for Excel export with fields from Inward, InwardEquipment, SRF, and SRF_equipments tables.
         """
         customer_details = inward.customer.customer_details if inward.customer else inward.customer_details
-        srf = inward.srf
         receiver_name = inward.received_by if inward.received_by else "N/A"
-
-        # Helper to safely get SRF attributes (handle srf being None)
-        def get_srf_attr(attr_name):
-            return getattr(srf, attr_name, None) if srf else None
+        ship_to_address = inward.customer.ship_to_address if inward.customer else None
+        bill_to_address = inward.customer.bill_to_address if inward.customer else None
+        
+        # SRF fields
+        srf = inward.srf if inward.srf else None
+        srf_id = srf.srf_id if srf else None
+        nepl_srf_no = srf.nepl_srf_no if srf else None
+        srf_date = srf.date if srf else None
+        srf_telephone = srf.telephone if srf else None
+        srf_contact_person = srf.contact_person if srf else None
+        srf_email = srf.email if srf else None
+        certificate_issue_name = srf.certificate_issue_name if srf else None
+        certificate_issue_address = srf.certificate_issue_adress if srf else None
+        calibration_frequency = srf.calibration_frequency if srf else None
+        statement_of_conformity = self._bool_to_text(srf.statement_of_conformity) if srf else None
+        ref_iso_is_doc = self._bool_to_text(srf.ref_iso_is_doc) if srf else None
+        ref_manufacturer_manual = self._bool_to_text(srf.ref_manufacturer_manual) if srf else None
+        ref_customer_requirement = self._bool_to_text(srf.ref_customer_requirement) if srf else None
+        turnaround_time = srf.turnaround_time if srf else None
+        remark_special_instructions = srf.remark_special_instructions if srf else None
+        srf_remarks = srf.remarks if srf else None
+        srf_status = srf.status if srf else None
+        srf_created_at = srf.created_at if srf else None
+        srf_updated_at = srf.updated_at if srf else None
 
         base_row = self._sanitize_row({
+            # Inward fields
             "Inward ID": inward.inward_id, 
             "SRF No": str(inward.srf_no), 
+            "Customer ID": inward.customer_id,
             "Customer": customer_details,
-            "Status": inward.status, 
+            "Ship To Address": ship_to_address,
+            "Bill To Address": bill_to_address,
+            "Inward Status": inward.status, 
             "Received By": receiver_name, 
             "Material Inward Date": inward.material_inward_date,
             "Customer DC No": inward.customer_dc_no, 
             "Customer DC Date": inward.customer_dc_date,
-            "Updated At": inward.updated_at,
-            # Safely access SRF fields
-            "Calibration Frequency": get_srf_attr("calibration_frequency"),
-            "Statement Of Conformity": self._bool_to_text(get_srf_attr("statement_of_conformity")),
-            "Decision Rule - ISO/IS Doc": self._bool_to_text(get_srf_attr("ref_iso_is_doc")),
-            "Decision Rule - Manufacturer Manual": self._bool_to_text(get_srf_attr("ref_manufacturer_manual")),
-            "Decision Rule - Customer Requirement": self._bool_to_text(get_srf_attr("ref_customer_requirement")),
-            "Turnaround Time (Days)": get_srf_attr("turnaround_time"),
-            "Special Remarks": get_srf_attr("remarks"),
+            "Inward Created At": inward.created_at,
+            "Inward Updated At": inward.updated_at,
+            "Inward Created By": inward.created_by,
+            "Inward Updated By": inward.updated_by,
+            # SRF fields
+            "SRF ID": srf_id,
+            "NEPL SRF No": nepl_srf_no,
+            "SRF Date": srf_date,
+            "SRF Telephone": srf_telephone,
+            "SRF Contact Person": srf_contact_person,
+            "SRF Email": srf_email,
+            "Certificate Issue Name": certificate_issue_name,
+            "Certificate Issue Address": certificate_issue_address,
+            "Calibration Frequency": calibration_frequency,
+            "Statement of Conformity": statement_of_conformity,
+            "Ref ISO/IS Doc": ref_iso_is_doc,
+            "Ref Manufacturer Manual": ref_manufacturer_manual,
+            "Ref Customer Requirement": ref_customer_requirement,
+            "Turnaround Time": turnaround_time,
+            "Remark Special Instructions": remark_special_instructions,
+            "SRF Remarks": srf_remarks,
+            "SRF Status": srf_status,
+            "SRF Created At": srf_created_at,
+            "SRF Updated At": srf_updated_at,
         })
         
         rows: List[Dict[str, Any]] = []
-        
-        # Safely build SRF Equipment map (only if srf exists and has equipments)
-        srf_equipment_map: Dict[int, Any] = {}
-        if srf and getattr(srf, "equipments", None):
-            srf_equipment_map = {
-                srf_eqp.inward_eqp_id: srf_eqp 
-                for srf_eqp in srf.equipments 
-                if srf_eqp.inward_eqp_id
-            }
         
         equipment_items = sorted(inward.equipments, key=lambda eq: eq.nepl_id) if inward.equipments else []
 
         if equipment_items:
             for index, equipment in enumerate(equipment_items, start=1):
-                # Get associated SRF equipment info if available
-                srf_equipment = srf_equipment_map.get(getattr(equipment, "inward_eqp_id", None))
+                # Handle photos - convert to count or comma-separated string if needed
+                photos_count = len(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else 0
+                photos_str = ", ".join(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else None
+                
+                # SRF Equipment fields
+                srf_equipment = equipment.srf_equipment if equipment.srf_equipment else None
+                srf_eqp_id = srf_equipment.srf_eqp_id if srf_equipment else None
+                srf_equipment_unit = srf_equipment.unit if srf_equipment else None
+                no_of_calibration_points = srf_equipment.no_of_calibration_points if srf_equipment else None
+                mode_of_calibration = srf_equipment.mode_of_calibration if srf_equipment else None
+                srf_equipment_created_at = srf_equipment.created_at if srf_equipment else None
+                srf_equipment_updated_at = srf_equipment.updated_at if srf_equipment else None
                 
                 rows.append(self._sanitize_row({
                     **base_row, 
-                    "Equipment Row": index, 
+                    # Inward Equipment fields
+                    "Equipment Row": index,
+                    "Equipment ID": equipment.inward_eqp_id,
                     "Equipment NEPL ID": equipment.nepl_id,
                     "Material Description": equipment.material_description, 
                     "Make": equipment.make,
@@ -146,19 +187,97 @@ class InwardService:
                     "Range": equipment.range, 
                     "Serial No": equipment.serial_no,
                     "Quantity": equipment.quantity, 
-                    "Inspection Notes": equipment.visual_inspection_notes,
+                    "Visual Inspection Notes": equipment.visual_inspection_notes,
                     "Calibration By": equipment.calibration_by, 
                     "Supplier": equipment.supplier, 
                     "Out DC": equipment.out_dc, 
                     "In DC": equipment.in_dc,
-                    "Nextage Reference": equipment.nextage_contract_reference,
+                    "Nextage Contract Reference": equipment.nextage_contract_reference,
                     "Accessories Included": equipment.accessories_included,
-                    "Engineer Remark / Decision": equipment.engineer_remarks,
-                    "Customer Remark": equipment.customer_remarks,
-                    # Safely access srf_equipment fields
-                    "Equipment Unit": getattr(srf_equipment, "unit", None) if srf_equipment else None,
-                    "Calibration Points": getattr(srf_equipment, "no_of_calibration_points", None) if srf_equipment else None,
-                    "Mode of Calibration": getattr(srf_equipment, "mode_of_calibration", None) if srf_equipment else None,
+                    "QR Code": equipment.qr_code,
+                    "Barcode": equipment.barcode,
+                    "Engineer Remarks": equipment.engineer_remarks,
+                    "Customer Remarks": equipment.customer_remarks,
+                    "Photos Count": photos_count,
+                    "Photos": photos_str,
+                    "Equipment Created At": equipment.created_at,
+                    "Equipment Updated At": equipment.updated_at,
+                    # SRF Equipment fields
+                    "SRF Equipment ID": srf_eqp_id,
+                    "SRF Equipment Unit": srf_equipment_unit,
+                    "No of Calibration Points": no_of_calibration_points,
+                    "Mode of Calibration": mode_of_calibration,
+                    "SRF Equipment Created At": srf_equipment_created_at,
+                    "SRF Equipment Updated At": srf_equipment_updated_at,
+                }))
+        else:
+            rows.append(self._sanitize_row({**base_row, "Equipment Row": 1}))
+        return self._make_sheet_label(inward), rows
+
+    def _build_inward_only_export_rows(self, inward: Inward) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Builds rows for Excel export with only Inward and InwardEquipment table fields.
+        No SRF-related fields are included. Used for "View and Update Inward" export.
+        """
+        customer_details = inward.customer.customer_details if inward.customer else inward.customer_details
+        receiver_name = inward.received_by if inward.received_by else "N/A"
+        ship_to_address = inward.customer.ship_to_address if inward.customer else None
+        bill_to_address = inward.customer.bill_to_address if inward.customer else None
+
+        base_row = self._sanitize_row({
+            "Inward ID": inward.inward_id, 
+            "SRF No": str(inward.srf_no), 
+            "Customer ID": inward.customer_id,
+            "Customer": customer_details,
+            "Ship To Address": ship_to_address,
+            "Bill To Address": bill_to_address,
+            "Status": inward.status, 
+            "Received By": receiver_name, 
+            "Material Inward Date": inward.material_inward_date,
+            "Customer DC No": inward.customer_dc_no, 
+            "Customer DC Date": inward.customer_dc_date,
+            "Created At": inward.created_at,
+            "Updated At": inward.updated_at,
+            "Created By": inward.created_by,
+            "Updated By": inward.updated_by,
+        })
+        
+        rows: List[Dict[str, Any]] = []
+        
+        equipment_items = sorted(inward.equipments, key=lambda eq: eq.nepl_id) if inward.equipments else []
+
+        if equipment_items:
+            for index, equipment in enumerate(equipment_items, start=1):
+                # Handle photos - convert to count or comma-separated string if needed
+                photos_count = len(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else 0
+                photos_str = ", ".join(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else None
+                
+                rows.append(self._sanitize_row({
+                    **base_row, 
+                    "Equipment Row": index,
+                    "Equipment ID": equipment.inward_eqp_id,
+                    "Equipment NEPL ID": equipment.nepl_id,
+                    "Material Description": equipment.material_description, 
+                    "Make": equipment.make,
+                    "Model": equipment.model, 
+                    "Range": equipment.range, 
+                    "Serial No": equipment.serial_no,
+                    "Quantity": equipment.quantity, 
+                    "Visual Inspection Notes": equipment.visual_inspection_notes,
+                    "Calibration By": equipment.calibration_by, 
+                    "Supplier": equipment.supplier, 
+                    "Out DC": equipment.out_dc, 
+                    "In DC": equipment.in_dc,
+                    "Nextage Contract Reference": equipment.nextage_contract_reference,
+                    "Accessories Included": equipment.accessories_included,
+                    "QR Code": equipment.qr_code,
+                    "Barcode": equipment.barcode,
+                    "Engineer Remarks": equipment.engineer_remarks,
+                    "Customer Remarks": equipment.customer_remarks,
+                    "Photos Count": photos_count,
+                    "Photos": photos_str,
+                    "Equipment Created At": equipment.created_at,
+                    "Equipment Updated At": equipment.updated_at,
                 }))
         else:
             rows.append(self._sanitize_row({**base_row, "Equipment Row": 1}))
@@ -401,16 +520,49 @@ class InwardService:
             self.db.add_all(equipment_models)
 
     # === Retrieval Methods ===
-    async def get_all_inwards(self, status: Optional[str] = None) -> List[Inward]:
+    async def get_all_inwards(
+        self, 
+        status: Optional[str] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[Inward]:
         query = self.db.query(Inward).options(joinedload(Inward.customer), joinedload(Inward.equipments)).filter(Inward.is_draft.is_(False))
         if status:
             query = query.filter(Inward.status == status)
+        if start_date:
+            query = query.filter(func.date(Inward.material_inward_date) >= start_date)
+        if end_date:
+            query = query.filter(func.date(Inward.material_inward_date) <= end_date)
         return query.order_by(Inward.created_at.desc()).all()
 
     async def get_inward_by_id(self, inward_id: int) -> Inward:
-        db_inward = self.db.query(Inward).options(joinedload(Inward.customer), joinedload(Inward.equipments)).filter(Inward.inward_id == inward_id).first()
+        db_inward = self.db.query(Inward).options(
+            joinedload(Inward.customer), 
+            joinedload(Inward.srf),
+            selectinload(Inward.equipments).selectinload(InwardEquipment.srf_equipment)
+        ).filter(Inward.inward_id == inward_id).first()
         if not db_inward or db_inward.is_draft: raise HTTPException(status_code=404, detail="Inward record not found.")
         return db_inward
+
+    # === NEW METHOD: FETCH MATERIAL HISTORY ===
+    async def get_material_history(self) -> List[str]:
+        """
+        Fetches a distinct list of all material descriptions ever used.
+        Used for the dynamic dropdown in the Inward Form.
+        """
+        try:
+            stmt = (
+                select(InwardEquipment.material_description)
+                .where(InwardEquipment.material_description.is_not(None))
+                .where(InwardEquipment.material_description != "")
+                .distinct()
+                .order_by(InwardEquipment.material_description)
+            )
+            results = self.db.scalars(stmt).all()
+            return [r for r in results if r]
+        except Exception as e:
+            logger.error(f"Error fetching material history: {e}", exc_info=True)
+            return []
 
     async def get_inwards_for_export(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
         try:
@@ -509,6 +661,52 @@ class InwardService:
             return output
         except Exception as exc:
             logger.error(f"Failed to generate batch export for inwards {unique_ids}: {exc}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to generate export.")
+
+    async def generate_multiple_inwards_export_inward_only(self, inward_ids: List[int]) -> BytesIO:
+        """Generate export with only Inward and InwardEquipment data (no SRF data)."""
+        unique_ids = [i for i in sorted(list(set(i for i in inward_ids if i is not None)))]
+        if not unique_ids: raise HTTPException(status_code=400, detail="Select at least one inward to export.")
+        
+        # Load inwards without SRF relationships for better performance
+        inwards = []
+        for inward_id in unique_ids:
+            db_inward = self.db.query(Inward).options(
+                joinedload(Inward.customer), 
+                selectinload(Inward.equipments)
+            ).filter(Inward.inward_id == inward_id, Inward.is_draft.is_(False)).first()
+            if db_inward:
+                inwards.append(db_inward)
+        
+        if not inwards:
+            raise HTTPException(status_code=404, detail="No valid inward records found.")
+        
+        output = BytesIO()
+        try:
+            has_content = False
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                sheet_names: Set[str] = set()
+                all_rows: List[Dict[str, Any]] = []
+                for inward in inwards:
+                    sheet_label, rows = self._build_inward_only_export_rows(inward)
+                    unique_sheet_name = self._ensure_unique_sheet_name(sheet_label, sheet_names)
+                    pd.DataFrame(rows).to_excel(writer, index=False, sheet_name=unique_sheet_name)
+                    all_rows.extend(rows)
+                    has_content = True
+                    
+                if all_rows:
+                    summary_title = self._sanitize_sheet_title("Selected Inwards", fallback="Selected")
+                    summary_sheet_name = self._ensure_unique_sheet_name(summary_title, sheet_names)
+                    pd.DataFrame(all_rows).to_excel(writer, index=False, sheet_name=summary_sheet_name)
+                
+                # Safety check to ensure at least one sheet is visible to prevent crashes
+                if not has_content:
+                    pd.DataFrame(["No Data Found"]).to_excel(writer, index=False, sheet_name="Error")
+                    
+            output.seek(0)
+            return output
+        except Exception as exc:
+            logger.error(f"Failed to generate inward-only batch export for inwards {unique_ids}: {exc}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to generate export.")
 
     # === Customer Notification Methods ===

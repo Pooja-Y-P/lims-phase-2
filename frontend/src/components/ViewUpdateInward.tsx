@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   Filter,
   SortAsc,
-  SortDesc
+  SortDesc,
+  Download
 } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 import { InwardDetail } from "../types/inward";
@@ -29,6 +30,9 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortField, setSortField] = useState<keyof InwardDetail>("material_inward_date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     fetchInwards();
@@ -37,7 +41,7 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
   useEffect(() => {
     filterAndSortInwards();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inwards, searchTerm, statusFilter, sortField, sortOrder]);
+  }, [inwards, searchTerm, statusFilter, sortField, sortOrder, startDate, endDate]);
 
   const fetchInwards = async () => {
     setIsLoading(true);
@@ -70,7 +74,27 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       
       const matchesStatus = statusFilter === "all" || inward.status === statusFilter;
       
-      return matchesSearch && matchesStatus;
+      // Date filtering
+      let matchesDate = true;
+      if (startDate || endDate) {
+        const inwardDate = new Date(inward.material_inward_date);
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (inwardDate < start) {
+            matchesDate = false;
+          }
+        }
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (inwardDate > end) {
+            matchesDate = false;
+          }
+        }
+      }
+      
+      return matchesSearch && matchesStatus && matchesDate;
     });
 
     // Safely sort the filtered array
@@ -118,6 +142,42 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
 
   const handlePrintStickers = (inwardId: number) => {
     navigate(`/engineer/print-stickers/${inwardId}`);
+  };
+
+  const handleExportToExcel = async () => {
+    if (filteredInwards.length === 0) {
+      alert("No inwards to export. Please adjust your filters.");
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const inwardIds = filteredInwards.map(inward => inward.inward_id);
+      const response = await api.post(
+        ENDPOINTS.STAFF.INWARD_EXPORT_BATCH_INWARD_ONLY,
+        { inward_ids: inwardIds },
+        { responseType: "blob" }
+      );
+
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"] || 
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+      link.href = url;
+      link.download = `inwards_export_${timestamp}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to export inwards:", error);
+      alert("Failed to export inwards. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -183,38 +243,96 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       </div>
 
       {/* Filters and Search */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            // --- UPDATE: Placeholder text ---
-            placeholder="Search by SRF, Customer or DC No..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
-          >
-            <option value="all">All Status</option>
-            <option value="created">Created</option>
-            <option value="updated">Updated</option>
-            <option value="reviewed">Reviewed</option>
-            
-          </select>
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              // --- UPDATE: Placeholder text ---
+              placeholder="Search by SRF, Customer or DC No..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 appearance-none"
+            >
+              <option value="all">All Status</option>
+              <option value="created">Created</option>
+              <option value="updated">Updated</option>
+              <option value="reviewed">Reviewed</option>
+              
+            </select>
+          </div>
+
+          <div className="text-right self-center">
+            <span className="text-sm text-gray-600">
+              Showing {filteredInwards.length} of {inwards.length} records
+            </span>
+          </div>
         </div>
 
-        <div className="text-right self-center">
-          <span className="text-sm text-gray-600">
-            Showing {filteredInwards.length} of {inwards.length} records
-          </span>
+        {/* Date Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="date"
+              placeholder="Start Date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="date"
+              placeholder="End Date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportToExcel}
+              disabled={isExporting || filteredInwards.length === 0}
+              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} />
+                  <span>Exporting...</span>
+                </>
+              ) : (
+                <>
+                  <Download size={18} />
+                  <span>Export to Excel</span>
+                </>
+              )}
+            </button>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold"
+              >
+                Clear Dates
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -8,6 +8,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import logging
 
+from backend import models 
 from backend.db import get_db
 from backend.services.customer_services import CustomerPortalService
 from backend.auth import get_current_user
@@ -32,8 +33,12 @@ def get_customer_user(current_user: UserResponse = Depends(get_current_user)) ->
     return current_user
 
 
-# --- NEW: Schema for the status update payload ---
+# --- Schemas ---
 class SrfStatusUpdateRequest(BaseModel):
+    status: str
+    remarks: Optional[str] = None
+
+class FirStatusUpdateRequest(BaseModel):
     status: str
     remarks: Optional[str] = None
 
@@ -45,7 +50,6 @@ async def get_customer_srfs(
     db: Session = Depends(get_db),
     current_user: UserResponse = Depends(get_customer_user)
 ):
-    """Get all SRFs for the currently authenticated customer, categorized by status."""
     service = CustomerPortalService(db)
     return service.get_srfs_for_customer(current_user.customer_id)
 
@@ -56,7 +60,6 @@ async def update_srf_status_by_customer(
     db: Session = Depends(get_db),
     current_user: UserResponse = Depends(get_customer_user),
 ):
-    """Allows a customer to approve or reject an SRF."""
     service = CustomerPortalService(db)
     return await service.update_srf_status(
         srf_id=srf_id,
@@ -73,7 +76,6 @@ async def get_firs_for_customer_review_list(
     db: Session = Depends(get_db),
     current_user: UserResponse = Depends(get_customer_user)
 ):
-    """Get a list of all FIRs needing review for the current customer."""
     service = CustomerPortalService(db)
     return service.get_firs_for_customer_list(current_user.customer_id)
 
@@ -84,20 +86,69 @@ async def get_fir_for_review(
     db: Session = Depends(get_db), 
     current_user: UserResponse = Depends(get_customer_user)
 ):
-    """Get details for a single FIR for authenticated customer review."""
     service = CustomerPortalService(db)
-    
-    # --- FIX APPLIED HERE ---
     fir_details = service.get_fir_for_customer_review(inward_id, current_user.customer_id)
     
     if not fir_details:
-        # This returns a 404 instead of crashing with a 500 Internal Server Error
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="FIR not found or you do not have permission to view it."
         )
-        
     return fir_details
+
+
+@router.put("/firs/{inward_id}/status")
+async def update_fir_status(
+    inward_id: int,
+    request: FirStatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(get_customer_user)
+):
+    """
+    Allows a customer to update FIR status.
+    Valid statuses: 'approved', 'rejected', 'reviewed'.
+    """
+    # 1. Fetch the inward record
+    inward = db.query(models.Inward).filter(models.Inward.inward_id == inward_id).first()
+
+    # 2. Validation
+    if not inward:
+        raise HTTPException(status_code=404, detail="FIR not found")
+    
+    if inward.customer_id != current_user.customer_id:
+        raise HTTPException(status_code=404, detail="FIR not found") 
+
+    # 3. Update Logic
+    # Clean input: trim whitespace and convert to lowercase
+    status_input = request.status.strip().lower()
+    
+    valid_statuses = ["created", "updated", "reviewed"]
+    
+    print(f"DEBUG: Updating FIR {inward_id} status. Received: '{status_input}'. Allowed: {valid_statuses}") # Console Log for debugging
+
+    if status_input not in valid_statuses:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid status '{request.status}'. Allowed values: {valid_statuses}"
+        )
+
+    inward.status = status_input
+    
+    # Safely update remarks if the column exists on the model
+    # (This prevents 500 errors if the DB schema doesn't have a customer_remarks column on Inward table)
+    if hasattr(inward, 'customer_remarks'):
+        inward.customer_remarks = request.remarks
+    elif request.remarks:
+        print("WARNING: 'customer_remarks' field not found on Inward model. Remarks were not saved.")
+
+    try:
+        db.commit()
+        db.refresh(inward)
+        return {"message": f"FIR marked as {status_input}", "inward_id": inward_id}
+    except Exception as e:
+        db.rollback()
+        print(f"DB Error during status update: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.post("/firs/{inward_id}/remarks")
@@ -107,9 +158,9 @@ async def submit_fir_remarks(
     db: Session = Depends(get_db), 
     current_user: UserResponse = Depends(get_customer_user)
 ):
-    """Submit customer remarks for an FIR (authenticated)."""
     service = CustomerPortalService(db)
     return service.submit_customer_remarks(inward_id, request, current_user.customer_id)
+
 
 # --- DIRECT ACCESS & ACCOUNT ACTIVATION ENDPOINTS ---
 
@@ -119,10 +170,7 @@ async def get_fir_direct_access(
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Get FIR details via a direct link from an email."""
     service = CustomerPortalService(db)
-    
-    # --- SAFETY CHECK APPLIED HERE TOO ---
     fir_details = service.get_fir_for_direct_access(inward_id, token)
     
     if not fir_details:
@@ -130,7 +178,6 @@ async def get_fir_direct_access(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="FIR not found or invalid token."
         )
-
     return fir_details
 
 @router.post("/direct-fir/{inward_id}/remarks")
@@ -140,7 +187,6 @@ async def submit_fir_remarks_direct(
     token: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Submit customer remarks via a direct link."""
     service = CustomerPortalService(db)
     return service.submit_remarks_direct_access(inward_id, request, token)
 
@@ -149,7 +195,6 @@ async def activate_customer_account(
     request: AccountActivationRequest,
     db: Session = Depends(get_db)
 ):
-    """Activate a customer account using an invitation token and set a password."""
     service = CustomerPortalService(db)
     token = service.activate_account_and_set_password(request.token, request.password)
     return {"access_token": token, "token_type": "bearer"}
@@ -159,9 +204,5 @@ async def get_customers_for_dropdown(
     db: Session = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Retrieves a list of all customers with their ID and details for dropdown population.
-    Accessible by authenticated users (e.g., Admin, Engineer).
-    """
     service = CustomerPortalService(db)
     return service.get_all_customers_for_dropdown()
