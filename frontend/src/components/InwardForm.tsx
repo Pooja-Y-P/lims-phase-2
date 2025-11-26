@@ -1734,7 +1734,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                                 <option value="">Select...</option>
                                 {materialOptions.map(d => <option key={d} value={d}>{d}</option>)}
                                 <option value="ADD_NEW_CUSTOM" className="font-bold text-blue-600 bg-blue-50">+ Add New Item</option>
-                                <option value="Other">Other</option>
                             </select>
                         </td>
                         <td className="p-2"><input value={equipment.make} onChange={e=>handleEquipmentChange(index,'make',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md" /></td>
