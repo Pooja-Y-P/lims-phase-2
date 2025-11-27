@@ -13,7 +13,8 @@ import {
   Filter,
   SortAsc,
   SortDesc,
-  Download
+  Download,
+  Hash // Added Hash icon for DC Number
 } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 import { InwardDetail } from "../types/inward";
@@ -64,13 +65,12 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
       // Safely access properties that might be null/undefined
       const srfNoString = inward.srf_no?.toString().toLowerCase() ?? '';
       const customerDetailsString = inward.customer_details?.toLowerCase() ?? '';
-      // --- NEW: Add DC Number to search logic ---
       const dcNoString = inward.customer_dc_no?.toString().toLowerCase() ?? '';
 
       const matchesSearch = 
         srfNoString.includes(searchTermLower) ||
         customerDetailsString.includes(searchTermLower) ||
-        dcNoString.includes(searchTermLower); // Check against DC Number
+        dcNoString.includes(searchTermLower);
       
       const matchesStatus = statusFilter === "all" || inward.status === statusFilter;
       
@@ -249,7 +249,6 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              // --- UPDATE: Placeholder text ---
               placeholder="Search by SRF, Customer or DC No..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -368,8 +367,18 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                   <SortIcon field="customer_details" />
                 </div>
               </th>
+              {/* --- NEW COLUMN HEADER: DC Number --- */}
+              <th 
+                className="p-4 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort("customer_dc_no")}
+              >
+                <div className="flex items-center gap-2">
+                  DC Number
+                  <SortIcon field="customer_dc_no" />
+                </div>
+              </th>
               <th className="p-4 text-left text-xs font-semibold text-gray-600 uppercase">
-                Equipment Count
+                Qty
               </th>
               <th 
                 className="p-4 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
@@ -388,7 +397,8 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
           <tbody className="divide-y divide-gray-200">
             {filteredInwards.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-8 text-center text-gray-500">
+                {/* Increased colSpan to 7 to account for new column */}
+                <td colSpan={7} className="p-8 text-center text-gray-500">
                   {searchTerm || statusFilter !== "all" ? "No records match your filters" : "No inward records found"}
                 </td>
               </tr>
@@ -411,11 +421,17 @@ export const ViewUpdateInward: React.FC<ViewUpdateInwardProps> = () => {
                       <Building className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                       <div className="flex flex-col">
                         <span className="text-gray-800 line-clamp-2">{inward.customer_details}</span>
-                        {/* --- NEW: Display DC Number in table --- */}
-                        {inward.customer_dc_no && (
-                           <span className="text-xs text-gray-500">DC: {inward.customer_dc_no}</span>
-                        )}
+                        {/* Removed the DC No from here */}
                       </div>
+                    </div>
+                  </td>
+                  {/* --- NEW COLUMN BODY: DC Number --- */}
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <Hash className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-800 font-medium">
+                        {inward.customer_dc_no || "-"}
+                      </span>
                     </div>
                   </td>
                   <td className="p-4 text-center">

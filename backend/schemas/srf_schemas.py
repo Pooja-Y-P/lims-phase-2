@@ -259,7 +259,7 @@ class SrfResponse(BaseModel):
     remarks: Optional[str] = None
    
     # Need inward to extract customer details, but we exclude it from final JSON for security/cleanliness
-    inward: Optional[InwardSchema] = Field(default=None, exclude=True)
+    inward: Optional[InwardSchema] = Field(default=None)
  
     model_config = ConfigDict(from_attributes=True)
     

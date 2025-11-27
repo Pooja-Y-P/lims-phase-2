@@ -1,6 +1,6 @@
 # backend/models/srf_equipment.py
 
-from sqlalchemy import Column, Integer, Text, TIMESTAMP, ForeignKey, func
+from sqlalchemy import Column, Integer, Text,String, TIMESTAMP, ForeignKey, func
 from sqlalchemy.orm import relationship
 
 from backend.db import Base
@@ -12,6 +12,7 @@ class SrfEquipment(Base):
     srf_id = Column(Integer, ForeignKey("srfs.srf_id", ondelete="CASCADE"))
     inward_eqp_id = Column(Integer, ForeignKey("inward_equipments.inward_eqp_id", ondelete="CASCADE"), unique=True)
     unit = Column(Text)
+    status = Column(String(50), default='pending')
     no_of_calibration_points = Column(Integer)
     mode_of_calibration = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())

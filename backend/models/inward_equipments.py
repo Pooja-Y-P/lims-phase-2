@@ -20,6 +20,7 @@ class InwardEquipment(Base):
     make = Column(String(255))
     model = Column(String(255))
     range = Column(String(255))
+    status = Column(String(50), default='pending')
     serial_no = Column(String(255))
     quantity = Column(Integer, default=1, nullable=False)
     visual_inspection_notes = Column(Text)
