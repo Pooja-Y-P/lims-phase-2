@@ -19,46 +19,11 @@ class CustomerInfo(BaseModel):
     customer_details: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
-# === Response Schemas for various listings ===
-class ReviewedFirResponse(BaseModel):
-    inward_id: int
-    srf_no: str
-    updated_at: Optional[datetime.datetime] = None
-    customer: Optional[CustomerInfo] = None
-
-    @field_validator('srf_no', mode='before')
-    @classmethod
-    def srf_to_string_reviewed(cls, v):
-        return str(v) if v is not None else v
-
-    model_config = ConfigDict(from_attributes=True)
-
-class UpdatedInwardSummary(BaseModel):
-    inward_id: int
-    srf_no: str
-    customer_details: Optional[str] = None
-    status: str
-    received_by: Optional[str] = None
-    updated_at: Optional[datetime.datetime] = None
-    equipment_count: int = 0
-    calibration_frequency: Optional[str] = None
-    statement_of_conformity: Optional[bool] = None
-    ref_iso_is_doc: Optional[bool] = None
-    ref_manufacturer_manual: Optional[bool] = None
-    ref_customer_requirement: Optional[bool] = None
-    turnaround_time: Optional[int] = None
-    customer_remarks: Optional[str] = None
-    engineer_remarks: Optional[str] = None # Fixed typo from 'enginner' to 'engineer'
-
-    @field_validator('srf_no', mode='before')
-    @classmethod
-    def srf_to_string_updated(cls, value):
-        return str(value) if value is not None else value
-
-    model_config = ConfigDict(from_attributes=True)
-
 # === Equipment Schemas ===
+# Defined before Inward/Response schemas to avoid forward reference issues where possible
 class EquipmentCreate(BaseModel):
+    inward_eqp_id: Optional[int] = None  # <--- CRITICAL: Needed to map to existing DB row
+    status: Optional[str] = None         # <--- CRITICAL: Needed to preserve 'updated' status
     nepl_id: str
     material_desc: str
     make: str
@@ -98,12 +63,68 @@ class InwardEquipmentResponse(BaseModel):
     qr_code: Optional[str] = None
     barcode: Optional[str] = None
     engineer_remarks: Optional[str] = Field(None, alias='engineer_remarks')
-    
-    # --- FIX: Added this field so it shows up in the Inward Form ---
     customer_remarks: Optional[str] = None 
-    # ---------------------------------------------------------------
+    
+    # --- STATUS FIELD FOR FILTERING ---
+    status: Optional[str] = None 
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+# === Response Schemas for various listings ===
+
+class ReviewedFirResponse(BaseModel):
+    inward_id: int
+    srf_no: str
+    updated_at: Optional[datetime.datetime] = None
+    customer: Optional[CustomerInfo] = None
+    
+    # Overall Inward Status
+    status: str 
+    
+    # List of Equipments (which now includes their individual status)
+    equipments: List[InwardEquipmentResponse] = [] 
+
+    @field_validator('srf_no', mode='before')
+    @classmethod
+    def srf_to_string_reviewed(cls, v):
+        return str(v) if v is not None else v
+
+    model_config = ConfigDict(from_attributes=True)
+
+class UpdatedInwardSummary(BaseModel):
+    inward_id: int
+    srf_no: str
+    customer_details: Optional[str] = None
+    status: str
+    received_by: Optional[str] = None
+    updated_at: Optional[datetime.datetime] = None
+    equipment_count: int = 0
+    calibration_frequency: Optional[str] = None
+    statement_of_conformity: Optional[bool] = None
+    ref_iso_is_doc: Optional[bool] = None
+    ref_manufacturer_manual: Optional[bool] = None
+    ref_customer_requirement: Optional[bool] = None
+    turnaround_time: Optional[int] = None
+    customer_remarks: Optional[str] = None
+    engineer_remarks: Optional[str] = None 
+
+    @field_validator('srf_no', mode='before')
+    @classmethod
+    def srf_to_string_updated(cls, value):
+        return str(value) if value is not None else value
+
+    model_config = ConfigDict(from_attributes=True)
+
+# === Customer Portal Schemas ===
+class CustomerRemarkEntry(BaseModel):
+    inward_eqp_id: int
+    customer_remark: str
+
+class CustomerRemarkRequest(BaseModel):
+    remarks: List[CustomerRemarkEntry]
+
+class InwardStatusUpdate(BaseModel):
+    status: str
 
 # === Draft Schemas ===
 class DraftUpdateRequest(BaseModel):

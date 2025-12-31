@@ -2,8 +2,8 @@ import React, { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, Filter, X } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
- 
-// Interface for inwards that are ready for SRF creation
+
+// 1. Interface for Fresh Inwards (from /inwards/updated)
 interface PendingInward {
   inward_id: number;
   srf_no: number;
@@ -11,18 +11,22 @@ interface PendingInward {
   date: string;
   status: "updated";
 }
- 
-// Interface for existing SRF documents
+
+// 2. Interface for SRFs - WITH NESTED INWARD STATUS
 interface SrfSummary {
   srf_id: number;
-  srf_no: string; // Changed to string to handle NEPL...
+  srf_no: string;
   customer_name: string | null;
   date: string;
-  // Updated to include all possible statuses
   status: "draft" | "inward_completed" | "generated" | "approved" | "rejected" | null;
+  created_at?: string;
+  // ✅ We access the inward status here
+  inward?: {
+    inward_id: number;
+    status: string; 
+  };
 }
- 
-// A unified interface for items displayed in the list
+
 interface WorkItem {
   id: number;
   type: "inward" | "srf";
@@ -30,18 +34,18 @@ interface WorkItem {
   customer_name: string | null;
   date: string;
   status: "pending_creation" | "customer_review" | "approved" | "rejected";
-  isDraft?: boolean; // Helper to show a "Draft" badge
+  isDraft?: boolean;
 }
- 
+
 const STATUS_KEYS = {
   PENDING: "pending_creation",
   REVIEW: "customer_review",
   APPROVED: "approved",
   REJECTED: "rejected",
 } as const;
- 
+
 type StatusKey = (typeof STATUS_KEYS)[keyof typeof STATUS_KEYS];
- 
+
 export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,85 +54,146 @@ export const SrfListPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<StatusKey>(STATUS_KEYS.PENDING);
   const navigate = useNavigate();
   
-  // Filter states
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isExporting, setIsExporting] = useState(false);
-  
-  // Helper function to format date for input
-  const formatDateForInput = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
  
   useEffect(() => {
     const fetchAllData = async () => {
       setLoading(true);
       setError(null);
- 
+  
       try {
+        // 1. Fetch Fresh Inwards
         const inwardsResponse = await api.get<PendingInward[]>(
           `${ENDPOINTS.STAFF.INWARDS}/updated`
         );
-        const srfsResponse = await api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`);
- 
-        // 1. Map Fresh Inwards (Never created) -> Pending Tab
-        const pendingItems: WorkItem[] = inwardsResponse.data.map((inward) => ({
-          id: inward.inward_id,
-          type: "inward",
-          displayNumber: `SRF No: ${inward.srf_no}`,
-          customer_name: inward.customer_name,
-          date: inward.date,
-          status: STATUS_KEYS.PENDING,
-          isDraft: false,
-        }));
- 
-        // 2. Map Existing SRFs based on status
-        const srfItems = srfsResponse.data
-          .map((srf): WorkItem | null => {
-            let workItemStatus: StatusKey | null = null;
-            let isDraft = false;
- 
-            // --- LOGIC CHANGE HERE ---
-            if (srf.status === "draft") {
-              // Drafts go to PENDING tab
-              workItemStatus = STATUS_KEYS.PENDING;
-              isDraft = true;
-            } else if (
-              srf.status === "inward_completed" ||
-              srf.status === "generated"
-            ) {
-              // Completed forms go to REVIEW tab
-              workItemStatus = STATUS_KEYS.REVIEW;
-            } else if (srf.status === "approved") {
-              workItemStatus = STATUS_KEYS.APPROVED;
-            } else if (srf.status === "rejected") {
-              workItemStatus = STATUS_KEYS.REJECTED;
-            }
- 
-            if (workItemStatus) {
-              return {
-                id: srf.srf_id,
-                type: "srf" as const,
-                displayNumber: `SRF No: ${srf.srf_no}`,
-                customer_name: srf.customer_name,
-                date: srf.date,
-                status: workItemStatus,
-                isDraft: isDraft,
-              };
-            }
-            return null;
-          })
-          .filter((item): item is WorkItem => item !== null);
- 
-        // Combine both lists
-        // Note: You might want to filter pendingItems to remove duplicates if the backend
-        // returns an Inward even after an SRF is created.
-        // For now, we assume backend filters them, or we simply display both.
-        setWorkItems([...pendingItems, ...srfItems]);
+  console.log("✅ RAW INWARD API RESPONSE:", inwardsResponse.data);
+
+if (Array.isArray(inwardsResponse.data)) {
+  inwardsResponse.data.forEach((inward, index) => {
+    console.log(`🟡 INWARD[${index}] FULL OBJECT:`, inward);
+    console.log(`   ➤ inward.status:`, inward.status);
+    console.log(`   ➤ inward.equipments:`, inward.equipments);
+    console.log(`   ➤ inward.inward_equipments:`, inward.inward_equipments);
+  });
+}
+
+        // 2. Fetch SRFs (contains nested inward info)
+        const srfsResponse = await api.get<SrfSummary[]>(
+          `${ENDPOINTS.SRFS}`
+        );
+  
+        // Helper: Map SRF Number -> SRF Object (to filter out fresh inwards that already have SRFs)
+        const srfByNo = new Map<string, SrfSummary>();
+        if (Array.isArray(srfsResponse.data)) {
+          srfsResponse.data.forEach((srf) => {
+            srfByNo.set(String(srf.srf_no), srf);
+          });
+        }
+
+        // ---------------------------------------------------------
+        // PART A: FRESH INWARDS (Pending)
+        // Logic: Inward exists in 'updated' list AND has NO SRF in the SRF table.
+        // ---------------------------------------------------------
+       const freshInwards: WorkItem[] = inwardsResponse.data
+  .filter((inward) => {
+    const idLabel = `Inward SRF-${inward.srf_no}`;
+    console.log("--------------------------------------------------");
+    console.log(`🔍 CHECKING ${idLabel}`);
+    console.log("FULL INWARD OBJECT:", inward);
+    console.log("inward.status =", inward.status);
+
+    // ✅ CONDITION 1: Inward status MUST be "updated"
+    if (inward.status?.toLowerCase() !== "updated") {
+      console.warn(`[REJECTED] ${idLabel} → inward.status = ${inward.status}`);
+      return false;
+    }
+
+    // ✅ CONDITION 2: SRF must NOT already exist
+    if (srfByNo.has(String(inward.srf_no))) {
+      console.warn(`[REJECTED] ${idLabel} → SRF already exists`);
+      return false;
+    }
+
+    /**
+     * ✅ ✅ ✅ FINAL FIX (OPTION 1)
+     * Backend already validates equipment statuses.
+     * Frontend MUST NOT perform equipment validation.
+     */
+    console.log(`[ACCEPTED ✅] ${idLabel} → Trusted by backend (status = updated)`);
+    return true;
+  })
+  .map((inward) => ({
+    id: inward.inward_id,
+    type: "inward" as const,
+    displayNumber: `SRF No: ${inward.srf_no}`,
+    customer_name: inward.customer_name,
+    date: inward.date,
+    status: STATUS_KEYS.PENDING,
+    isDraft: false,
+  }));
+
+
+        // ---------------------------------------------------------
+        // PART B: EXISTING SRFS (Drafts & Others)
+        // Logic: Iterate the SRF list and apply your rules
+        // ---------------------------------------------------------
+        const srfItems: WorkItem[] = [];
+        
+        if (Array.isArray(srfsResponse.data)) {
+            srfsResponse.data.forEach(srf => {
+              console.log("Full SRF Object:", srf);
+                // 1. Handle DRAFTS (Pending Tab)
+                // ✅ STRICT CHECK: srf.status = 'draft' AND inward.status = 'updated'
+                if (srf.status === 'draft') {
+                    if (srf.inward?.status === 'srf_created') {
+                        srfItems.push({
+                            id: srf.srf_id,
+                            type: "srf",
+                            displayNumber: `SRF No: ${srf.srf_no}`,
+                            customer_name: srf.customer_name,
+                            date: srf.date || srf.created_at || new Date().toISOString(),
+                            status: STATUS_KEYS.PENDING,
+                            isDraft: true,
+                        });
+                    } else {
+                        // Optional: Log if a draft is hidden because inward is not updated
+                        console.log(`Hidden Draft ${srf.srf_no}: Inward status is ${srf.inward?.status}`);
+                    }
+                    return; // Done with this item
+                }
+
+                // 2. Handle OTHER Statuses (Approved, Rejected, Review)
+                // We do NOT check inward.status here, because approved SRFs usually 
+                // have completed inwards that are no longer "updated".
+                let workItemStatus: StatusKey | null = null;
+
+                if (srf.status === "inward_completed" || srf.status === "generated") {
+                    workItemStatus = STATUS_KEYS.REVIEW;
+                } else if (srf.status === "approved") {
+                    workItemStatus = STATUS_KEYS.APPROVED;
+                } else if (srf.status === "rejected") {
+                    workItemStatus = STATUS_KEYS.REJECTED;
+                }
+
+                if (workItemStatus) {
+                    srfItems.push({
+                        id: srf.srf_id,
+                        type: "srf",
+                        displayNumber: `SRF No: ${srf.srf_no}`,
+                        customer_name: srf.customer_name,
+                        date: srf.date || srf.created_at || new Date().toISOString(),
+                        status: workItemStatus,
+                        isDraft: false,
+                    });
+                }
+            });
+        }
+
+        setWorkItems([...freshInwards, ...srfItems]);
+
       } catch (err: any) {
         console.error("Failed to fetch data:", err);
         setError(
@@ -140,7 +205,7 @@ export const SrfListPage: React.FC = () => {
         setLoading(false);
       }
     };
- 
+  
     fetchAllData();
   }, []);
  
@@ -162,12 +227,10 @@ export const SrfListPage: React.FC = () => {
     {}
   );
 
-  // Apply filters to current tab items
   const filteredWorkItems = useMemo(() => {
     const items = groupedWorkItems[activeTab] || [];
     let filtered = items;
     
-    // Date filter
     if (startDate || endDate) {
       filtered = filtered.filter(item => {
         const itemDate = new Date(item.date);
@@ -177,7 +240,6 @@ export const SrfListPage: React.FC = () => {
       });
     }
     
-    // Search filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(item => {
@@ -191,7 +253,6 @@ export const SrfListPage: React.FC = () => {
 
   const currentWorkItems = filteredWorkItems;
   
-  // Export handler
   const handleExport = async () => {
     setIsExporting(true);
     try {
@@ -401,8 +462,6 @@ export const SrfListPage: React.FC = () => {
             currentWorkItems.map((item) => (
               <Link
                 key={`${item.type}-${item.id}`}
-                // If it's an inward (type='inward'), go to new-...
-                // If it's an SRF (type='srf'), go to normal ID
                 to={
                   item.type === "inward"
                     ? `/engineer/srfs/new-${item.id}`
@@ -411,7 +470,6 @@ export const SrfListPage: React.FC = () => {
                 className="flex items-center justify-between p-5 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl transition-all duration-200 group shadow-sm hover:shadow-md"
               >
                 <div className="flex items-start gap-4">
-                  {/* Icon differentiating fresh inward vs draft srf */}
                   <div className="mt-1">
                     {item.isDraft ? (
                        <div title="Draft in Progress" className="bg-yellow-100 p-2 rounded-full text-yellow-600">

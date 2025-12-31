@@ -71,6 +71,28 @@ export const ENDPOINTS = {
     CREATE: `/srfs/draft`,
     RESTORE: (id: number) => `/srfs/draft/${id}/restore`,
     CLEAR: (id: number) => `/srfs/draft/${id}`,
+  },
+
+  // HTW Master Standard endpoints (Hydraulic Torque Wrench only)
+  HTW_MASTER_STANDARDS: {
+    LIST: `/htw-master-standards/`,
+    GET: (id: number) => `/htw-master-standards/${id}`,
+    CREATE: `/htw-master-standards/`,
+    UPDATE: (id: number) => `/htw-master-standards/${id}`,
+    UPDATE_STATUS: (id: number) => `/htw-master-standards/${id}/status`,
+    DELETE: (id: number) => `/htw-master-standards/${id}`,
+    EXPORT: `/htw-master-standards/export`,
+    EXPORT_BATCH: `/htw-master-standards/export-batch`,
+  },
+
+  // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)
+  HTW_MANUFACTURER_SPECS: {
+    LIST: `/htw-manufacturer-specs`,
+    GET: (id: number) => `/htw-manufacturer-specs/${id}`,
+    CREATE: `/htw-manufacturer-specs`,
+    UPDATE: (id: number) => `/htw-manufacturer-specs/${id}`,
+    UPDATE_STATUS: (id: number) => `/htw-manufacturer-specs/${id}/status`,
+    DELETE: (id: number) => `/htw-manufacturer-specs/${id}`,
   }
 } as const;
 

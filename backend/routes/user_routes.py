@@ -1,14 +1,22 @@
+# backend/routers/users.py
+
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload 
+from sqlalchemy import select
 
 from backend.auth import get_current_user
 from backend.core import security
 from backend.core.security import LOCAL_TIMEZONE
 from ..db import get_db
+
+# Import User and Customer Models
+from backend.models.users import User 
+from backend.models.customers import Customer # <--- Added this import
+
 from backend.schemas.user_schemas import (
     CurrentUserResponse,
     LoginResponse,
@@ -18,6 +26,7 @@ from backend.schemas.user_schemas import (
     UserListResponse,
     UserResponse,
     UserStatusUpdateRequest,
+    BatchCustomerUserStatusRequest, # <--- Added this import
 )
 from backend.services import token_service
 from backend.services.email_services import send_welcome_email
@@ -66,14 +75,12 @@ def login(
         user.updated_at is None
     )
 
-    # --- THIS IS THE CRUCIAL FIX ---
-    # The data payload for the token now includes the customer_id
     access_token_data = {
         "user_id": user.user_id,
         "sub": str(user.user_id), # 'sub' (subject) is often the user_id or username
         "email": user.email,
         "role": user.role,
-        "customer_id": user.customer_id # ADDED
+        "customer_id": user.customer_id
     }
 
     access_token = security.create_access_token(data=access_token_data)
@@ -120,7 +127,6 @@ def login(
 @router.get("/me", response_model=CurrentUserResponse)
 def read_current_user(current_user: UserResponse = Depends(get_current_user)):
     """Returns currently authenticated user details."""
-    # We set token to None in the response so it's not sent back again.
     current_user.token = None 
     return current_user
 
@@ -130,15 +136,29 @@ def get_all_users_list(
     db: Session = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Returns a list of all users. Requires Admin privileges."""
+    """Returns a list of all users with Customer Details. Requires Admin privileges."""
     if current_user.role.lower() != 'admin':
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Must be an administrator."
         )
 
-    users = get_all_users(db)
-    user_responses = [UserResponse.from_orm(u) for u in users]
+    # Fetch users and eager load customer details
+    stmt = (
+        select(User)
+        .options(selectinload(User.customer)) 
+        .order_by(User.user_id)
+    )
+    users = db.scalars(stmt).all()
+    
+    # Manually map the customer_details from the relationship to the Pydantic model
+    user_responses = []
+    for u in users:
+        u_data = UserResponse.model_validate(u)
+        if u.customer:
+            u_data.customer_details = u.customer.customer_details
+        user_responses.append(u_data)
+
     return UserListResponse(users=user_responses)
 
 
@@ -164,6 +184,51 @@ def update_user_status(
 
     updated_user = set_user_active_status(db, user_id=user_id, is_active=payload.is_active)
     return UserResponse.from_orm(updated_user)
+
+
+# --- NEW ENDPOINT: Batch Update Status by Customer ---
+@router.post("/batch-status-by-customer")
+def update_users_status_by_customer(
+    payload: BatchCustomerUserStatusRequest,
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Updates the is_active status for ALL users associated with a specific company name.
+    """
+    if current_user.role.lower() != 'admin':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Must be an administrator."
+        )
+
+    # 1. Find the customer IDs that match the string name
+    customer_subquery = select(Customer.customer_id).where(Customer.customer_details == payload.customer_details)
+    
+    # 2. Update Users linked to those customers
+    # We prevent deactivating the current admin if they belong to that company (safety check)
+    stmt = (
+        select(User)
+        .where(User.customer_id.in_(customer_subquery))
+        .where(User.user_id != current_user.user_id) 
+    )
+    
+    users_to_update = db.scalars(stmt).all()
+    
+    if not users_to_update:
+        return {"message": "No users found for this company", "updated_count": 0}
+
+    count = 0
+    for user in users_to_update:
+        user.is_active = payload.is_active
+        count += 1
+    
+    db.commit()
+    
+    return {
+        "message": f"Successfully {'activated' if payload.is_active else 'deactivated'} {count} users.",
+        "updated_count": count
+    }
 
 
 @router.post("/logout")

@@ -49,7 +49,7 @@ async def send_invitation_email(
     role: str,
     temp_password: str,
     invitation_token: str,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:3000"
 ):
     """Sends a role-based invitation email with temporary password."""
     
@@ -120,7 +120,7 @@ async def send_welcome_email(
     template_body = {
         "name": name,
         "role": role.title(),
-        "portal_url": "http://localhost:5173/dashboard"
+        "portal_url": "http://localhost:3000/dashboard"
     }
     
     await send_email(
@@ -137,7 +137,7 @@ async def send_new_user_invitation_email(
     token: str,
     srf_no: str,
     temp_password: str,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:3000"
 ):
     """Sends an account activation email with a temporary password to a new customer."""
     subject = f"Your LIMS Account for SRF No: {srf_no} Has Been Created"
@@ -165,7 +165,7 @@ async def send_existing_user_notification_email(
     recipient_email: EmailStr,
     inward_id: int,
     srf_no: str,
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "http://localhost:3000"
 ):
     """Sends a notification to an existing customer with a proper login/redirect link."""
     subject = f"Inspection Report Ready for SRF No: {srf_no}"

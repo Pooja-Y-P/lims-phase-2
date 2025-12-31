@@ -1,0 +1,893 @@
+import React, { useState } from 'react';
+import { 
+  LayoutDashboard, 
+  Settings, 
+  Users, 
+  FileText, 
+  ChevronDown, 
+  Menu,
+  ShieldCheck,
+  Ruler,
+  Factory,
+  ArrowRightLeft,
+  Activity,
+  Gauge,
+  Sigma,
+  Bell,
+  Search,
+  LogOut,
+  Home,
+  ChevronRight,
+  User,
+  ArrowLeft,
+  Save,
+  CheckCircle,
+  XCircle,
+  Calendar,
+  Plus,
+  Clock,
+  AlertCircle,
+  Edit,
+  Trash2,
+  Filter
+} from 'lucide-react';
+
+// --- MOCK DATA FOR MASTER STANDARD LIST ---
+const MOCK_STANDARDS = [
+  {
+    id: 1,
+    nomenclature: 'TORQUE_TRANSDUCER',
+    range_min: 1000,
+    range_max: 40000,
+    range_unit: 'Nm',
+    manufacturer: 'NORBAR, UK',
+    model_serial_no: '50781.LOG / 201062',
+    traceable_to_lab: 'NABL Accredited Lab No. CC 2874',
+    uncertainty: 0.16,
+    uncertainty_unit: '%',
+    certificate_no: 'SCPL/CC/3685/03/2023-2024',
+    calibration_valid_upto: '2026-03-13',
+    accuracy_of_master: '0.16%',
+    resolution: 1.00,
+    resolution_unit: 'Nm',
+    created_at: '2024-03-15T10:30:00Z',
+    is_active: true
+  },
+  {
+    id: 2,
+    nomenclature: 'DIGITAL PRESSURE GAUGE',
+    range_min: 0,
+    range_max: 1000,
+    range_unit: 'bar',
+    manufacturer: 'MASS',
+    model_serial_no: 'MG301 / 25.CJ.017',
+    traceable_to_lab: 'NABL Accredited Lab No. CC-3217',
+    uncertainty: 0.39,
+    uncertainty_unit: '%',
+    certificate_no: 'NEPL / C / 2025 / 98-9',
+    calibration_valid_upto: '2026-03-25',
+    accuracy_of_master: '0.39%',
+    resolution: 0.10,
+    resolution_unit: 'bar',
+    created_at: '2024-03-26T08:15:00Z',
+    is_active: true
+  }
+];
+
+// --- MOCK DATA FOR MANUFACTURER SPECS ---
+const MOCK_MANUFACTURER_SPECS = [
+  {
+    id: 1,
+    make: 'TORCTECH',
+    model: '10LC',
+    range_min: 1127,
+    range_max: 11272,
+    torque_20: 2254.4,
+    torque_60: 6763.2,
+    torque_100: 11272,
+    torque_unit: 'Nm',
+    pressure_20: 120, // Dummy values for visualization
+    pressure_60: 360,
+    pressure_100: 600,
+    pressure_unit: 'bar',
+    is_active: true
+  },
+  {
+    id: 2,
+    make: 'HYTORC',
+    model: 'MXT-3',
+    range_min: 500,
+    range_max: 4500,
+    torque_20: 900,
+    torque_60: 2700,
+    torque_100: 4500,
+    torque_unit: 'Nm',
+    pressure_20: 100,
+    pressure_60: 300,
+    pressure_100: 500,
+    pressure_unit: 'psi',
+    is_active: true
+  }
+];
+
+export default function App() {
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [activeSection, setActiveSection] = useState('master-standard');
+  const [selectedCalibration, setSelectedCalibration] = useState('');
+  
+  // Navigation State
+  const [currentView, setCurrentView] = useState('grid'); 
+  const [selectedItem, setSelectedItem] = useState(null); // Generic state for editing items
+
+  // Dropdown options
+  const calibrationTypes = [
+    "Hydraulic Torque Wrench",
+    "Pneumatic Torque Wrench",
+    "Manual Torque Wrench",
+    "Electric Torque Wrench",
+    "Pressure Gauge"
+  ];
+
+  // Card Menu Options
+  const menuCards = [
+    { 
+      id: 1, 
+      title: "Master Standard Details", 
+      icon: <ShieldCheck size={24} strokeWidth={2} />,
+      colorClass: "bg-blue-600",
+      desc: "Manage core standard identification data",
+      viewId: "master-standard-list" 
+    },
+    { 
+      id: 2, 
+      title: "Manufacturer Specifications", 
+      icon: <Factory size={24} strokeWidth={2} />,
+      colorClass: "bg-emerald-600",
+      desc: "View and edit OEM specs and limits",
+      viewId: "manufacturer-specs-list" // Updated View aID
+    },
+    { 
+      id: 3, 
+      title: "Interpolation Ranges", 
+      icon: <ArrowRightLeft size={24} strokeWidth={2} />,
+      colorClass: "bg-purple-600",
+      desc: "Configure range interpolation logic",
+      viewId: "interpolation"
+    },
+    { 
+      id: 4, 
+      title: "UNCERTAINTY", 
+      icon: <Activity size={24} strokeWidth={2} />,
+      colorClass: "bg-orange-500",
+      desc: "Calculate general measurement uncertainty",
+      viewId: "uncertainty"
+    },
+    { 
+      id: 5, 
+      title: "Uncertainty of Pressure Gauge", 
+      sub: "(Un-PG)",
+      icon: <Gauge size={24} strokeWidth={2} />,
+      colorClass: "bg-cyan-500",
+      desc: "Specific pressure gauge uncertainty metrics",
+      viewId: "uncertainty-pg"
+    },
+    { 
+      id: 6, 
+      title: "Coverage Factor (k)", 
+      icon: <Sigma size={24} strokeWidth={2} />,
+      colorClass: "bg-rose-600",
+      desc: "Define expansion coefficients and confidence",
+      viewId: "coverage-factor"
+    }
+  ];
+
+  const handleCardClick = (viewId) => {
+    setCurrentView(viewId);
+    setSelectedItem(null);
+  };
+
+  const handleBackToGrid = () => {
+    setCurrentView('grid');
+    setSelectedItem(null);
+  };
+
+  // Generic Edit/Add Handlers
+  const handleEditItem = (item, formViewId) => {
+    setSelectedItem(item);
+    setCurrentView(formViewId);
+  };
+
+  const handleAddNewItem = (formViewId) => {
+    setSelectedItem(null);
+    setCurrentView(formViewId);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f3f4f6] flex font-sans text-gray-900 selection:bg-blue-100">
+      {/* Sidebar */}
+      <aside 
+        className={`${
+          isSidebarOpen ? 'w-64' : 'w-20'
+        } bg-white text-gray-600 transition-all duration-300 flex flex-col fixed h-full z-20 border-r border-gray-200 shadow-sm`}
+      >
+        <div className="h-16 flex items-center px-6 border-b border-gray-100">
+          <div className="flex items-center space-x-2">
+             <div className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center bg-red-600 text-white font-bold text-lg shadow-sm">
+               <span className="relative -top-0.5">N</span>
+             </div>
+            {isSidebarOpen && (
+              <span className="text-xl font-bold tracking-wide text-gray-800">NEXTAGE</span>
+            )}
+          </div>
+        </div>
+
+        <nav className="flex-1 py-6 px-3 space-y-1">
+          <SidebarItem 
+            icon={<Home size={20} />} 
+            label="Dashboard" 
+            isOpen={isSidebarOpen} 
+            active={activeSection === 'dashboard'}
+            onClick={() => setActiveSection('dashboard')}
+          />
+          <SidebarItem 
+            icon={<Users size={20} />} 
+            label="User Management" 
+            isOpen={isSidebarOpen} 
+            active={activeSection === 'users'} 
+            onClick={() => setActiveSection('users')}
+          />
+          
+          <div className="pt-4 pb-2">
+            <div className={`text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 px-3 ${!isSidebarOpen && 'hidden'}`}>
+              Admin Tools
+            </div>
+            <SidebarItem 
+              icon={<Ruler size={20} />} 
+              label="Master Standard Mgmt" 
+              isOpen={isSidebarOpen} 
+              active={activeSection === 'master-standard'}
+              onClick={() => setActiveSection('master-standard')}
+            />
+             <SidebarItem 
+              icon={<Settings size={20} />} 
+              label="Settings" 
+              isOpen={isSidebarOpen} 
+              active={activeSection === 'settings'}
+              onClick={() => setActiveSection('settings')}
+            />
+          </div>
+        </nav>
+
+        <div className="p-4 border-t border-gray-100">
+             <button className="flex items-center w-full px-3 py-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                <LogOut size={20} />
+                {isSidebarOpen && <span className="ml-3 text-sm font-medium">Logout</span>}
+             </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-64' : 'ml-20'} relative`}>
+        
+        {/* Top Header */}
+        <header className="h-16 bg-white shadow-sm flex items-center justify-between px-6 sticky top-0 z-10 border-b border-gray-200">
+          <div className="flex items-center">
+             <button 
+                onClick={() => setSidebarOpen(!isSidebarOpen)}
+                className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 mr-4"
+              >
+                <Menu size={20} />
+              </button>
+            <h2 className="text-lg font-bold text-gray-800">Master Standard Management</h2>
+          </div>
+
+          <div className="flex items-center space-x-4">
+            <div className="relative hidden md:block">
+               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+               <input 
+                 type="text" 
+                 placeholder="Search..." 
+                 className="pl-9 pr-4 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 transition-all"
+               />
+            </div>
+            
+            <div className="flex items-center bg-blue-50 rounded-full py-1 pr-3 pl-1 cursor-pointer hover:bg-blue-100 transition border border-blue-100">
+                <div className="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center text-white mr-2 shadow-sm">
+                  <User size={14} />
+                </div>
+                <div className="flex flex-col -space-y-0.5 mr-1 hidden sm:flex">
+                  <span className="text-xs font-bold text-gray-800">Eshwar</span>
+                  <span className="text-[10px] text-gray-500">Engineer</span>
+                </div>
+                <ChevronDown size={14} className="text-gray-400" />
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <div className="p-8">
+          {activeSection === 'master-standard' ? (
+            <div className="max-w-7xl mx-auto animate-fadeIn">
+              
+              {/* --- VIEW: GRID (Main Menu) --- */}
+              {currentView === 'grid' && (
+                <>
+                  <div className="mb-8">
+                    <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                      <div className="flex items-center space-x-3 mb-4">
+                         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600">
+                            <Ruler size={20} />
+                         </div>
+                         <div>
+                            <h3 className="text-lg font-bold text-gray-900">Select Calibration Type</h3>
+                            <p className="text-xs text-gray-500">Choose the equipment type to configure specifications.</p>
+                         </div>
+                      </div>
+                      
+                      <div className="relative max-w-xl">
+                        <select 
+                          className="w-full appearance-none bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 block p-3 pr-10 shadow-sm transition-all cursor-pointer"
+                          value={selectedCalibration}
+                          onChange={(e) => setSelectedCalibration(e.target.value)}
+                        >
+                          <option value="" disabled>Select Type...</option>
+                          {calibrationTypes.map((type) => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" size={18} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedCalibration ? (
+                    <div className="animate-slideUp">
+                      <div className="flex items-center justify-between mb-6">
+                         <h3 className="text-lg font-bold text-gray-900">Configuration Options</h3>
+                         <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                            Active: {selectedCalibration}
+                         </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {menuCards.map((card) => (
+                          <div 
+                            key={card.id}
+                            onClick={() => handleCardClick(card.viewId)}
+                            className="group bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-start space-x-4 cursor-pointer hover:shadow-md hover:border-blue-200 transition-all relative overflow-hidden"
+                          >
+                            <div className={`w-12 h-12 rounded-lg ${card.colorClass} flex-shrink-0 flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform duration-200`}>
+                              {card.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="text-gray-900 font-bold text-base truncate group-hover:text-blue-600 transition-colors">
+                                    {card.title}
+                                </h4>
+                                {card.sub && <span className="text-xs font-medium text-gray-400 block -mt-1 mb-1">{card.sub}</span>}
+                                <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                                    {card.desc}
+                                </p>
+                            </div>
+                            <ChevronRight size={18} className="text-gray-300 group-hover:text-blue-500 transition-colors self-center" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 bg-white rounded-xl border border-dashed border-gray-300 text-center">
+                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+                        <Ruler size={32} className="text-gray-300" />
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-900">No Standard Selected</h3>
+                      <p className="text-gray-500 text-sm mt-1 max-w-sm">Please select a calibration standard type from the dropdown above.</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* --- VIEW: MASTER STANDARD LIST --- */}
+              {currentView === 'master-standard-list' && (
+                <MasterStandardList 
+                  onBack={handleBackToGrid} 
+                  onAddNew={() => handleAddNewItem('master-standard-form')}
+                  onEdit={(item) => handleEditItem(item, 'master-standard-form')}
+                />
+              )}
+
+              {/* --- VIEW: MASTER STANDARD FORM --- */}
+              {currentView === 'master-standard-form' && (
+                <MasterStandardForm 
+                  onBack={() => setCurrentView('master-standard-list')} 
+                  initialData={selectedItem}
+                />
+              )}
+
+              {/* --- VIEW: MANUFACTURER SPECS LIST (NEW) --- */}
+              {currentView === 'manufacturer-specs-list' && (
+                <ManufacturerSpecList 
+                  onBack={handleBackToGrid}
+                  onAddNew={() => handleAddNewItem('manufacturer-specs-form')}
+                  onEdit={(item) => handleEditItem(item, 'manufacturer-specs-form')}
+                />
+              )}
+
+              {/* --- VIEW: MANUFACTURER SPECS FORM (NEW) --- */}
+              {currentView === 'manufacturer-specs-form' && (
+                <ManufacturerSpecForm 
+                  onBack={() => setCurrentView('manufacturer-specs-list')}
+                  initialData={selectedItem}
+                />
+              )}
+              
+              {/* Placeholders for other views */}
+              {!['grid', 'master-standard-list', 'master-standard-form', 'manufacturer-specs-list', 'manufacturer-specs-form'].includes(currentView) && (
+                 <div className="animate-fadeIn">
+                    <button 
+                      onClick={handleBackToGrid}
+                      className="mb-6 flex items-center text-gray-500 hover:text-blue-600 transition-colors font-medium text-sm"
+                    >
+                      <ArrowLeft size={16} className="mr-2" /> Back to Menu
+                    </button>
+                    <div className="bg-white rounded-xl p-12 text-center border border-gray-200">
+                        <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <Settings className="text-gray-400" size={32} />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900">Work in Progress</h3>
+                        <p className="text-gray-500 mt-2">This module ({currentView}) is currently under development.</p>
+                    </div>
+                 </div>
+              )}
+
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-gray-400">
+              <h2 className="text-2xl font-semibold text-gray-300">
+                {activeSection.charAt(0).toUpperCase() + activeSection.slice(1).replace('-', ' ')} Content
+              </h2>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// --- COMPONENT: Manufacturer Spec List ---
+function ManufacturerSpecList({ onBack, onAddNew, onEdit }) {
+  const [filterModel, setFilterModel] = useState('');
+  
+  // Extract unique models for the filter dropdown
+  const uniqueModels = [...new Set(MOCK_MANUFACTURER_SPECS.map(item => item.model))];
+
+  // Filter Logic
+  const filteredData = MOCK_MANUFACTURER_SPECS.filter(item => {
+    return filterModel ? item.model === filterModel : true;
+  });
+
+  return (
+    <div className="animate-fadeIn">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 shadow-sm"><ArrowLeft size={20} /></button>
+          <div>
+             <h3 className="text-xl font-bold text-gray-900">Manufacturer Specifications</h3>
+             <p className="text-sm text-gray-500">Manage OEM specs and limits</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative">
+               <select 
+                 className="pl-9 pr-8 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm appearance-none cursor-pointer"
+                 value={filterModel}
+                 onChange={(e) => setFilterModel(e.target.value)}
+               >
+                 <option value="">All Models</option>
+                 {uniqueModels.map(model => <option key={model} value={model}>{model}</option>)}
+               </select>
+               <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+          </div>
+          
+          <div className="relative hidden md:block">
+               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+               <input type="text" placeholder="Search..." className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48 shadow-sm" />
+          </div>
+
+          <button onClick={onAddNew} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
+            <Plus size={16} className="mr-2" /> Add New
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4">Make / Model</th>
+                <th className="px-6 py-4">Range</th>
+                <th className="px-6 py-4 text-center">Torque (20/60/100%)</th>
+                <th className="px-6 py-4 text-center">Pressure (20/60/100%)</th>
+                <th className="px-6 py-4 text-center">Status</th>
+                <th className="px-6 py-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-sm">
+              {filteredData.map((item) => (
+                <tr key={item.id} className="hover:bg-blue-50/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="font-bold text-gray-900">{item.make}</div>
+                    <div className="text-gray-500">{item.model}</div>
+                  </td>
+                  <td className="px-6 py-4 font-mono text-gray-600">
+                    {item.range_min} - {item.range_max} {item.torque_unit}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="text-xs space-y-1">
+                      <span className="block text-gray-700 font-medium">{item.torque_20} / {item.torque_60} / {item.torque_100}</span>
+                      <span className="block text-gray-400 text-[10px]">{item.torque_unit}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <div className="text-xs space-y-1">
+                      <span className="block text-gray-700 font-medium">{item.pressure_20} / {item.pressure_60} / {item.pressure_100}</span>
+                      <span className="block text-gray-400 text-[10px]">{item.pressure_unit}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    {item.is_active ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                            Active
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            Inactive
+                        </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                     <button onClick={() => onEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors">
+                        <Edit size={16} />
+                     </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- COMPONENT: Manufacturer Spec Form ---
+function ManufacturerSpecForm({ onBack, initialData }) {
+  const [formData, setFormData] = useState(initialData || {
+    make: '',
+    model: '',
+    range_min: '',
+    range_max: '',
+    torque_20: '',
+    torque_60: '',
+    torque_100: '',
+    torque_unit: 'Nm',
+    pressure_20: '',
+    pressure_60: '',
+    pressure_100: '',
+    pressure_unit: 'bar',
+    is_active: true
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log("Submitting Spec:", formData);
+    alert("Specification Saved Successfully!");
+    onBack();
+  };
+
+  return (
+    <div className="animate-fadeIn">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 shadow-sm"><ArrowLeft size={20} /></button>
+          <div>
+             <h3 className="text-xl font-bold text-gray-900">{initialData ? 'Edit Specification' : 'New Specification'}</h3>
+             <p className="text-sm text-gray-500">{initialData ? `Editing ID: ${initialData.id}` : 'Create a new manufacturer specification record'}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+           <button onClick={onBack} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+           <button onClick={handleSubmit} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"><Save size={16} className="mr-2" /> Save</button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {/* Basic Info */}
+        <div className="p-6 border-b border-gray-100">
+           <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">
+              <Factory size={16} className="mr-2 text-emerald-600" /> Basic Details
+           </h4>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Make / Manufacturer</label>
+                 <input type="text" name="make" value={formData.make} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g. TORCTECH" />
+              </div>
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Model Name</label>
+                 <input type="text" name="model" value={formData.model} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="e.g. 10LC" />
+              </div>
+              <div>
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Full Range</label>
+                 <div className="flex items-center gap-2">
+                    <input type="number" name="range_min" value={formData.range_min} onChange={handleChange} placeholder="Min" className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" />
+                    <span className="text-gray-400">-</span>
+                    <input type="number" name="range_max" value={formData.range_max} onChange={handleChange} placeholder="Max" className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" />
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        {/* Grouped: Torque Values */}
+        <div className="p-6 bg-gray-50/50 border-b border-gray-100">
+           <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center">
+                  <ArrowRightLeft size={16} className="mr-2 text-blue-600" /> Torque Values
+              </h4>
+              <select name="torque_unit" value={formData.torque_unit} onChange={handleChange} className="p-1 text-sm border border-gray-300 rounded-md">
+                 <option value="Nm">Nm</option>
+                 <option value="lbf.ft">lbf.ft</option>
+                 <option value="kgf.m">kgf.m</option>
+              </select>
+           </div>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Torque @ 20%</label><input type="number" name="torque_20" value={formData.torque_20} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Torque @ 60%</label><input type="number" name="torque_60" value={formData.torque_60} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Torque @ 100%</label><input type="number" name="torque_100" value={formData.torque_100} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+           </div>
+        </div>
+
+        {/* Grouped: Pressure Values */}
+        <div className="p-6 border-b border-gray-100">
+           <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center">
+                  <Gauge size={16} className="mr-2 text-cyan-600" /> Pressure Values
+              </h4>
+              <select name="pressure_unit" value={formData.pressure_unit} onChange={handleChange} className="p-1 text-sm border border-gray-300 rounded-md">
+                 <option value="bar">bar</option>
+                 <option value="psi">psi</option>
+              </select>
+           </div>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Pressure @ 20%</label><input type="number" name="pressure_20" value={formData.pressure_20} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Pressure @ 60%</label><input type="number" name="pressure_60" value={formData.pressure_60} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+              <div><label className="block text-xs font-medium text-gray-500 mb-1">Pressure @ 100%</label><input type="number" name="pressure_100" value={formData.pressure_100} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
+           </div>
+        </div>
+
+        {/* Active Toggle */}
+        <div className="p-6 bg-gray-50">
+           <label className="relative inline-flex items-center cursor-pointer">
+             <input type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="sr-only peer" />
+             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+             <span className="ml-3 text-sm font-medium text-gray-900">{formData.is_active ? 'Specification is Active' : 'Inactive'}</span>
+           </label>
+        </div>
+
+      </form>
+    </div>
+  );
+}
+
+// --- SUB-COMPONENT: Master Standard List View (UNCHANGED from previous) ---
+function MasterStandardList({ onBack, onAddNew, onEdit }) {
+  const getStatus = (validUpto) => {
+    const today = new Date();
+    const expiryDate = new Date(validUpto);
+    if (expiryDate < today) {
+        return { label: 'Expired', color: 'bg-red-100 text-red-700', icon: <AlertCircle size={14} className="mr-1" /> };
+    }
+    return { label: 'Active', color: 'bg-green-100 text-green-700', icon: <CheckCircle size={14} className="mr-1" /> };
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  return (
+    <div className="animate-fadeIn">
+      {/* Header with Search and Add */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 shadow-sm"><ArrowLeft size={20} /></button>
+          <div>
+             <h3 className="text-xl font-bold text-gray-900">Master Standard Records</h3>
+             <p className="text-sm text-gray-500">View and manage master standards</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative hidden md:block">
+               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+               <input type="text" placeholder="Search records..." className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 shadow-sm" />
+          </div>
+          <button onClick={onAddNew} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
+            <Plus size={16} className="mr-2" /> Add New
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Nomenclature</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Manufacturer / S.No</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Cert. No</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Valid Upto</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {MOCK_STANDARDS.map((item) => {
+                const status = getStatus(item.calibration_valid_upto);
+                return (
+                  <tr key={item.id} onClick={() => onEdit(item)} className="hover:bg-blue-50/50 cursor-pointer transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center">
+                        <div className="p-2 bg-gray-100 rounded-lg mr-3 text-gray-500 group-hover:text-blue-600 group-hover:bg-blue-100 transition-colors">
+                          <ShieldCheck size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{item.nomenclature}</p>
+                          <p className="text-xs text-gray-500">Range: {item.range_min} - {item.range_max} {item.range_unit}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="font-medium">{item.manufacturer}</div>
+                        <div className="text-xs text-gray-400">{item.model_serial_no}</div>
+                    </td>
+                     <td className="px-6 py-4 text-xs text-gray-600 font-mono">{item.certificate_no}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(item.calibration_valid_upto)}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.color}`}>
+                        {status.icon}
+                        {status.label}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                       <button className="p-1 text-gray-400 hover:text-blue-600 transition-colors"><ChevronRight size={18} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- SUB-COMPONENT: Master Standard Form (UNCHANGED from previous) ---
+function MasterStandardForm({ onBack, initialData }) {
+  const [formData, setFormData] = useState(initialData || {
+    nomenclature: 'TORQUE_TRANSDUCER',
+    range_min: '',
+    range_max: '',
+    range_unit: 'Nm',
+    manufacturer: '',
+    model_serial_no: '',
+    traceable_to_lab: '',
+    uncertainty: '',
+    uncertainty_unit: '%',
+    certificate_no: '',
+    calibration_valid_upto: '',
+    accuracy_of_master: '',
+    resolution: '',
+    resolution_unit: 'Nm',
+    is_active: true
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log("Submitting Data:", formData);
+    alert("Standard Saved Successfully!");
+    onBack();
+  };
+
+  return (
+    <div className="animate-fadeIn">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <button onClick={onBack} className="mr-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 shadow-sm"><ArrowLeft size={20} /></button>
+          <div>
+             <h3 className="text-xl font-bold text-gray-900">{initialData ? 'Edit Master Standard' : 'New Master Standard'}</h3>
+             <p className="text-sm text-gray-500">{initialData ? `Editing ID: ${initialData.id}` : 'Create a new standard identification record'}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+           <button onClick={onBack} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+           <button onClick={handleSubmit} className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"><Save size={16} className="mr-2" /> Save Record</button>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+           <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">
+              <ShieldCheck size={16} className="mr-2 text-blue-600" /> General Identification
+           </h4>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="col-span-1 md:col-span-2">
+                 <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature <span className="text-red-500">*</span></label>
+                 <div className="relative">
+                   <select name="nomenclature" value={formData.nomenclature} onChange={handleChange} className="w-full appearance-none bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 pr-8">
+                     <option value="TORQUE_TRANSDUCER">TORQUE_TRANSDUCER</option>
+                     <option value="DIGITAL PRESSURE GAUGE">DIGITAL PRESSURE GAUGE</option>
+                     <option value="PRESSURE_GAUGE">PRESSURE_GAUGE</option>
+                     <option value="HYDRAULIC_WRENCH">HYDRAULIC_WRENCH</option>
+                   </select>
+                   <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16} />
+                 </div>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label><input type="text" name="manufacturer" value={formData.manufacturer} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Model / Serial No</label><input type="text" name="model_serial_no" value={formData.model_serial_no} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
+              <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Operating Range</label><div className="flex items-center gap-2"><input type="number" name="range_min" value={formData.range_min} onChange={handleChange} placeholder="Min" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><span className="text-gray-400 font-bold">-</span><input type="number" name="range_max" value={formData.range_max} onChange={handleChange} placeholder="Max" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><div className="w-32"><select name="range_unit" value={formData.range_unit} onChange={handleChange} className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5"><option value="Nm">Nm</option><option value="lbf.ft">lbf.ft</option><option value="kgf.m">kgf.m</option><option value="bar">bar</option><option value="psi">psi</option></select></div></div></div>
+           </div>
+        </div>
+        <div className="p-6 bg-gray-50/50">
+           <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">
+              <Activity size={16} className="mr-2 text-orange-500" /> Technical Specifications
+           </h4>
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Uncertainty</label><div className="flex items-center gap-2"><input type="number" name="uncertainty" value={formData.uncertainty} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><select name="uncertainty_unit" value={formData.uncertainty_unit} onChange={handleChange} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-24"><option value="%">%</option><option value="Abs">Abs</option></select></div></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Accuracy of Master</label><input type="text" name="accuracy_of_master" value={formData.accuracy_of_master} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Resolution</label><div className="flex items-center gap-2"><input type="number" name="resolution" value={formData.resolution} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><input type="text" name="resolution_unit" value={formData.resolution_unit} onChange={handleChange} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-20" /></div></div>
+              <div className="lg:col-span-3"><label className="block text-sm font-medium text-gray-700 mb-1">Traceable To Lab</label><input type="text" name="traceable_to_lab" value={formData.traceable_to_lab} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
+           </div>
+        </div>
+        <div className="p-6 border-t border-gray-100">
+           <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">
+              <FileText size={16} className="mr-2 text-purple-600" /> Certification & Status
+           </h4>
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Certificate No</label><div className="relative"><input type="text" name="certificate_no" value={formData.certificate_no} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5 pl-9" /><ShieldCheck size={16} className="absolute left-3 top-3 text-gray-400" /></div></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Calibration Valid Upto</label><div className="relative"><div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><Calendar className="w-4 h-4 text-gray-500" /></div><input type="date" name="calibration_valid_upto" value={formData.calibration_valid_upto} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full pl-10 p-2.5" /></div><p className="text-xs text-gray-500 mt-1">System will automatically mark status as 'Expired' if date is past.</p></div>
+              <div className="flex items-center h-full pt-2"><label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="sr-only peer" /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div><span className="ml-3 text-sm font-medium text-gray-900">{formData.is_active ? 'Manual Active Override' : 'Inactive'}</span></label></div>
+           </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Sidebar Item Component
+function SidebarItem({ icon, label, isOpen, active, onClick }) {
+  return (
+    <button onClick={onClick} className={`w-full flex items-center px-3 py-2.5 my-1 rounded-lg transition-all duration-200 group ${active ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}>
+      <span className={`${active ? 'text-blue-600' : 'text-gray-500 group-hover:text-gray-700'}`}>{icon}</span>
+      <span className={`ml-3 text-sm whitespace-nowrap transition-all duration-300 origin-left ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 w-0 overflow-hidden'}`}>{label}</span>
+      {active && <div className="absolute left-0 w-1 h-8 bg-blue-600 rounded-r-full"></div>}
+    </button>
+  );
+}

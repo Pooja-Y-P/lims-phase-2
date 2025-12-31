@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from backend.db import Base, engine
 from backend import models  # Ensure models are registered before create_all
+import time
+import logging
 
 # Import routers
 # These imports are likely being aliased in backend/routes/__init__.py
@@ -17,9 +19,30 @@ from backend.routes import (
     password_reset_router,
     invitation_routes
 )
+from backend.routes.htw_master_standard_router import router as htw_master_standard_router
+from backend.routes.htw_manufacturer_spec_router import router as htw_manufacturer_spec_router
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create tables with retry logic
+max_retries = 5
+retry_delay = 2
+
+for attempt in range(max_retries):
+    try:
+        logger.info(f"Attempting to create database tables (attempt {attempt + 1}/{max_retries})...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully!")
+        break
+    except Exception as e:
+        if attempt < max_retries - 1:
+            logger.warning(f"Failed to create tables: {e}. Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
+        else:
+            logger.error(f"Failed to create tables after {max_retries} attempts: {e}")
+            raise
 
 # Initialize FastAPI app
 app = FastAPI(title="LIMS Backend", version="1.0")
@@ -28,6 +51,8 @@ app = FastAPI(title="LIMS Backend", version="1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
@@ -51,6 +76,8 @@ app.include_router(customer_routes.router, prefix="/api")
 app.include_router(srf_router.router, prefix="/api")
 app.include_router(password_reset_router.router, prefix="/api")
 app.include_router(invitation_routes.router, prefix="/api")
+app.include_router(htw_master_standard_router, prefix="/api")
+app.include_router(htw_manufacturer_spec_router, prefix="/api")
 
 
 @app.get("/")

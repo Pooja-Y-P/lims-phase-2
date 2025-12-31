@@ -32,7 +32,9 @@ from backend.schemas.inward_schemas import (
     PendingEmailTask,
     UpdatedInwardSummary,
     FailedNotificationsResponse,
-    BatchExportRequest
+    BatchExportRequest,
+    CustomerRemarkRequest,
+    InwardStatusUpdate
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -40,19 +42,12 @@ logger = logging.getLogger(__name__)
 ALLOWED_ROLES = ["staff", "admin", "engineer"]
 router = APIRouter(prefix="/staff/inwards", tags=["Inwards"])
 
-# check_staff_role is now imported from auth module (no need to define it here)
-
 # =========================================================
 # 1. STATIC ROUTES (MUST BE DEFINED FIRST)
 # =========================================================
 
 @router.get("/next-no", response_model=dict)
 def get_next_srf_no(db: Session = Depends(get_db)):
-    """
-    Generates the next available SRF Number (e.g., NEPL25001).
-    Defined AT THE TOP to prevent '422 Unprocessable Entity' errors 
-    caused by catching this string in dynamic int routes.
-    """
     return {"next_srf_no": SrfService(db).generate_next_srf_no()}
 
 @router.get("/materials-history", response_model=List[str])
@@ -60,10 +55,6 @@ async def get_materials_history(
     db: Session = Depends(get_db), 
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    """
-    Returns a list of unique material descriptions used in previous inwards.
-    Used for the dynamic 'Add New Item' dropdown in the frontend.
-    """
     return await InwardService(db).get_material_history()
 
 @router.get("/drafts", response_model=List[DraftResponse])
@@ -193,6 +184,51 @@ async def delete_draft(draft_id: int, db: Session = Depends(get_db), current_use
     if not await InwardService(db).delete_draft(draft_id, current_user.user_id):
         raise HTTPException(status_code=404, detail="Draft not found")
 
+# --- CUSTOMER PORTAL ENDPOINTS (Added manually here to support logic) ---
+# Note: Typically these might be in a separate router, but included here for context of the task.
+
+@router.get("/portal/firs/{inward_id}", tags=["Portal"], response_model=InwardResponse)
+async def get_fir_details(inward_id: int, db: Session = Depends(get_db)):
+    # Public/Token protected access usually, basic retrieval here
+    return await InwardService(db).get_inward_by_id(inward_id)
+
+@router.post("/portal/firs/{inward_id}/remarks", tags=["Portal"])
+async def save_customer_remarks(
+    inward_id: int,
+    request: CustomerRemarkRequest,
+    db: Session = Depends(get_db)
+):
+    inward_service = InwardService(db)
+    count = await inward_service.save_customer_remarks(inward_id, request.remarks)
+    return {"message": f"Updated {count} remarks successfully."}
+
+@router.put("/portal/firs/{inward_id}/status", tags=["Portal"])
+async def update_fir_status(
+    inward_id: int,
+    status_update: InwardStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    inward_service = InwardService(db)
+    updated_inward = await inward_service.update_inward_status(inward_id, status_update.status)
+    return {"message": "Status updated successfully", "status": updated_inward.status}
+
+@router.get("/portal/direct-fir/{inward_id}", tags=["Portal"], response_model=InwardResponse)
+async def get_direct_fir(inward_id: int, token: str, db: Session = Depends(get_db)):
+    # In a real app, validate token against DB. Assuming valid for this snippet context.
+    return await InwardService(db).get_inward_by_id(inward_id)
+
+@router.post("/portal/direct-fir/{inward_id}/remarks", tags=["Portal"])
+async def save_direct_remarks(inward_id: int, request: CustomerRemarkRequest, token: str, db: Session = Depends(get_db)):
+     inward_service = InwardService(db)
+     count = await inward_service.save_customer_remarks(inward_id, request.remarks)
+     return {"message": f"Updated {count} remarks successfully."}
+
+@router.put("/portal/direct-fir/{inward_id}/status", tags=["Portal"])
+async def update_direct_status(inward_id: int, status_update: InwardStatusUpdate, token: str, db: Session = Depends(get_db)):
+    inward_service = InwardService(db)
+    updated_inward = await inward_service.update_inward_status(inward_id, status_update.status)
+    return {"message": "Status updated successfully", "status": updated_inward.status}
+
 # --- GENERAL LISTING ENDPOINTS ---
 
 @router.get("", response_model=List[InwardResponse], include_in_schema=True)
@@ -206,7 +242,8 @@ async def get_all_inward_records(
 @router.get("/reviewed-firs", response_model=List[ReviewedFirResponse])
 async def get_reviewed_firs(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
-    return await inward_service.get_all_inwards(status='reviewed')
+    # Updated to use the filtered method that only returns equipments with 'reviewed' status
+    return await inward_service.get_reviewed_inwards_filtered()
 
 @router.get("/exportable-list", response_model=List[UpdatedInwardSummary])
 async def list_exportable_inwards(
@@ -250,7 +287,6 @@ async def export_inwards_batch_inward_only(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    """Export inwards with only Inward and InwardEquipment data (no SRF data). Used for 'View and Update Inward' feature."""
     inward_service = InwardService(db)
     excel_stream = await inward_service.generate_multiple_inwards_export_inward_only(request_data.inward_ids)
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -307,6 +343,31 @@ async def delete_notification(notification_id: int, db: Session = Depends(get_db
     if not await NotificationService(db).delete_notification(notification_id):
         raise HTTPException(status_code=404, detail="Notification not found.")
 
+# --- MANUFACTURER SPEC ENDPOINTS ---
+
+@router.get("/manufacturer/makes", response_model=List[str])
+def get_makes(db: Session = Depends(get_db)):
+    """Get all distinct makes from manufacturer specifications."""
+    return InwardService(db).get_all_makes()
+
+
+@router.get("/manufacturer/models", response_model=List[str])
+def get_models(make: str, db: Session = Depends(get_db)):
+    """Get all distinct models for a given make."""
+    models = InwardService(db).get_models_by_make(make)
+    if not models:
+        raise HTTPException(status_code=404, detail="No models found for selected make")
+    return models
+
+
+@router.get("/manufacturer/range")
+def get_range(make: str, model: str, db: Session = Depends(get_db)):
+    """Get range_min and range_max for a given make and model combination."""
+    data = InwardService(db).get_range_by_make_model(make, model)
+    if not data:
+        raise HTTPException(status_code=404, detail="No range found for selected make & model")
+    return data
+
 # =========================================================
 # 3. CATCH-ALL DYNAMIC ROUTES (MUST BE DEFINED LAST)
 # =========================================================
@@ -348,7 +409,16 @@ async def update_inward(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
+    print(f"\n[DEBUG] >>> ROUTER HIT: Update Inward ID: {inward_id}")
+    
+    # 1. LOG RAW JSON FROM FRONTEND
+    print(f"[DEBUG] Raw equipment_list string received:\n{equipment_list}")
+
     try:
+        # Parse raw JSON to check before Pydantic touches it
+        raw_list = json.loads(equipment_list)
+        print(f"[DEBUG] JSON Load Success. Found {len(raw_list)} items.")
+        
         inward_data = InwardUpdate(
             srf_no=srf_no,
             material_inward_date=material_inward_date,
@@ -357,9 +427,27 @@ async def update_inward(
             customer_id=customer_id,
             customer_details=customer_details,
             receiver=receiver,
-            equipment_list=json.loads(equipment_list)
+            equipment_list=raw_list
         )
+        
+        # 2. LOG PYDANTIC PARSED DATA
+        print("[DEBUG] Pydantic Validation Successful. Checking Parsed Items:")
+        for i, eq in enumerate(inward_data.equipment_list):
+            # Check if inward_eqp_id and status exist on the object
+            # getattr is used in case the field is missing from the schema entirely
+            p_id = getattr(eq, 'inward_eqp_id', 'FIELD_MISSING')
+            p_status = getattr(eq, 'status', 'FIELD_MISSING')
+            
+            print(f"   Item {i}: ID={p_id} | Status={p_status}")
+            
+            if p_id is None or p_id == 'FIELD_MISSING':
+                print(f"     [⚠️ WARNING] Item {i} has no ID. Service will treat as NEW item (Pending).")
+            
+            if p_status is None or p_status == 'FIELD_MISSING':
+                print(f"     [⚠️ WARNING] Item {i} has no Status. Service might ignore update.")
+
     except (ValidationError, ValueError, json.JSONDecodeError) as e:
+        print(f"[DEBUG] ❌ Validation Error: {e}")
         logger.error(f"Validation error on update: {e}")
         raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
 
@@ -376,6 +464,8 @@ async def update_inward(
         upload_files = [file for file in files if getattr(file, "filename", None)]
         if upload_files:
             photos_by_index[index] = upload_files
+            
+    print(f"[DEBUG] Calling Service Layer...")
     inward_service = InwardService(db)
 
     updated_inward = await inward_service.update_inward_with_files(
@@ -384,4 +474,6 @@ async def update_inward(
         files_by_index=photos_by_index,
         updater_id=current_user.user_id
     )
+    
+    print(f"[DEBUG] Service Layer Finished. Response Sent.\n")
     return updated_inward

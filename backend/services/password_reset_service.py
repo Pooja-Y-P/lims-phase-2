@@ -52,7 +52,7 @@ class PasswordResetService:
         self.db.commit()
 
         # Prepare and send the email in the background.
-        reset_link = f"http://localhost:5173/reset-password?token={token}"
+        reset_link = f"http://localhost:3000/reset-password?token={token}"
         template_data = get_password_reset_template(user.full_name, reset_link)
 
         # Send email using the correct parameters

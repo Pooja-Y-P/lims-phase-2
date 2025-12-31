@@ -14,6 +14,8 @@ from .password_reset_token import PasswordResetToken
 from .refresh_token import RefreshToken
 from .delayed_email_tasks import DelayedEmailTask
 from .inward_equipments import InwardEquipment
+from .htw_master_standard import HTWMasterStandard
+from .htw_manufacturer_spec import HTWManufacturerSpec
 
 # You might also want to import Base here to make it accessible
 from backend.db import Base

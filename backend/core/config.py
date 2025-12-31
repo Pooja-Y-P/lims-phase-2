@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # === THIS IS THE MISSING SETTING THAT NEEDS TO BE ADDED ===
     # --- Frontend URL ---
     # This is the URL for your React/Vue/Svelte frontend application.
-    FRONTEND_URL: str = "http://localhost:5173"
+    FRONTEND_URL: str = "http://localhost:3000"
     # ==========================================================
 
     # --- Delayed Email Settings ---

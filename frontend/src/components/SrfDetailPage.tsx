@@ -371,6 +371,7 @@ export const SrfDetailPage: React.FC = () => {
           certificate_issue_name: srfData.certificate_issue_name,
           certificate_issue_adress: srfData.certificate_issue_adress,
           status: newStatus,
+          inward_status: "reviewed",
           inward_id: srfData.inward_id,
           calibration_frequency: srfData.calibration_frequency || null,
           statement_of_conformity: srfData.statement_of_conformity ?? false,

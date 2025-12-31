@@ -79,6 +79,7 @@ interface SrfData {
   ref_customer_requirement?: boolean;
   turnaround_time?: string | number; // JSON returns number 7
   remarks?: string | null;
+  remark_special_instructions?: string | null;
   specified_frequency?: string;
 }
  
@@ -175,6 +176,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         ref_customer_requirement: srfData.ref_customer_requirement,
         turnaround_time: srfData.turnaround_time,
         remarks: srfData.remarks,
+        remark_special_instructions: srfData.remark_special_instructions,
       };
      
       if (status === 'rejected' && remarks) {
@@ -401,8 +403,8 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                 <textarea
                     rows={3}
                     className={`w-full ${isReadOnly ? readOnlyInputClasses : editableInputClasses}`}
-                    value={srfData.remarks || ""}
-                    onChange={(e) => handleSrfChange("remarks", e.target.value)}
+                    value={srfData.remark_special_instructions || ""}
+                    onChange={(e) => handleSrfChange("remark_special_instructions", e.target.value)}
                     placeholder="e.g., 'Please handle with extra care', 'Call before delivery'"
                     readOnly={isReadOnly}
                 />

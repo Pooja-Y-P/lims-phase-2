@@ -156,6 +156,7 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         icon: <Wrench className="h-8 w-8" />,
         route: "view-inward",
         colorClasses: "bg-gradient-to-r from-cyan-500 to-blue-600",
+        badge: reviewedFirCount,
       },
       {
         label: "Export Inward",

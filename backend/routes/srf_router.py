@@ -65,6 +65,8 @@ def get_srfs(db: Session = Depends(get_db), inward_status: Optional[str] = Query
             if srf.inward:
                 # Create InwardListSummary from the inward model
                 summary.inward = InwardListSummary(
+                    inward_id=srf.inward.inward_id,          # ✅ required
+                    status=srf.inward.status, 
                     customer_dc_no=srf.inward.customer_dc_no
                 )
                
@@ -124,26 +126,39 @@ def create_srf(srf_data: SrfCreate, db: Session = Depends(get_db)):
 # =====================================================================
 @router.put("/{srf_id}", response_model=Srf)
 def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depends(get_db)):
+    print(f"[INFO] Received update request for SRF ID: {srf_id}")
+    
     srf_to_update = get_srf_with_full_details(srf_id, db)
     if not srf_to_update or not srf_to_update.inward:
+        print(f"[ERROR] SRF not found or has no associated inward. SRF ID: {srf_id}")
         raise HTTPException(
             status_code=404,
             detail=f"SRF with ID {srf_id} not found or has no associated inward record."
         )
- 
+
     try:
-        # --- FIXED: Exclude 'srf_no' and 'inward_id' to prevent DB Integer Error ---
+        # Exclude srf_no and inward_id to prevent DB Integer Error
         update_data = srf_update_data.model_dump(
             exclude={'equipments', 'srf_no', 'inward_id'}, 
             exclude_unset=True
         )
-        # ---------------------------------------------------------------------------
+        print(f"[INFO] Update data to apply on SRF: {update_data}")
 
+        # --- Update SRF fields ---
         for key, value in update_data.items():
             if hasattr(srf_to_update, key):
                 setattr(srf_to_update, key, value)
- 
+                print(f"[INFO] Updated SRF field: {key} = {value}")
+
+        # --- Update inward status if provided ---
+        if 'status' in srf_update_data.model_dump() and srf_update_data.status:
+            old_status = srf_to_update.inward.status
+            srf_to_update.inward.status = "srf_created"
+            print(f"[INFO] Updated inward.status: {old_status} → {srf_update_data.status}")
+
+        # --- Update SRF Equipment ---
         if srf_update_data.equipments:
+            print(f"[INFO] Updating {len(srf_update_data.equipments)} equipment records")
             inward_equipments_map = {eq.inward_eqp_id: eq for eq in srf_to_update.inward.equipments}
            
             for eq_update in srf_update_data.equipments:
@@ -154,19 +169,23 @@ def update_srf(srf_id: int, srf_update_data: SrfDetailUpdate, db: Session = Depe
                             srf_id=srf_id,
                             inward_eqp_id=target_inward_eq.inward_eqp_id
                         )
-                   
+                        print(f"[INFO] Created new SrfEquipment for inward_eqp_id {target_inward_eq.inward_eqp_id}")
+
                     update_eq_data = eq_update.model_dump(exclude={'inward_eqp_id'}, exclude_unset=True)
                     for key, value in update_eq_data.items():
                         if hasattr(target_inward_eq.srf_equipment, key):
                             setattr(target_inward_eq.srf_equipment, key, value)
-       
+                            print(f"[INFO] Updated equipment field: {key} = {value} for inward_eqp_id {target_inward_eq.inward_eqp_id}")
+
         db.commit()
+        print(f"[SUCCESS] SRF ID {srf_id} updated successfully and committed to DB")
         return get_srf_with_full_details(srf_id, db)
- 
+
     except SQLAlchemyError as e:
         db.rollback()
-        print(f"DB Error: {e}") # Useful for debugging in console
+        print(f"[DB ERROR] {e}")
         raise HTTPException(status_code=500, detail=f"Database error while updating SRF: {e}")
+
  
 # =====================================================================
 # DELETE: SRF

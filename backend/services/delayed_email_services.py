@@ -247,7 +247,7 @@ class DelayedEmailService:
                 template_data = get_reminder_email_template({
                     "engineer_name": creator.full_name or creator.username,
                     "pending_count": len(tasks),
-                    "portal_link": "http://localhost:5173/engineer" # Use an environment variable for this in production
+                    "portal_link": "http://localhost:3000/engineer" # Use an environment variable for this in production
                 })
                 
                 await send_email_task(

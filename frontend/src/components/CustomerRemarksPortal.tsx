@@ -1,66 +1,72 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, BACKEND_ROOT_URL } from '../api/config';
-import { 
-  Save, 
-  ArrowLeft, 
-  CheckCircle, 
-  AlertTriangle, 
-  FileText, 
-  Calendar, 
-  Package, 
-  Building, 
+import {
+  Save,
+  ArrowLeft,
+  CheckCircle,
+  AlertTriangle,
+  FileText,
+  Calendar,
+  Package,
+  Building,
   X,
   Send,
   Loader2,
   Wrench,
   MessageSquarePlus,
-  Edit2
+  Edit2,
+  Truck, // Icon for DC info
+  Gauge, // Icon for Range
 } from 'lucide-react';
-
+ 
 // --- Interfaces ---
-
+ 
 interface EquipmentForRemarks {
   inward_eqp_id: number;
   nepl_id: string;
   material_description: string;
   make: string;
   model: string;
+  range: string ; // Ensure this accepts the data from backend
   serial_no: string;
+  quantity: number;
   visual_inspection_notes: string | null;
-  engineer_remarks: string | null; 
-  customer_remarks: string | null; 
+  engineer_remarks: string | null;
+  customer_remarks: string | null;
   photos?: string[];
 }
-
+ 
 interface InwardForRemarks {
   inward_id: number;
-  srf_no: string; 
-  material_inward_date?: string; 
-  date?: string; 
-  created_at?: string; 
+  srf_no: string;
+  material_inward_date?: string;
+  customer_dc_no?: string;
+  customer_dc_date?: string;
+  date?: string;
+  created_at?: string;
   status: string;
   equipments: EquipmentForRemarks[];
 }
-
+ 
 interface Props {
   directAccess?: boolean;
   accessToken?: string;
 }
-
+ 
 // --- Helper Functions ---
-
+ 
 const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr) return 'N/A';
   const date = new Date(dateStr);
   if (isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleDateString('en-GB', { 
+  return date.toLocaleDateString('en-GB', {
     day: 'numeric',
-    month: 'short', 
+    month: 'short',
     year: 'numeric'
   });
 };
-
+ 
 const resolvePhotoUrl = (path: string) => {
   if (!path) return '';
   const sanitized = path.replace(/\\/g, '/');
@@ -68,7 +74,7 @@ const resolvePhotoUrl = (path: string) => {
   const normalized = sanitized.replace(/^\/+/, '');
   return `${BACKEND_ROOT_URL}/${normalized}`;
 };
-
+ 
 // Sub-components
 const InfoCard: React.FC<{ icon: React.ReactNode; label: string; value: React.ReactNode; color: string }> = ({ icon, label, value, color }) => (
   <div className="bg-white p-4 rounded-lg border flex items-center gap-4 shadow-sm">
@@ -77,35 +83,35 @@ const InfoCard: React.FC<{ icon: React.ReactNode; label: string; value: React.Re
     </div>
     <div>
       <p className="text-xs text-gray-500 font-medium">{label}</p>
-      <p className="text-sm font-semibold text-gray-800">{value}</p>
+      <p className="text-sm font-semibold text-gray-800 truncate max-w-[120px]" title={String(value)}>{value}</p>
     </div>
   </div>
 );
-
+ 
 export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, accessToken }) => {
   const { inwardId } = useParams<{ inwardId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || accessToken;
-
+ 
   const [inwardDetails, setInwardDetails] = useState<InwardForRemarks | null>(null);
   const [loading, setLoading] = useState(true);
-  
+ 
   // Modal States
   const [showImageModal, setShowImageModal] = useState(false);
   const [activePhotos, setActivePhotos] = useState<string[]>([]);
-  
+ 
   const [showRemarkModal, setShowRemarkModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [tempRemark, setTempRemark] = useState("");
-  
+ 
   // Data States
   const [savingRows, setSavingRows] = useState<{ [key: number]: boolean }>({});
   const [finalizing, setFinalizing] = useState(false);
   const [customerRemarks, setCustomerRemarks] = useState<{ [key: number]: string }>({});
   const [savedSuccessRows, setSavedSuccessRows] = useState<{ [key: number]: boolean }>({});
   const [error, setError] = useState<string | null>(null);
-
+ 
   // --- Fetch Data ---
   const fetchInwardDetails = useCallback(async () => {
     if (!inwardId) return;
@@ -115,13 +121,13 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       const url = token ? `/portal/direct-fir/${inwardId}?token=${token}` : `/portal/firs/${inwardId}`;
       const response = await api.get<InwardForRemarks>(url);
       const data = response.data;
-      
+     
       setInwardDetails(data);
-      
+     
       const initialRemarks: { [key: number]: string } = {};
       data.equipments.forEach((eq) => {
-        if (eq.visual_inspection_notes !== 'OK') {
-          initialRemarks[eq.inward_eqp_id] = eq.customer_remarks || '';
+        if (eq.customer_remarks) {
+          initialRemarks[eq.inward_eqp_id] = eq.customer_remarks;
         }
       });
       setCustomerRemarks(initialRemarks);
@@ -133,11 +139,11 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       setLoading(false);
     }
   }, [inwardId, navigate, directAccess, token]);
-
+ 
   useEffect(() => {
     fetchInwardDetails();
   }, [fetchInwardDetails]);
-
+ 
   // --- Helper: Image Modal ---
   const openImageModal = (photos?: string[]) => {
     if (!photos || photos.length === 0) return;
@@ -147,49 +153,49 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       setShowImageModal(true);
     }
   };
-
+ 
   // --- Helper: Remark Modal ---
   const openRemarkModal = (equipmentId: number, currentRemark: string) => {
     setEditingId(equipmentId);
     setTempRemark(currentRemark || "");
     setShowRemarkModal(true);
   };
-
+ 
   const closeRemarkModal = () => {
     setShowRemarkModal(false);
     setEditingId(null);
     setTempRemark("");
   };
-
+ 
   // --- Action Handlers ---
-
+ 
   const handleSaveFromModal = async () => {
     if (editingId === null) return;
-
+ 
     const remarkText = tempRemark.trim();
-    
+   
     if (!remarkText) {
       alert("Please enter a remark before saving.");
       return;
     }
-
+ 
     // Update local state
     setCustomerRemarks(prev => ({ ...prev, [editingId]: remarkText }));
-    
+   
     // Trigger API Save
     setSavingRows(prev => ({ ...prev, [editingId]: true }));
-
+ 
     try {
       const payload = {
         remarks: [{
           inward_eqp_id: editingId,
-          customer_remark: remarkText 
+          customer_remark: remarkText
         }]
       };
-
+ 
       const url = token ? `/portal/direct-fir/${inwardId}/remarks?token=${token}` : `/portal/firs/${inwardId}/remarks`;
       await api.post(url, payload);
-
+ 
       setSavedSuccessRows(prev => ({ ...prev, [editingId]: true }));
       closeRemarkModal(); // Close modal on success
     } catch (error: any) {
@@ -199,42 +205,43 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       setSavingRows(prev => ({ ...prev, [editingId]: false }));
     }
   };
-
+ 
   const handleFinalize = async () => {
     if (!inwardDetails) return;
-
+ 
+    // Optional: Check if remarks are missing for deviated items
     const deviatedItems = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK');
-    const missingRemarks = deviatedItems.some(eq => !customerRemarks[eq.inward_eqp_id] || customerRemarks[eq.inward_eqp_id].trim() === '');
-
-    if (missingRemarks) {
-      if(!window.confirm("Some items with deviations do not have remarks yet. Are you sure you want to submit without them?")) return;
+    const missingRemarksForDeviation = deviatedItems.some(eq => !customerRemarks[eq.inward_eqp_id] || customerRemarks[eq.inward_eqp_id].trim() === '');
+ 
+    if (missingRemarksForDeviation) {
+      if(!window.confirm("Some items with deviations do not have remarks yet. It is recommended to provide remarks for deviations. Proceed anyway?")) return;
     } else {
       if(!window.confirm("Are you sure you want to finalize? You will not be able to edit remarks after this.")) return;
     }
-
+ 
     setFinalizing(true);
     try {
       // Send all remarks one last time just in case
       const remarksArray = Object.entries(customerRemarks)
         .filter(([, val]) => val.trim() !== '')
-        .map(([id, val]) => ({ 
-          inward_eqp_id: parseInt(id), 
-          customer_remark: val 
+        .map(([id, val]) => ({
+          inward_eqp_id: parseInt(id),
+          customer_remark: val
         }));
-
+ 
       const remarkUrl = token ? `/portal/direct-fir/${inwardId}/remarks?token=${token}` : `/portal/firs/${inwardId}/remarks`;
       if (remarksArray.length > 0) {
         await api.post(remarkUrl, { remarks: remarksArray });
       }
-
+ 
       const statusUrl = token ? `/portal/direct-fir/${inwardId}/status?token=${token}` : `/portal/firs/${inwardId}/status`;
       await api.put(statusUrl, { status: 'reviewed' });
-
+ 
       setInwardDetails(prev => prev ? { ...prev, status: 'reviewed' } : null);
       alert('Report finalized successfully. Thank you.');
-      
+     
       if (!directAccess && !token) navigate('/customer');
-
+ 
     } catch (error: any) {
       console.error('Error finalizing:', error);
       alert('Report finalized (or updated). If you see this message, your remarks were saved.');
@@ -243,15 +250,15 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       setFinalizing(false);
     }
   };
-
+ 
   const handleBackNavigation = () => {
     if (directAccess || token) {
-      window.close(); 
+      window.close();
     } else {
       navigate('/customer');
     }
   };
-
+ 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -262,7 +269,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       </div>
     );
   }
-
+ 
   if (error || !inwardDetails) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
@@ -277,18 +284,23 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       </div>
     );
   }
-
-  const isLocked = inwardDetails.status === 'reviewed' || inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
+ 
+  const isLocked = inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
   const deviatedCount = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK').length;
   const displayDate = inwardDetails.material_inward_date || inwardDetails.date || inwardDetails.created_at;
-
+ 
+  // Format DC info for display
+  const dcInfo = inwardDetails.customer_dc_no
+    ? `${inwardDetails.customer_dc_no} ${inwardDetails.customer_dc_date ? `(${formatDate(inwardDetails.customer_dc_date)})` : ''}`
+    : 'N/A';
+ 
   return (
     <>
       <div className="min-h-screen bg-slate-100 py-8 sm:py-12 font-sans">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
+         
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-            
+           
             {/* Header */}
             <header className="bg-slate-900 px-6 py-6 sm:px-8 text-white flex justify-between items-start">
               <div>
@@ -304,30 +316,31 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                 </button>
               )}
             </header>
-
+ 
             {/* Info Cards */}
-            <div className="bg-white border-b border-slate-200 p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white border-b border-slate-200 p-6 grid grid-cols-2 md:grid-cols-5 gap-4">
               <InfoCard icon={<FileText size={18} className="text-indigo-700"/>} label="SRF Number" value={inwardDetails.srf_no} color="bg-indigo-50" />
-              <InfoCard icon={<Calendar size={18} className="text-sky-700"/>} label="Date" value={formatDate(displayDate)} color="bg-sky-50" />
+              <InfoCard icon={<Calendar size={18} className="text-sky-700"/>} label="Inward Date" value={formatDate(displayDate)} color="bg-sky-50" />
+              <InfoCard icon={<Truck size={18} className="text-orange-700"/>} label="Customer DC & Date" value={dcInfo} color="bg-orange-50" />
               <InfoCard icon={<Package size={18} className="text-emerald-700"/>} label="Total Items" value={inwardDetails.equipments.length} color="bg-emerald-50" />
               <InfoCard icon={<AlertTriangle size={18} className="text-amber-700"/>} label="Deviations" value={deviatedCount} color="bg-amber-50" />
             </div>
-
+ 
             {/* Status Banner */}
             {isLocked ? (
               <div className="bg-green-50 border-b border-green-200 p-4 text-center">
                 <p className="text-green-800 font-semibold flex items-center justify-center gap-2">
-                  <CheckCircle size={20} /> Review Submitted. This report is now read-only.
+                  <CheckCircle size={20} /> Review Completed (Approved/Rejected). This report is now read-only.
                 </p>
               </div>
             ) : (
               <div className="bg-blue-50 border-b border-blue-200 p-4">
                 <p className="text-blue-800 text-sm text-center">
-                  Click <strong>"Add/Edit Remark"</strong> on highlighted items to provide your decision. Once finished, click <strong>Finalize & Submit</strong>.
+                  Click <strong>"Add/Edit Remark"</strong> on any item to provide your decision. Once finished, click <strong>Finalize & Submit</strong>.
                 </p>
               </div>
             )}
-
+ 
             {/* Main Table */}
             <main className="p-6 sm:p-8">
               <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -335,36 +348,39 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-12">#</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-32">NEPL ID</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Equipment</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">Make/Model</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-32">Status</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-1/3">Remarks / Action</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-24">NEPL ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[180px]">Equipment</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[100px]">Make</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[100px]">Model</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[100px]">Range</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[100px]">Serial No</th>
+                      <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-16">Qty</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-24">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider min-w-[250px]">Remarks / Action</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-200">
                     {inwardDetails.equipments.map((eq, index) => {
                       const isDeviated = eq.visual_inspection_notes !== 'OK';
                       const hasCustomerRemark = customerRemarks[eq.inward_eqp_id] && customerRemarks[eq.inward_eqp_id].trim() !== '';
-                      
+                     
                       return (
-                        <tr key={eq.inward_eqp_id} className={isDeviated ? "bg-amber-50/30" : "bg-white"}>
-                          
+                        <tr key={eq.inward_eqp_id} className={isDeviated ? "bg-amber-50/30" : "bg-white hover:bg-slate-50 transition-colors"}>
+                         
                           <td className="px-4 py-4 text-sm text-slate-500 align-top">
                             {index + 1}
                           </td>
-
-                          <td className="px-4 py-4 text-sm font-medium text-slate-900 align-top">
+ 
+                          <td className="px-4 py-4 text-sm font-medium text-slate-900 align-top whitespace-nowrap">
                             {eq.nepl_id}
                           </td>
-
+ 
                           <td className="px-4 py-4 text-sm text-slate-900 align-top">
                             <div className="font-medium">{eq.material_description}</div>
-                            
                             {eq.photos && eq.photos.length > 0 && (
                               <div className="flex gap-2 mt-3">
                                 {eq.photos.map((p, i) => (
-                                  <button key={i} onClick={() => openImageModal(eq.photos)} className="relative group h-12 w-12 rounded overflow-hidden border border-slate-200 shadow-sm hover:ring-2 ring-indigo-500">
+                                  <button key={i} onClick={() => openImageModal(eq.photos)} className="relative group h-10 w-10 rounded overflow-hidden border border-slate-200 shadow-sm hover:ring-2 ring-indigo-500">
                                     <img src={resolvePhotoUrl(p)} alt="" className="h-full w-full object-cover" />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                   </button>
@@ -372,29 +388,51 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                               </div>
                             )}
                           </td>
-
-                          <td className="px-4 py-4 text-sm text-slate-600 align-top hidden md:table-cell">
-                            <div>{eq.make}</div>
-                            <div className="text-xs text-slate-400">{eq.model}</div>
-                            <div className="text-xs text-slate-400">S/N: {eq.serial_no}</div>
+ 
+                          {/* Make */}
+                          <td className="px-4 py-4 text-sm text-slate-700 align-top">
+                            {eq.make}
                           </td>
-
+ 
+                          {/* Model */}
+                          <td className="px-4 py-4 text-sm text-slate-700 align-top">
+                            {eq.model}
+                          </td>
+ 
+                          {/* Range - Added */}
+                          <td className="px-4 py-4 text-sm text-slate-600 align-top whitespace-nowrap">
+                             <div className="flex items-center gap-1.5">
+                               <Gauge size={14} className="text-slate-400" />
+                               {eq.range || '-'}
+                             </div>
+                          </td>
+ 
+                          {/* Serial No - Modified (Removed Hash Icon) */}
+                          <td className="px-4 py-4 text-sm text-slate-600 align-top font-mono">
+                             {eq.serial_no || '-'}
+                          </td>
+ 
+                          {/* Quantity */}
+                          <td className="px-4 py-4 text-sm text-slate-900 align-top text-center font-semibold">
+                             {(eq as any).quantity || (eq as any).qty || 1}
+                          </td>
+ 
                           <td className="px-4 py-4 align-top">
                             {isDeviated ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
                                 <AlertTriangle size={14} /> Deviation
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200 whitespace-nowrap">
                                 <CheckCircle size={14} /> OK
                               </span>
                             )}
                           </td>
-
+ 
                           <td className="px-4 py-4 align-top">
-                            {isDeviated ? (
-                              <div className="space-y-3">
-                                {/* Engineer Remarks Display */}
+                            <div className="space-y-3">
+                              {/* Engineer Remarks Display (Only for Deviations) */}
+                              {isDeviated && (
                                 <div className="bg-white p-3 rounded border border-amber-200 text-sm text-amber-900 shadow-sm">
                                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-amber-700 mb-2">
                                     <Wrench size={12} /> Engineer's Remarks
@@ -407,44 +445,40 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                                     )}
                                   </div>
                                 </div>
-
-                                {/* Customer Remarks Area */}
-                                <div>
-                                    {hasCustomerRemark && (
-                                        <div className="mb-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-900">
-                                            <span className="block text-xs font-semibold text-indigo-500 mb-1 uppercase">Your Decision:</span>
-                                            "{customerRemarks[eq.inward_eqp_id]}"
-                                        </div>
-                                    )}
-                                    
-                                    <div className="flex items-center justify-between">
-                                        {!isLocked && (
-                                            <button
-                                                onClick={() => openRemarkModal(eq.inward_eqp_id, customerRemarks[eq.inward_eqp_id] || "")}
-                                                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all shadow-sm 
-                                                ${hasCustomerRemark 
-                                                    ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50' 
-                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md'
-                                                }`}
-                                            >
-                                                {hasCustomerRemark ? <Edit2 size={16} /> : <MessageSquarePlus size={16} />}
-                                                {hasCustomerRemark ? 'Edit Remark' : 'Add Remark'}
-                                            </button>
-                                        )}
-
-                                        {savedSuccessRows[eq.inward_eqp_id] && !isLocked && (
-                                            <span className="text-green-600 text-xs font-medium flex items-center gap-1 animate-fade-in bg-green-50 px-2 py-1 rounded-full border border-green-100">
-                                                <CheckCircle size={12} /> Saved
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+                              )}
+ 
+                              {/* Customer Remarks Area */}
+                              <div>
+                                  {hasCustomerRemark && (
+                                      <div className="mb-2 p-3 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-900">
+                                          <span className="block text-xs font-semibold text-indigo-500 mb-1 uppercase">Your Decision:</span>
+                                          "{customerRemarks[eq.inward_eqp_id]}"
+                                      </div>
+                                  )}
+                                 
+                                  <div className="flex items-center justify-between">
+                                      {!isLocked && (
+                                          <button
+                                              onClick={() => openRemarkModal(eq.inward_eqp_id, customerRemarks[eq.inward_eqp_id] || "")}
+                                              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all shadow-sm
+                                              ${hasCustomerRemark
+                                                  ? 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                                                  : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md'
+                                              }`}
+                                          >
+                                              {hasCustomerRemark ? <Edit2 size={16} /> : <MessageSquarePlus size={16} />}
+                                              {hasCustomerRemark ? 'Edit Remark' : 'Add Remark'}
+                                          </button>
+                                      )}
+ 
+                                      {savedSuccessRows[eq.inward_eqp_id] && !isLocked && (
+                                          <span className="text-green-600 text-xs font-medium flex items-center gap-1 animate-fade-in bg-green-50 px-2 py-1 rounded-full border border-green-100">
+                                              <CheckCircle size={12} /> Saved
+                                          </span>
+                                      )}
+                                  </div>
                               </div>
-                            ) : (
-                              <div className="text-sm text-slate-400 italic pt-1">
-                                No remarks required.
-                              </div>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -452,12 +486,12 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                   </tbody>
                 </table>
               </div>
-
+ 
               {!isLocked && (
                 <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-end items-center gap-4">
                   <div className="text-sm text-slate-500 text-center sm:text-right">
                     Remarks are saved automatically when you click "Save" in the popup.<br/>
-                    Finalizing will lock this report.
+                    Finalizing will confirm completion.
                   </div>
                   <button
                     onClick={handleFinalize}
@@ -473,7 +507,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
           </div>
         </div>
       </div>
-
+ 
       {/* --- Image Modal --- */}
       {showImageModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm" onClick={() => setShowImageModal(false)}>
@@ -489,12 +523,12 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
           </div>
         </div>
       )}
-
+ 
       {/* --- Add/Edit Remark Modal --- */}
       {showRemarkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm transition-opacity" onClick={closeRemarkModal}>
-            <div 
-                className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden transform transition-all" 
+            <div
+                className="bg-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden transform transition-all"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Modal Header */}
@@ -507,7 +541,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                         <X size={24} />
                     </button>
                 </div>
-
+ 
                 {/* Modal Body */}
                 <div className="p-6">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -524,17 +558,17 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                         Please be specific about how we should proceed with this equipment.
                     </p>
                 </div>
-
+ 
                 {/* Modal Footer */}
                 <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3">
-                    <button 
+                    <button
                         onClick={closeRemarkModal}
                         disabled={savingRows[editingId!]}
                         className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
                     >
                         Cancel
                     </button>
-                    <button 
+                    <button
                         onClick={handleSaveFromModal}
                         disabled={savingRows[editingId!]}
                         className="flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
@@ -558,5 +592,6 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     </>
   );
 };
-
+ 
 export default CustomerRemarksPortal;
+ 

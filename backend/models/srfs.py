@@ -7,7 +7,7 @@ class Srf(Base):
 
     srf_id = Column(Integer, primary_key=True)
     inward_id = Column(Integer, ForeignKey("inward.inward_id", ondelete="CASCADE"), unique=True, index=True)
-    srf_no = Column(Integer, nullable=False)
+    srf_no = Column(String, nullable=False)
     nepl_srf_no = Column(String(100), unique=True)
     date = Column(Date, nullable=False)
     telephone = Column(String(50))

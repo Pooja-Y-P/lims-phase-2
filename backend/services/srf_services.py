@@ -74,10 +74,12 @@ class SrfService:
             .options(selectinload(Inward.equipments))
             .where(
                 Inward.status == 'updated',
-                Inward.inward_id.not_in(existing_srf_subquery)
+                Inward.inward_id.not_in(existing_srf_subquery),
+                ~Inward.equipments.any(InwardEquipment.status != 'updated')
             )
             .order_by(Inward.updated_at.desc())
         ).all()
+
 
         for inward in fresh_inwards:
             # Only add if not already added by the Draft loop (safety check)
@@ -138,20 +140,14 @@ class SrfService:
 
         customer = self.db.get(Customer, inward.customer_id)
         
-        # Extract integer from inward.srf_no string
-        srf_no_int = 0
-        if inward.srf_no:
-            digits = re.findall(r'\d+', str(inward.srf_no))
-            if digits:
-                srf_no_int = int("".join(digits))
-
-        srf_string_id = str(inward.srf_no)
+        # Use the srf number string directly from inward, do not extract digits
+        srf_string_val = str(inward.srf_no) if inward.srf_no else ""
 
         # Create new SRF record
         new_srf = Srf(
             inward_id=inward_id,
-            srf_no=srf_no_int,
-            nepl_srf_no=srf_string_id,
+            srf_no=srf_string_val, # Storing string directly as requested
+            nepl_srf_no=srf_string_val,
             date=srf_data.get('date', inward.material_inward_date),
             telephone=srf_data.get('telephone'),
             contact_person=srf_data.get('contact_person'),
@@ -461,7 +457,8 @@ class SrfService:
             existing_srf_subquery = select(Srf.inward_id)
             query = select(Inward).options(selectinload(Inward.equipments)).where(
                 Inward.status == 'updated',
-                Inward.inward_id.not_in(existing_srf_subquery)
+                Inward.inward_id.not_in(existing_srf_subquery),
+                ~Inward.equipments.any(InwardEquipment.status != 'updated')
             )
             
             if start_date:

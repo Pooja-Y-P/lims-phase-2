@@ -57,6 +57,11 @@ class LogoutRequest(BaseModel):
 class UserStatusUpdateRequest(BaseModel):
     is_active: bool
 
+# --- NEW: Schema for Batch Company Update ---
+class BatchCustomerUserStatusRequest(BaseModel):
+    customer_details: str
+    is_active: bool
+
 # -------------------- InvitationRequest --------------------
 class InvitationRequest(BaseModel):
     email: EmailStr
@@ -67,7 +72,7 @@ class InvitationRequest(BaseModel):
     phone_number: Optional[str] = None
     customer_id: Optional[int] = None 
     ship_to_address: Optional[str] = None
-    bill_to_address : Optional[str] = None# Optional: link to an existing customer
+    bill_to_address : Optional[str] = None
 
 # ====================================================================
 # RESPONSE SCHEMAS
@@ -80,6 +85,10 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     role: str
     customer_id: Optional[int] = None
+    
+    # This allows the frontend to see the Company Name for grouping
+    customer_details: Optional[str] = None 
+    
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None

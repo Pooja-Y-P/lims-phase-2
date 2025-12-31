@@ -1,0 +1,59 @@
+# ==== GLOBAL IGNORES ====
+.git
+.gitignore
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# ==== ENV FILES ====
+.env
+.env.local
+env/
+*.secret
+
+# ==== BACKEND ====
+backend/__pycache__
+backend/.pytest_cache
+backend/logs
+backend/.mypy_cache
+backend/.ruff_cache
+
+# Don't ship local venv
+venv/
+env/
+.venv/
+
+# ==== FRONTEND ====
+frontend/node_modules
+frontend/dist
+frontend/build
+frontend/.vite
+frontend/.cache
+frontend/.next
+frontend/.yarn
+frontend/.parcel-cache
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# ==== OS / EDITOR ====
+.vscode
+.idea
+Thumbs.db
+
+# ==== DOCS / README ====
+*.md
+!README.md
+
+# ==== OUTPUT / MEDIA ====
+uploads/
+
+# Allow package-lock.json for frontend
+!frontend/package-lock.json
+

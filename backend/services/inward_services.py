@@ -30,7 +30,8 @@ from backend.models.inward import Inward
 from backend.models.inward_equipments import InwardEquipment
 from backend.models.invitations import Invitation
 from backend.models.users import User
-from backend.schemas.inward_schemas import DraftResponse, InwardCreate, InwardUpdate
+from backend.models.htw_manufacturer_spec import HTWManufacturerSpec
+from backend.schemas.inward_schemas import DraftResponse, InwardCreate, InwardUpdate, CustomerRemarkEntry
 
 # Service imports
 from backend.services.delayed_email_services import DelayedEmailService
@@ -87,201 +88,218 @@ class InwardService:
         return None
 
     def _build_inward_export_rows(self, inward: Inward) -> Tuple[str, List[Dict[str, Any]]]:
-        """
-        Builds rows for Excel export with fields from Inward, InwardEquipment, SRF, and SRF_equipments tables.
-        """
-        customer_details = inward.customer.customer_details if inward.customer else inward.customer_details
-        receiver_name = inward.received_by if inward.received_by else "N/A"
-        ship_to_address = inward.customer.ship_to_address if inward.customer else None
-        bill_to_address = inward.customer.bill_to_address if inward.customer else None
+        """Build export rows with Inward, InwardEquipment, and SRF data."""
+        rows = []
+        sheet_label = self._make_sheet_label(inward)
         
-        # SRF fields
-        srf = inward.srf if inward.srf else None
-        srf_id = srf.srf_id if srf else None
-        nepl_srf_no = srf.nepl_srf_no if srf else None
-        srf_date = srf.date if srf else None
-        srf_telephone = srf.telephone if srf else None
-        srf_contact_person = srf.contact_person if srf else None
-        srf_email = srf.email if srf else None
-        certificate_issue_name = srf.certificate_issue_name if srf else None
-        certificate_issue_address = srf.certificate_issue_adress if srf else None
-        calibration_frequency = srf.calibration_frequency if srf else None
-        statement_of_conformity = self._bool_to_text(srf.statement_of_conformity) if srf else None
-        ref_iso_is_doc = self._bool_to_text(srf.ref_iso_is_doc) if srf else None
-        ref_manufacturer_manual = self._bool_to_text(srf.ref_manufacturer_manual) if srf else None
-        ref_customer_requirement = self._bool_to_text(srf.ref_customer_requirement) if srf else None
-        turnaround_time = srf.turnaround_time if srf else None
-        remark_special_instructions = srf.remark_special_instructions if srf else None
-        srf_remarks = srf.remarks if srf else None
-        srf_status = srf.status if srf else None
-        srf_created_at = srf.created_at if srf else None
-        srf_updated_at = srf.updated_at if srf else None
-
-        base_row = self._sanitize_row({
-            # Inward fields
-            "Inward ID": inward.inward_id, 
-            "SRF No": str(inward.srf_no), 
-            "Customer ID": inward.customer_id,
-            "Customer": customer_details,
-            "Ship To Address": ship_to_address,
-            "Bill To Address": bill_to_address,
-            "Inward Status": inward.status, 
-            "Received By": receiver_name, 
+        # Build base row with Inward data
+        base_row = {
+            "Inward ID": inward.inward_id,
+            "SRF No": inward.srf_no or "",
             "Material Inward Date": inward.material_inward_date,
-            "Customer DC No": inward.customer_dc_no, 
-            "Customer DC Date": inward.customer_dc_date,
+            "Customer DC No": inward.customer_dc_no or "",
+            "Customer DC Date": inward.customer_dc_date or "",
+            "Received By": inward.received_by or "",
+            "Inward Status": inward.status or "",
             "Inward Created At": inward.created_at,
             "Inward Updated At": inward.updated_at,
-            "Inward Created By": inward.created_by,
-            "Inward Updated By": inward.updated_by,
-            # SRF fields
-            "SRF ID": srf_id,
-            "NEPL SRF No": nepl_srf_no,
-            "SRF Date": srf_date,
-            "SRF Telephone": srf_telephone,
-            "SRF Contact Person": srf_contact_person,
-            "SRF Email": srf_email,
-            "Certificate Issue Name": certificate_issue_name,
-            "Certificate Issue Address": certificate_issue_address,
-            "Calibration Frequency": calibration_frequency,
-            "Statement of Conformity": statement_of_conformity,
-            "Ref ISO/IS Doc": ref_iso_is_doc,
-            "Ref Manufacturer Manual": ref_manufacturer_manual,
-            "Ref Customer Requirement": ref_customer_requirement,
-            "Turnaround Time": turnaround_time,
-            "Remark Special Instructions": remark_special_instructions,
-            "SRF Remarks": srf_remarks,
-            "SRF Status": srf_status,
-            "SRF Created At": srf_created_at,
-            "SRF Updated At": srf_updated_at,
-        })
+        }
         
-        rows: List[Dict[str, Any]] = []
-        
-        equipment_items = sorted(inward.equipments, key=lambda eq: eq.nepl_id) if inward.equipments else []
-
-        if equipment_items:
-            for index, equipment in enumerate(equipment_items, start=1):
-                # Handle photos - convert to count or comma-separated string if needed
-                photos_count = len(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else 0
-                photos_str = ", ".join(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else None
-                
-                # SRF Equipment fields
-                srf_equipment = equipment.srf_equipment if equipment.srf_equipment else None
-                srf_eqp_id = srf_equipment.srf_eqp_id if srf_equipment else None
-                srf_equipment_unit = srf_equipment.unit if srf_equipment else None
-                no_of_calibration_points = srf_equipment.no_of_calibration_points if srf_equipment else None
-                mode_of_calibration = srf_equipment.mode_of_calibration if srf_equipment else None
-                srf_equipment_created_at = srf_equipment.created_at if srf_equipment else None
-                srf_equipment_updated_at = srf_equipment.updated_at if srf_equipment else None
-                
-                rows.append(self._sanitize_row({
-                    **base_row, 
-                    # Inward Equipment fields
-                    "Equipment Row": index,
-                    "Equipment ID": equipment.inward_eqp_id,
-                    "Equipment NEPL ID": equipment.nepl_id,
-                    "Material Description": equipment.material_description, 
-                    "Make": equipment.make,
-                    "Model": equipment.model, 
-                    "Range": equipment.range, 
-                    "Serial No": equipment.serial_no,
-                    "Quantity": equipment.quantity, 
-                    "Visual Inspection Notes": equipment.visual_inspection_notes,
-                    "Calibration By": equipment.calibration_by, 
-                    "Supplier": equipment.supplier, 
-                    "Out DC": equipment.out_dc, 
-                    "In DC": equipment.in_dc,
-                    "Nextage Contract Reference": equipment.nextage_contract_reference,
-                    "Accessories Included": equipment.accessories_included,
-                    "QR Code": equipment.qr_code,
-                    "Barcode": equipment.barcode,
-                    "Engineer Remarks": equipment.engineer_remarks,
-                    "Customer Remarks": equipment.customer_remarks,
-                    "Photos Count": photos_count,
-                    "Photos": photos_str,
-                    "Equipment Created At": equipment.created_at,
-                    "Equipment Updated At": equipment.updated_at,
-                    # SRF Equipment fields
-                    "SRF Equipment ID": srf_eqp_id,
-                    "SRF Equipment Unit": srf_equipment_unit,
-                    "No of Calibration Points": no_of_calibration_points,
-                    "Mode of Calibration": mode_of_calibration,
-                    "SRF Equipment Created At": srf_equipment_created_at,
-                    "SRF Equipment Updated At": srf_equipment_updated_at,
-                }))
+        # Add customer data if available
+        customer = inward.customer
+        if customer:
+            base_row.update({
+                "Customer ID": customer.customer_id,
+                "Customer Details": customer.customer_details or "",
+                "Contact Person": customer.contact_person or "",
+                "Customer Email": customer.email or "",
+                "Customer Phone": customer.phone or "",
+                "Ship To Address": customer.ship_to_address or "",
+                "Bill To Address": customer.bill_to_address or "",
+            })
         else:
-            rows.append(self._sanitize_row({**base_row, "Equipment Row": 1}))
-        return self._make_sheet_label(inward), rows
+            base_row.update({
+                "Customer ID": "",
+                "Customer Details": inward.customer_details or "",
+                "Contact Person": "",
+                "Customer Email": "",
+                "Customer Phone": "",
+                "Ship To Address": "",
+                "Bill To Address": "",
+            })
+        
+        # Add SRF data if available
+        srf = inward.srf
+        if srf:
+            base_row.update({
+                "SRF ID": srf.srf_id,
+                "NEPL SRF No": srf.nepl_srf_no or "",
+                "SRF Date": srf.date,
+                "SRF Telephone": srf.telephone or "",
+                "SRF Contact Person": srf.contact_person or "",
+                "SRF Email": srf.email or "",
+                "Certificate Issue Name": srf.certificate_issue_name or "",
+                "Certificate Issue Address": srf.certificate_issue_adress or "",
+                "Calibration Frequency": srf.calibration_frequency or "",
+                "Statement of Conformity": self._bool_to_text(srf.statement_of_conformity),
+                "Ref ISO/IS Doc": self._bool_to_text(srf.ref_iso_is_doc),
+                "Ref Manufacturer Manual": self._bool_to_text(srf.ref_manufacturer_manual),
+                "Ref Customer Requirement": self._bool_to_text(srf.ref_customer_requirement),
+                "Turnaround Time": srf.turnaround_time,
+                "Remark/Special Instructions": srf.remark_special_instructions or "",
+                "SRF Remarks": srf.remarks or "",
+                "SRF Status": srf.status or "",
+                "SRF Created At": srf.created_at,
+                "SRF Updated At": srf.updated_at,
+            })
+        else:
+            base_row.update({
+                "SRF ID": "",
+                "NEPL SRF No": "",
+                "SRF Date": "",
+                "SRF Telephone": "",
+                "SRF Contact Person": "",
+                "SRF Email": "",
+                "Certificate Issue Name": "",
+                "Certificate Issue Address": "",
+                "Calibration Frequency": "",
+                "Statement of Conformity": "",
+                "Ref ISO/IS Doc": "",
+                "Ref Manufacturer Manual": "",
+                "Ref Customer Requirement": "",
+                "Turnaround Time": "",
+                "Remark/Special Instructions": "",
+                "SRF Remarks": "",
+                "SRF Status": "",
+                "SRF Created At": "",
+                "SRF Updated At": "",
+            })
+        
+        # Add equipment rows
+        equipments = inward.equipments if inward.equipments else []
+        if equipments:
+            for idx, eq in enumerate(equipments, 1):
+                equipment_row = {
+                    **base_row,
+                    "Equipment Row": idx,
+                    "Equipment ID": eq.inward_eqp_id,
+                    "NEPL ID": eq.nepl_id or "",
+                    "Material Description": eq.material_description or "",
+                    "Make": eq.make or "",
+                    "Model": eq.model or "",
+                    "Range": eq.range or "",
+                    "Serial No": eq.serial_no or "",
+                    "Quantity": eq.quantity or 1,
+                    "Equipment Status": eq.status or "",
+                    "Visual Inspection Notes": eq.visual_inspection_notes or "",
+                    "Calibration By": eq.calibration_by or "",
+                    "Supplier": eq.supplier or "",
+                    "Out DC": eq.out_dc or "",
+                    "In DC": eq.in_dc or "",
+                    "Nextage Contract Reference": eq.nextage_contract_reference or "",
+                    "Accessories Included": eq.accessories_included or "",
+                    "Engineer Remarks": eq.engineer_remarks or "",
+                    "Customer Remarks": eq.customer_remarks or "",
+                    "Equipment Created At": eq.created_at,
+                    "Equipment Updated At": eq.updated_at,
+                }
+                
+                # Add SRF Equipment data if available
+                srf_eq = eq.srf_equipment
+                if srf_eq:
+                    equipment_row.update({
+                        "SRF Equipment Unit": srf_eq.unit or "",
+                        "No of Calibration Points": srf_eq.no_of_calibration_points or "",
+                        "Mode of Calibration": srf_eq.mode_of_calibration or "",
+                    })
+                else:
+                    equipment_row.update({
+                        "SRF Equipment Unit": "",
+                        "No of Calibration Points": "",
+                        "Mode of Calibration": "",
+                    })
+                
+                rows.append(self._sanitize_row(equipment_row))
+        else:
+            # If no equipment, add base row only
+            rows.append(self._sanitize_row(base_row))
+        
+        return sheet_label, rows 
 
     def _build_inward_only_export_rows(self, inward: Inward) -> Tuple[str, List[Dict[str, Any]]]:
-        """
-        Builds rows for Excel export with only Inward and InwardEquipment table fields.
-        No SRF-related fields are included. Used for "View and Update Inward" export.
-        """
-        customer_details = inward.customer.customer_details if inward.customer else inward.customer_details
-        receiver_name = inward.received_by if inward.received_by else "N/A"
-        ship_to_address = inward.customer.ship_to_address if inward.customer else None
-        bill_to_address = inward.customer.bill_to_address if inward.customer else None
-
-        base_row = self._sanitize_row({
-            "Inward ID": inward.inward_id, 
-            "SRF No": str(inward.srf_no), 
-            "Customer ID": inward.customer_id,
-            "Customer": customer_details,
-            "Ship To Address": ship_to_address,
-            "Bill To Address": bill_to_address,
-            "Status": inward.status, 
-            "Received By": receiver_name, 
+        """Build export rows with only Inward and InwardEquipment data (no SRF data)."""
+        rows = []
+        sheet_label = self._make_sheet_label(inward)
+        
+        # Build base row with Inward data
+        base_row = {
+            "Inward ID": inward.inward_id,
+            "SRF No": inward.srf_no or "",
             "Material Inward Date": inward.material_inward_date,
-            "Customer DC No": inward.customer_dc_no, 
-            "Customer DC Date": inward.customer_dc_date,
+            "Customer DC No": inward.customer_dc_no or "",
+            "Customer DC Date": inward.customer_dc_date or "",
+            "Received By": inward.received_by or "",
+            "Status": inward.status or "",
             "Created At": inward.created_at,
             "Updated At": inward.updated_at,
-            "Created By": inward.created_by,
-            "Updated By": inward.updated_by,
-        })
+        }
         
-        rows: List[Dict[str, Any]] = []
+        # Add customer data if available
+        customer = inward.customer
+        if customer:
+            base_row.update({
+                "Customer ID": customer.customer_id,
+                "Customer Details": customer.customer_details or "",
+                "Contact Person": customer.contact_person or "",
+                "Customer Email": customer.email or "",
+                "Customer Phone": customer.phone or "",
+                "Ship To Address": customer.ship_to_address or "",
+                "Bill To Address": customer.bill_to_address or "",
+            })
+        else:
+            base_row.update({
+                "Customer ID": "",
+                "Customer Details": inward.customer_details or "",
+                "Contact Person": "",
+                "Customer Email": "",
+                "Customer Phone": "",
+                "Ship To Address": "",
+                "Bill To Address": "",
+            })
         
-        equipment_items = sorted(inward.equipments, key=lambda eq: eq.nepl_id) if inward.equipments else []
-
-        if equipment_items:
-            for index, equipment in enumerate(equipment_items, start=1):
-                # Handle photos - convert to count or comma-separated string if needed
-                photos_count = len(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else 0
-                photos_str = ", ".join(equipment.photos) if equipment.photos and isinstance(equipment.photos, list) else None
-                
+        # Add equipment rows
+        equipments = inward.equipments if inward.equipments else []
+        if equipments:
+            for idx, eq in enumerate(equipments, 1):
                 rows.append(self._sanitize_row({
-                    **base_row, 
-                    "Equipment Row": index,
-                    "Equipment ID": equipment.inward_eqp_id,
-                    "Equipment NEPL ID": equipment.nepl_id,
-                    "Material Description": equipment.material_description, 
-                    "Make": equipment.make,
-                    "Model": equipment.model, 
-                    "Range": equipment.range, 
-                    "Serial No": equipment.serial_no,
-                    "Quantity": equipment.quantity, 
-                    "Visual Inspection Notes": equipment.visual_inspection_notes,
-                    "Calibration By": equipment.calibration_by, 
-                    "Supplier": equipment.supplier, 
-                    "Out DC": equipment.out_dc, 
-                    "In DC": equipment.in_dc,
-                    "Nextage Contract Reference": equipment.nextage_contract_reference,
-                    "Accessories Included": equipment.accessories_included,
-                    "QR Code": equipment.qr_code,
-                    "Barcode": equipment.barcode,
-                    "Engineer Remarks": equipment.engineer_remarks,
-                    "Customer Remarks": equipment.customer_remarks,
-                    "Photos Count": photos_count,
-                    "Photos": photos_str,
-                    "Equipment Created At": equipment.created_at,
-                    "Equipment Updated At": equipment.updated_at,
+                    **base_row,
+                    "Equipment Row": idx,
+                    "Equipment ID": eq.inward_eqp_id,
+                    "NEPL ID": eq.nepl_id or "",
+                    "Material Description": eq.material_description or "",
+                    "Make": eq.make or "",
+                    "Model": eq.model or "",
+                    "Range": eq.range or "",
+                    "Serial No": eq.serial_no or "",
+                    "Quantity": eq.quantity or 1,
+                    "Equipment Status": eq.status or "",
+                    "Visual Inspection Notes": eq.visual_inspection_notes or "",
+                    "Calibration By": eq.calibration_by or "",
+                    "Supplier": eq.supplier or "",
+                    "Out DC": eq.out_dc or "",
+                    "In DC": eq.in_dc or "",
+                    "Nextage Contract Reference": eq.nextage_contract_reference or "",
+                    "Accessories Included": eq.accessories_included or "",
+                    "Engineer Remarks": eq.engineer_remarks or "",
+                    "Customer Remarks": eq.customer_remarks or "",
+                    "Equipment Created At": eq.created_at,
+                    "Equipment Updated At": eq.updated_at,
                 }))
         else:
-            rows.append(self._sanitize_row({**base_row, "Equipment Row": 1}))
-        return self._make_sheet_label(inward), rows
+            # If no equipment, add base row only
+            rows.append(self._sanitize_row(base_row))
+        
+        return sheet_label, rows
 
     # === Draft Handling ===
     async def get_user_drafts(self, user_id: int) -> List[DraftResponse]:
@@ -328,7 +346,6 @@ class InwardService:
             material_date = draft_data.get('material_inward_date') or draft_data.get('date')
             incoming_srf = draft_data.get('srf_no')
             
-            # Handle SRF No for Drafts
             if not incoming_srf or incoming_srf in ['TBD', 'Loading...', 'Error!']:
                 if inward_id:
                     existing_draft = self.db.get(Inward, inward_id)
@@ -449,12 +466,13 @@ class InwardService:
             raise HTTPException(status_code=500, detail="An unexpected error occurred during submission.")
 
     async def update_inward_with_files(self, inward_id: int, inward_data: InwardUpdate, files_by_index: Dict[int, List[UploadFile]], updater_id: int) -> Inward:
+        print(f"\n[DEBUG] --- STARTING INWARD UPDATE FOR ID: {inward_id} ---")
         try:
             db_inward = self.db.get(Inward, inward_id)
-            if not db_inward: raise HTTPException(status_code=404, detail="Inward record not found.")
+            if not db_inward: 
+                raise HTTPException(status_code=404, detail="Inward record not found.")
 
-            self.db.query(InwardEquipment).filter(InwardEquipment.inward_id == inward_id).delete(synchronize_session=False)
-
+            # 1. Update Basic Inward Info
             db_inward.material_inward_date = inward_data.material_inward_date
             db_inward.customer_dc_date = inward_data.customer_dc_date
             db_inward.customer_dc_no = inward_data.customer_dc_no
@@ -463,18 +481,132 @@ class InwardService:
             db_inward.received_by = inward_data.receiver
             db_inward.updated_by = updater_id
             db_inward.updated_at = datetime.now(timezone.utc)
-            if db_inward.status == 'reviewed': db_inward.status = 'updated'
+            
+            if db_inward.status == 'reviewed': 
+                db_inward.status = 'updated'
 
-            await self._process_equipment_list(inward_id, inward_data.equipment_list, files_by_index)
+            # 2. FETCH EXISTING EQUIPMENT (Do NOT delete them yet)
+            existing_equipments = self.db.query(InwardEquipment).filter(
+                InwardEquipment.inward_id == inward_id
+            ).all()
+            
+            # Map ID -> Object for fast lookup
+            existing_eq_map = {eq.inward_eqp_id: eq for eq in existing_equipments}
+            print(f"[DEBUG] Found {len(existing_eq_map)} existing items in DB.")
+
+            # Track which IDs are processed so we know what to delete later
+            processed_ids = []
+
+            # 3. PROCESS INCOMING LIST
+            for index, eqp_model in enumerate(inward_data.equipment_list):
+                
+                # --- A. Handle Files (Logic copied from _process_equipment_list) ---
+                existing_photos = getattr(eqp_model, "existing_photo_urls", []) or []
+                photo_paths = [str(p).replace("\\", "/") for p in existing_photos if isinstance(p, str) and p.strip()]
+                
+                if index in files_by_index:
+                    for file in files_by_index[index]:
+                        if file and file.filename:
+                            unique_filename = f"{uuid.uuid4()}{os.path.splitext(file.filename)[1]}"
+                            file_path = UPLOAD_DIRECTORY / unique_filename
+                            await file.seek(0)
+                            async with aiofiles.open(str(file_path), 'wb') as out_file:
+                                await out_file.write(await file.read())
+                            photo_paths.append(os.path.relpath(file_path, BASE_DIR).replace("\\", "/"))
+                
+                # --- B. ID & Status Logic ---
+                eq_id = getattr(eqp_model, "inward_eqp_id", None)
+                incoming_status = getattr(eqp_model, "status", None)
+
+                print(f"[DEBUG] Processing Item Index {index} -> ID: {eq_id}, Incoming Status: {incoming_status}")
+
+                # --- C. Update vs Create ---
+                if eq_id and eq_id in existing_eq_map:
+                    # === UPDATE EXISTING ===
+                    print(f"   -> Updating Existing Row {eq_id}")
+                    db_eq = existing_eq_map[eq_id]
+                    processed_ids.append(eq_id)
+
+                    # Update Standard Fields
+                    db_eq.nepl_id = eqp_model.nepl_id
+                    db_eq.material_description = eqp_model.material_desc
+                    db_eq.make = eqp_model.make
+                    db_eq.model = eqp_model.model
+                    db_eq.range = eqp_model.range
+                    db_eq.serial_no = eqp_model.serial_no
+                    db_eq.quantity = eqp_model.qty
+                    db_eq.visual_inspection_notes = eqp_model.visual_inspection_notes
+                    db_eq.calibration_by = eqp_model.calibration_by
+                    db_eq.supplier = eqp_model.supplier
+                    db_eq.out_dc = eqp_model.out_dc
+                    db_eq.in_dc = eqp_model.in_dc
+                    db_eq.nextage_contract_reference = eqp_model.nextage_ref
+                    db_eq.accessories_included = eqp_model.accessories_included
+                    db_eq.qr_code = eqp_model.qr_code
+                    db_eq.barcode = eqp_model.barcode
+                    db_eq.engineer_remarks = eqp_model.engineer_remarks
+                    db_eq.photos = photo_paths
+
+                    # === STATUS UPDATE FIX ===
+                    # Only update status if provided in payload
+                    if incoming_status:
+                        print(f"   -> Updating Status from '{db_eq.status}' to '{incoming_status}'")
+                        db_eq.status = incoming_status
+                    else:
+                        print(f"   -> No status provided. Keeping '{db_eq.status}'")
+
+                else:
+                    # === CREATE NEW ===
+                    print(f"   -> Creating NEW Item (Default Status: 'created')")
+                    
+                    # Ensure authoritative SRF logic applies to new items
+                    authoritative_nepl_id = f"{db_inward.srf_no}-{index + 1}"
+                    
+                    db_equipment = InwardEquipment(
+                        inward_id=inward_id,
+                        nepl_id=authoritative_nepl_id,
+                        material_description=eqp_model.material_desc,
+                        make=eqp_model.make, model=eqp_model.model, range=eqp_model.range,
+                        serial_no=eqp_model.serial_no, quantity=eqp_model.qty,
+                        visual_inspection_notes=eqp_model.visual_inspection_notes,
+                        calibration_by=eqp_model.calibration_by,
+                        supplier=eqp_model.supplier, out_dc=eqp_model.out_dc, in_dc=eqp_model.in_dc,
+                        nextage_contract_reference=eqp_model.nextage_ref,
+                        accessories_included=eqp_model.accessories_included,
+                        qr_code=eqp_model.qr_code, barcode=eqp_model.barcode,
+                        photos=photo_paths,
+                        engineer_remarks=eqp_model.engineer_remarks,
+                        customer_remarks=None,
+                        
+                        # New items get 'created' or 'pending'
+                        status=incoming_status or 'created' 
+                    )
+                    self.db.add(db_equipment)
+
+            # 4. DELETE REMOVED ITEMS
+            for old_id, old_obj in existing_eq_map.items():
+                if old_id not in processed_ids:
+                    print(f"[DEBUG] Deleting removed item ID: {old_id}")
+                    self.db.delete(old_obj)
 
             self.db.commit()
             self.db.refresh(db_inward)
+            print("[DEBUG] --- UPDATE COMPLETE ---\n")
             return db_inward
+
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error updating inward {inward_id}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Error while updating.")
+            raise HTTPException(status_code=500, detail=f"Error while updating: {str(e)}")
 
+    # =====================================================
+    # FIX ENDS HERE
+    # =====================================================
+
+    # ... rest of the class (_process_equipment_list, etc.) ...
+    
+    # NOTE: _process_equipment_list is still needed for 'submit_inward' (Create New),
+    # but 'update_inward_with_files' now handles its own logic to allow ID mapping.
     async def _process_equipment_list(self, inward_id: int, equipment_list: List, files_by_index: Dict[int, List[UploadFile]]):
         inward_record = self.db.get(Inward, inward_id)
         if not inward_record:
@@ -513,11 +645,105 @@ class InwardService:
                 qr_code=eqp_model.qr_code, barcode=eqp_model.barcode,
                 photos=photo_paths,
                 engineer_remarks=eqp_model.engineer_remarks,
-                customer_remarks=None
+                customer_remarks=None,
+                status='pending' # Explicitly set status to pending on creation
             )
             equipment_models.append(db_equipment)
         if equipment_models:
             self.db.add_all(equipment_models)
+
+    # =========================================================
+    # Manufacturer Spec Lookup (Dropdown Support)
+    # =========================================================
+
+    def get_all_makes(self) -> List[str]:
+        """Get all distinct makes from HTWManufacturerSpec where is_active is True."""
+        rows = (
+            self.db.query(HTWManufacturerSpec.make)
+            .filter(HTWManufacturerSpec.is_active.is_(True))
+            .distinct()
+            .order_by(HTWManufacturerSpec.make)
+            .all()
+        )
+        return [r[0] for r in rows if r[0]]
+
+    def get_models_by_make(self, make: str) -> List[str]:
+        """Get all distinct models for a given make where is_active is True."""
+        rows = (
+            self.db.query(HTWManufacturerSpec.model)
+            .filter(
+                HTWManufacturerSpec.make == make,
+                HTWManufacturerSpec.is_active.is_(True)
+            )
+            .distinct()
+            .order_by(HTWManufacturerSpec.model)
+            .all()
+        )
+        return [r[0] for r in rows if r[0]]
+
+    def get_range_by_make_model(self, make: str, model: str) -> Optional[Dict[str, float]]:
+        """Get range_min and range_max for a given make and model combination."""
+        spec = (
+            self.db.query(HTWManufacturerSpec)
+            .filter(
+                HTWManufacturerSpec.make == make,
+                HTWManufacturerSpec.model == model,
+                HTWManufacturerSpec.is_active.is_(True)
+            )
+            .first()
+        )
+
+        if not spec:
+            return None
+
+        return {
+            "range_min": float(spec.range_min) if spec.range_min is not None else None,
+            "range_max": float(spec.range_max) if spec.range_max is not None else None
+        }
+
+    # === Customer Portal Logic ===
+    
+    async def save_customer_remarks(self, inward_id: int, remarks: List[CustomerRemarkEntry]):
+        """
+        Updates customer remarks for specific equipment and sets their status to 'reviewed'.
+        Also updates the Inward status to 'reviewed' so it appears in the Engineer's workflow.
+        """
+        inward = self.db.get(Inward, inward_id)
+        if not inward:
+            raise HTTPException(status_code=404, detail="Inward record not found.")
+            
+        updated_count = 0
+        for remark_entry in remarks:
+            # Fetch specific equipment
+            eqp = self.db.scalars(
+                select(InwardEquipment).where(
+                    InwardEquipment.inward_eqp_id == remark_entry.inward_eqp_id,
+                    InwardEquipment.inward_id == inward_id
+                )
+            ).first()
+            
+            if eqp:
+                eqp.customer_remarks = remark_entry.customer_remark
+                eqp.status = 'reviewed' # Update equipment status to reviewed
+                updated_count += 1
+        
+        # Requirement: "and inward table status - reviewed"
+        if updated_count > 0:
+             inward.status = 'reviewed'
+             inward.updated_at = datetime.now(timezone.utc)
+        
+        self.db.commit()
+        return updated_count
+
+    async def update_inward_status(self, inward_id: int, status_value: str):
+        inward = self.db.get(Inward, inward_id)
+        if not inward:
+            raise HTTPException(status_code=404, detail="Inward record not found.")
+        
+        inward.status = status_value
+        inward.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        return inward
 
     # === Retrieval Methods ===
     async def get_all_inwards(
@@ -535,6 +761,30 @@ class InwardService:
             query = query.filter(func.date(Inward.material_inward_date) <= end_date)
         return query.order_by(Inward.created_at.desc()).all()
 
+    async def get_reviewed_inwards_filtered(self) -> List[Inward]:
+        """
+        Retrieves inwards with status 'reviewed'.
+        Crucially, it filters the 'equipments' list to ONLY include equipments 
+        that have status 'reviewed'.
+        """
+        # Fetch inwards that are reviewed
+        inwards = self.db.query(Inward).options(
+            joinedload(Inward.customer),
+            # Preload all equipments; we will filter them in Python
+            joinedload(Inward.equipments) 
+        ).filter(
+            Inward.status == 'reviewed',
+            Inward.is_draft.is_(False)
+        ).order_by(Inward.updated_at.desc()).all()
+
+        # Manually filter the equipments list for each inward object
+        # Only show equipments that the customer has reviewed
+        for inward in inwards:
+            if inward.equipments:
+                inward.equipments = [eq for eq in inward.equipments if eq.status == 'reviewed']
+        
+        return inwards
+
     async def get_inward_by_id(self, inward_id: int) -> Inward:
         db_inward = self.db.query(Inward).options(
             joinedload(Inward.customer), 
@@ -544,12 +794,8 @@ class InwardService:
         if not db_inward or db_inward.is_draft: raise HTTPException(status_code=404, detail="Inward record not found.")
         return db_inward
 
-    # === NEW METHOD: FETCH MATERIAL HISTORY ===
+    # ... (Rest of methods like get_material_history, get_inwards_for_export, etc. remain unchanged)
     async def get_material_history(self) -> List[str]:
-        """
-        Fetches a distinct list of all material descriptions ever used.
-        Used for the dynamic dropdown in the Inward Form.
-        """
         try:
             stmt = (
                 select(InwardEquipment.material_description)
@@ -563,7 +809,8 @@ class InwardService:
         except Exception as e:
             logger.error(f"Error fetching material history: {e}", exc_info=True)
             return []
-
+            
+    # ... (Other methods omitted for brevity, assume they exist as per previous code)
     async def get_inwards_for_export(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
         try:
             from backend.models.srfs import Srf
@@ -591,30 +838,76 @@ class InwardService:
             logger.error(f"Error fetching inwards for export: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to retrieve inwards for export.")
 
-    async def get_updated_inwards(self, start_date: Optional[date] = None, end_date: Optional[date] = None) -> List[Dict[str, Any]]:
+    async def get_updated_inwards(self, start_date: Optional[date] = None, end_date: Optional[date] = None):
         try:
             from backend.models.srfs import Srf
-            stmt = select(Inward).options(selectinload(Inward.customer), selectinload(Inward.equipments)).where(Inward.status == 'updated', Inward.is_draft.is_(False))
+
+            stmt = (
+                select(Inward)
+                .options(
+                    selectinload(Inward.customer),
+                    selectinload(Inward.equipments)
+                )
+                .where(
+                    Inward.status == 'updated',
+                    Inward.is_draft.is_(False)
+                )
+            )
+
+            # Exclude inwards that already have an SRF
             exists_subquery = select(Srf.inward_id).where(Srf.inward_id == Inward.inward_id).exists()
             stmt = stmt.where(not_(exists_subquery))
-            if start_date: stmt = stmt.where(func.date(Inward.updated_at) >= start_date)
-            if end_date: stmt = stmt.where(func.date(Inward.updated_at) <= end_date)
+
+            if start_date:
+                stmt = stmt.where(func.date(Inward.updated_at) >= start_date)
+            if end_date:
+                stmt = stmt.where(func.date(Inward.updated_at) <= end_date)
+
             stmt = stmt.order_by(desc(Inward.updated_at))
+
             inwards = self.db.scalars(stmt).all()
+
+            # ✅ ✅ ✅ FINAL BUSINESS RULE ENFORCEMENT
+            valid_inwards = []
+
+            for inward in inwards:
+                equipments = inward.equipments or []
+
+                # ❌ Reject if no equipments at all
+                if not equipments:
+                    continue
+
+                # ❌ Reject if ANY equipment is NOT updated
+                if any(eq.status != "updated" for eq in equipments):
+                    continue
+
+                # ✅ Only fully valid records reach here
+                valid_inwards.append(inward)
+
             return [
                 {
-                    "inward_id": i.inward_id, "srf_no": str(i.srf_no),
+                    "inward_id": i.inward_id,
+                    "srf_no": str(i.srf_no),
                     "customer_details": (i.customer.customer_details if i.customer else i.customer_details),
-                    "status": i.status, "received_by": i.received_by if i.received_by else 'N/A',
-                    "updated_at": i.updated_at, "equipment_count": len(i.equipments or []),
-                    "calibration_frequency": None, "statement_of_conformity": None,
-                    "ref_iso_is_doc": None, "ref_manufacturer_manual": None,
-                    "ref_customer_requirement": None, "turnaround_time": None, "remarks": None
-                } for i in inwards
+                    "status": i.status,
+                    "received_by": i.received_by if i.received_by else 'N/A',
+                    "updated_at": i.updated_at,
+                    "equipment_count": len(i.equipments or []),
+                    "calibration_frequency": None,
+                    "statement_of_conformity": None,
+                    "ref_iso_is_doc": None,
+                    "ref_manufacturer_manual": None,
+                    "ref_customer_requirement": None,
+                    "turnaround_time": None,
+                    "remarks": None
+                }
+                for i in valid_inwards
             ]
+
         except Exception as e:
             logger.error(f"Error fetching updated inwards (excluding those with SRF): {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to retrieve updated inwards.")
+
 
     async def generate_inward_export(self, inward_id: int) -> BytesIO:
         inward = await self.get_inward_by_id(inward_id)

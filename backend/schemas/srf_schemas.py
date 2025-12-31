@@ -21,9 +21,12 @@ class CustomerSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
  
 class InwardListSummary(BaseModel):
-    """Lightweight schema to just send DC No to the list view."""
+    inward_id: int
+    status: Optional[str] = None
     customer_dc_no: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
+
  
 class SrfEquipmentSchema(BaseModel):
     srf_eqp_id: int
@@ -44,22 +47,39 @@ class InwardEquipmentSchema(BaseModel):
     range: Optional[str] = None
     serial_no: Optional[str] = None
     quantity: int
+
+    # ✅ ✅ ✅ ADD THIS LINE (CRITICAL FIX)
+    status: Optional[str] = None
+
     srf_equipment: Optional[SrfEquipmentSchema] = None
    
     model_config = ConfigDict(from_attributes=True)
+
  
  
 class InwardSchema(BaseModel):
     inward_id: int
+
+    # ✅ Keep original
     equipments: List[InwardEquipmentSchema] = []
+
+    # ✅ Add ALIAS for frontend compatibility
+    inward_equipments: Optional[List[InwardEquipmentSchema]] = None
+
     customer: Optional[CustomerSchema] = None
-   
-    # Added DC fields so they show up in the SRF form
     customer_dc_no: Optional[str] = None
     customer_dc_date: Optional[date] = None
     material_inward_date: Optional[datetime] = None
-   
+    status: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def sync_equipments_alias(self):
+        if self.inward_equipments is None:
+            self.inward_equipments = self.equipments
+        return self
+
     
     @field_validator('customer_dc_date', mode='before')
     @classmethod
@@ -155,6 +175,7 @@ class SrfDetailUpdate(BaseModel):
     ref_manufacturer_manual: Optional[bool] = None
     ref_customer_requirement: Optional[bool] = None
     turnaround_time: Optional[int] = None
+    remark_special_instructions: Optional[str] = None
     remarks: Optional[str] = None
  
     # CRITICAL: Ignore any other fields React sends (like inward object, srf_id, etc.)
@@ -257,7 +278,7 @@ class SrfResponse(BaseModel):
     calibration_frequency: Optional[str] = None
     statement_of_conformity: Optional[bool] = None
     remarks: Optional[str] = None
-   
+    remark_special_instructions: Optional[str] = None
     # Need inward to extract customer details, but we exclude it from final JSON for security/cleanliness
     inward: Optional[InwardSchema] = Field(default=None)
  

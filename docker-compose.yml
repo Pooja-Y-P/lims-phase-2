@@ -1,0 +1,99 @@
+services:
+  postgres:
+    platform: linux/amd64
+    image: postgres:16-alpine
+    container_name: lims-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - lims-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pgadmin:
+    platform: linux/amd64
+    image: dpage/pgadmin4
+    container_name: lims-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-ppkullarni2002@gmail.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-Admin@12345}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/pgpass:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lims-net
+    user: root
+    entrypoint: >
+      /bin/sh -c "
+      chmod 600 /pgpass;
+      chown pgadmin:pgadmin /pgpass;
+      /entrypoint.sh
+      "
+
+  backend:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: lims-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    networks:
+      - lims-net
+
+  frontend:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: lims-frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      VITE_API_BASE_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - lims-net
+    volumes:
+      - ./frontend/src:/app/src  # Hot reload for development
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  lims-net:
+    driver: bridge

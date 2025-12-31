@@ -65,7 +65,6 @@ class CustomerPortalService:
             .where(
                 and_(
                     Inward.customer_id == customer_id,
-                    # FIX: Allow both 'created' (new) and 'reviewed' (partially saved)
                     or_(
                         Inward.status == 'created',
                         Inward.status == 'reviewed',
@@ -102,9 +101,6 @@ class CustomerPortalService:
                 categorized_srfs["approved"].append(srf)
             elif status == "rejected":
                 categorized_srfs["rejected"].append(srf)
-            # Only show in 'pending' if the engineer has explicitly completed/submitted it.
-            # Draft statuses like 'created' or 'in_progress' are deliberately ignored so the customer
-            # doesn't see incomplete work.
             elif status == "inward_completed":
                 categorized_srfs["pending"].append(srf)
         
@@ -117,7 +113,6 @@ class CustomerPortalService:
         Allows a customer to approve or reject an SRF.
         Validates ownership and current status before updating.
         """
-        # Find the SRF and join with Inward to verify the customer_id
         srf_to_update = self.db.query(Srf).join(Inward).filter(
             Srf.srf_id == srf_id,
             Inward.customer_id == customer_id
@@ -126,13 +121,10 @@ class CustomerPortalService:
         if not srf_to_update:
             raise HTTPException(status_code=404, detail="SRF not found or you do not have permission to access it.")
         
-        # Define which statuses can be changed by the customer
-        # Ideally, they should only be able to act on 'inward_completed' items, but we include others for safety/legacy support
         valid_initial_statuses = ['inward_completed', 'pending', 'reviewed', 'updated']
         if srf_to_update.status.lower() not in valid_initial_statuses:
             raise HTTPException(status_code=400, detail=f"This SRF cannot be updated from its current status: '{srf_to_update.status}'")
 
-        # Update the status and remarks
         srf_to_update.status = new_status
         if new_status == 'rejected' and remarks:
             srf_to_update.remarks = remarks
@@ -167,59 +159,49 @@ class CustomerPortalService:
     # --- FIR AND REMARKS WORKFLOW ---
     def get_fir_for_customer_review(self, inward_id: int, customer_id: int = None) -> InwardForCustomer:
         try:
-            # 1. Fetch the Inward record
             stmt = select(Inward).where(Inward.inward_id == inward_id, Inward.is_draft.is_(False))
             if customer_id:
                 stmt = stmt.where(Inward.customer_id == customer_id)
             
             inward = self.db.scalars(stmt).first()
             
-            # 2. Validation
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied.")
             
-            # Allow customers to view 'reviewed' items as well (read-only likely), but strictly block others if needed
-            if inward.status not in ['created', 'reviewed', 'customer_reviewed']:
-                # You might want to allow viewing historical data, so consider removing this check if they just want to view read-only data
-                pass 
-            
-            # 3. Fetch and Sort Equipments
-            # FIX: removed deviation sorting to just show by ID
+            # Fetch and Sort Equipments
             sorted_equipments = self.db.query(InwardEquipment).filter(
                 InwardEquipment.inward_id == inward_id
             ).order_by(InwardEquipment.inward_eqp_id).all()
             
-            # 4. Build Response List
             equipment_list = []
             for eq in sorted_equipments:
                 equipment_list.append({
-                    "inward_eqp_id": eq.inward_eqp_id, 
+                    "inward_eqp_id": eq.inward_eqp_id,
                     "nepl_id": eq.nepl_id,
-                    "material_description": eq.material_description, 
+                    "material_description": eq.material_description,
                     "make": eq.make,
-                    "model": eq.model, 
+                    "model": eq.model,
+                    "range": eq.range,
                     "serial_no": eq.serial_no,
                     "visual_inspection_notes": eq.visual_inspection_notes,
                     "customer_remarks": eq.customer_remarks,
-                    # ADDED: Engineer remarks for frontend display
-                    "engineer_remarks": eq.engineer_remarks, 
-                    "photos": self._format_photo_paths(eq.photos)
+                    "engineer_remarks": eq.engineer_remarks,
+                    "photos": self._format_photo_paths(eq.photos),
+                    "status": eq.status # Include status in response
                 })
             
-            # 5. Return Pydantic Schema
             return InwardForCustomer(
                 inward_id=inward.inward_id, 
                 srf_no=inward.srf_no, 
                 material_inward_date=inward.material_inward_date, 
-                status=inward.status, 
+                status=inward.status,
+                customer_dc_no=inward.customer_dc_no,
                 equipments=equipment_list
             )
 
         except HTTPException:
-            # Re-raise HTTP exceptions (like 404) directly
             raise
         except Exception as e:
-            # Log the actual system error for debugging
             logger.error(f"CRITICAL ERROR in get_fir_for_customer_review: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to retrieve FIR details. Please contact support.")
 
@@ -233,15 +215,11 @@ class CustomerPortalService:
             if not inward:
                 raise HTTPException(status_code=404, detail="Inward record not found or access denied")
             
-            # Check if status allows updates (created = new, reviewed = partly saved)
-            if inward.status not in ['created', 'reviewed','updated']:
+            if inward.status not in ['created', 'reviewed', 'updated']:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"This FIR has already been finalized. Current status: {inward.status}")
             
-            # FIX: Handle attribute mismatch (singular 'customer_remark' vs plural 'customer_remarks')
-            # The error 'EquipmentRemarkUpdate object has no attribute customer_remarks' implies the Schema uses singular 'customer_remark'
             equipment_ids_to_update = {}
             for item in remarks_data.remarks:
-                # Try accessing 'customer_remarks', fallback to 'customer_remark'
                 remark_val = getattr(item, "customer_remarks", getattr(item, "customer_remark", None))
                 equipment_ids_to_update[item.inward_eqp_id] = remark_val
             
@@ -249,19 +227,14 @@ class CustomerPortalService:
                 stmt = select(InwardEquipment).where(InwardEquipment.inward_id == inward_id, InwardEquipment.inward_eqp_id.in_(equipment_ids_to_update.keys()))
                 equipments = self.db.scalars(stmt).all()
                 
-                if len(equipments) != len(equipment_ids_to_update):
-                    # Filter out IDs that don't belong to this inward to be safe, instead of hard failing?
-                    # For now, strict check is safer
-                    pass 
-                
                 for eqp in equipments:
                     new_remark = equipment_ids_to_update.get(eqp.inward_eqp_id)
                     if new_remark is not None:
                         eqp.customer_remarks = new_remark
+                        eqp.status = 'reviewed'  # --- FIX: Update equipment status here ---
                         eqp.updated_at = datetime.utcnow()
             
-            # Update status to 'reviewed' to indicate at least some remarks have been added
-            # Note: Final submission might set this to 'customer_reviewed' via a different endpoint or logic
+            # Update parent Inward status to 'reviewed' if it was 'created'
             if inward.status == 'created':
                 inward.status = 'reviewed'
                 
@@ -279,21 +252,18 @@ class CustomerPortalService:
 
     # --- DIRECT ACCESS METHODS ---
     def get_fir_for_direct_access(self, inward_id: int, access_token: str = None) -> InwardForCustomer:
-        # Logic to validate token can be added here if needed
         return self.get_fir_for_customer_review(inward_id, customer_id=None)
     
     def submit_remarks_direct_access(self, inward_id: int, remarks_data: RemarksSubmissionRequest, access_token: str = None):
-        # Logic to validate token can be added here if needed
         return self.submit_customer_remarks(inward_id, remarks_data, customer_id=None)
 
     def get_all_customers_for_dropdown(self) -> List[Dict[str, Any]]:
-        """
-        Retrieves all active customers with their ID, details, email, and addresses.
-        """
         stmt = (
             select(
                 Customer.customer_id,
                 Customer.customer_details,
+                Customer.contact_person,
+                Customer.phone,
                 Customer.email,
                 Customer.ship_to_address,
                 Customer.bill_to_address
@@ -308,6 +278,8 @@ class CustomerPortalService:
             {
                 "customer_id": c.customer_id, 
                 "customer_details": c.customer_details,
+                "contact_person": c.contact_person,
+                "phone": c.phone,
                 "email": c.email,
                 "ship_to_address": c.ship_to_address,
                 "bill_to_address": c.bill_to_address
