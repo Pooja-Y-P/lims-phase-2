@@ -18,6 +18,9 @@ from .htw_master_standard import HTWMasterStandard
 from .htw_manufacturer_spec import HTWManufacturerSpec
 from .htw_pressure_gauge_resolution import HTWPressureGaugeResolution
 from .htw_nomenclature_range import HTWNomenclatureRange
-
+from .htw_job import HTWJob
+from .htw_repeatability import HTWRepeatability
+from .htw_repetability_reading import HTWRepeatabilityReading
+from .htw_corrected_standard_reference import HTWCorrectedStandardReference
 # You might also want to import Base here to make it accessible
 from backend.db import Base

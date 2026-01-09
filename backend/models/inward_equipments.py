@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from sqlalchemy import Column, Integer, String, Text, TIMESTAMP, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, Mapped
@@ -8,6 +8,8 @@ from backend.db import Base
 if TYPE_CHECKING:
     from .inward import Inward
     from .srf_equipments import SrfEquipment
+    # ✅ ADDED: Import HTWJob for type checking
+    from .htw_job import HTWJob
 
 class InwardEquipment(Base):
     __tablename__ = "inward_equipments"
@@ -31,13 +33,10 @@ class InwardEquipment(Base):
     in_dc = Column(String(255))
     nextage_contract_reference = Column(String(255))
     
-    # New field: accessories_included
     accessories_included = Column(Text)
-
     qr_code = Column(Text)
     barcode = Column(Text)
 
-    # Engineer remarks and customer remarks
     engineer_remarks = Column(String(255))
     customer_remarks = Column(String(255))
 
@@ -51,3 +50,7 @@ class InwardEquipment(Base):
         back_populates="inward_equipment",
         uselist=False
     )
+
+    # ✅ ADDED: Relationship to HTWJob
+    # This matches 'equipment_rel' defined in htw_job.py
+    jobs: Mapped[List["HTWJob"]] = relationship("HTWJob", back_populates="equipment_rel")
