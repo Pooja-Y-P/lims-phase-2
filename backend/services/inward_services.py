@@ -485,22 +485,60 @@ class InwardService:
             if db_inward.status == 'reviewed': 
                 db_inward.status = 'updated'
 
-            # 2. FETCH EXISTING EQUIPMENT (Do NOT delete them yet)
+            # 2. FETCH EXISTING EQUIPMENT
             existing_equipments = self.db.query(InwardEquipment).filter(
                 InwardEquipment.inward_id == inward_id
             ).all()
             
-            # Map ID -> Object for fast lookup
             existing_eq_map = {eq.inward_eqp_id: eq for eq in existing_equipments}
-            print(f"[DEBUG] Found {len(existing_eq_map)} existing items in DB.")
+            
+            # Get list of IDs present in the incoming payload
+            incoming_ids = set()
+            for eqp_model in inward_data.equipment_list:
+                if getattr(eqp_model, "inward_eqp_id", None):
+                    incoming_ids.add(eqp_model.inward_eqp_id)
 
-            # Track which IDs are processed so we know what to delete later
-            processed_ids = []
+            # ---------------------------------------------------------
+            # PHASE 1: DELETE REMOVED ITEMS
+            # ---------------------------------------------------------
+            # We delete items not present in the payload.
+            ids_to_delete = []
+            for existing_id, existing_obj in existing_eq_map.items():
+                if existing_id not in incoming_ids:
+                    print(f"[DEBUG] Deleting removed item ID: {existing_id}")
+                    self.db.delete(existing_obj)
+                    ids_to_delete.append(existing_id)
+            
+            if ids_to_delete:
+                self.db.flush() # Commit delete to free up space
+                for d_id in ids_to_delete:
+                    if d_id in existing_eq_map:
+                        del existing_eq_map[d_id]
 
-            # 3. PROCESS INCOMING LIST
+            # ---------------------------------------------------------
+            # PHASE 2: CALCULATE NEXT ID SUFFIX
+            # ---------------------------------------------------------
+            # We need to know what number to assign to NEW items.
+            # We look at existing items to find the highest suffix (e.g., NEPL-5 -> 5).
+            max_suffix = 0
+            for eq in existing_eq_map.values():
+                try:
+                    # Assuming format "SRFNO-1", "SRFNO-2"
+                    if "-" in eq.nepl_id:
+                        suffix = int(eq.nepl_id.split("-")[-1])
+                        if suffix > max_suffix:
+                            max_suffix = suffix
+                except ValueError:
+                    continue # Ignore if ID format is weird
+            
+            current_next_suffix = max_suffix + 1
+
+            # ---------------------------------------------------------
+            # PHASE 3: PROCESS UPDATES AND CREATES
+            # ---------------------------------------------------------
             for index, eqp_model in enumerate(inward_data.equipment_list):
                 
-                # --- A. Handle Files (Logic copied from _process_equipment_list) ---
+                # --- A. Handle Files ---
                 existing_photos = getattr(eqp_model, "existing_photo_urls", []) or []
                 photo_paths = [str(p).replace("\\", "/") for p in existing_photos if isinstance(p, str) and p.strip()]
                 
@@ -514,21 +552,18 @@ class InwardService:
                                 await out_file.write(await file.read())
                             photo_paths.append(os.path.relpath(file_path, BASE_DIR).replace("\\", "/"))
                 
-                # --- B. ID & Status Logic ---
+                # --- B. Update vs Create ---
                 eq_id = getattr(eqp_model, "inward_eqp_id", None)
                 incoming_status = getattr(eqp_model, "status", None)
 
-                print(f"[DEBUG] Processing Item Index {index} -> ID: {eq_id}, Incoming Status: {incoming_status}")
-
-                # --- C. Update vs Create ---
                 if eq_id and eq_id in existing_eq_map:
                     # === UPDATE EXISTING ===
-                    print(f"   -> Updating Existing Row {eq_id}")
                     db_eq = existing_eq_map[eq_id]
-                    processed_ids.append(eq_id)
 
-                    # Update Standard Fields
-                    db_eq.nepl_id = eqp_model.nepl_id
+                    # CRITICAL FIX: We DO NOT update db_eq.nepl_id. 
+                    # We keep the existing ID associated with this row.
+                    # This prevents the UniqueViolation error.
+                    
                     db_eq.material_description = eqp_model.material_desc
                     db_eq.make = eqp_model.make
                     db_eq.model = eqp_model.model
@@ -547,24 +582,18 @@ class InwardService:
                     db_eq.engineer_remarks = eqp_model.engineer_remarks
                     db_eq.photos = photo_paths
 
-                    # === STATUS UPDATE FIX ===
-                    # Only update status if provided in payload
                     if incoming_status:
-                        print(f"   -> Updating Status from '{db_eq.status}' to '{incoming_status}'")
                         db_eq.status = incoming_status
-                    else:
-                        print(f"   -> No status provided. Keeping '{db_eq.status}'")
 
                 else:
                     # === CREATE NEW ===
-                    print(f"   -> Creating NEW Item (Default Status: 'created')")
-                    
-                    # Ensure authoritative SRF logic applies to new items
-                    authoritative_nepl_id = f"{db_inward.srf_no}-{index + 1}"
-                    
+                    # Use the calculated next available suffix
+                    new_nepl_id = f"{db_inward.srf_no}-{current_next_suffix}"
+                    current_next_suffix += 1
+
                     db_equipment = InwardEquipment(
                         inward_id=inward_id,
-                        nepl_id=authoritative_nepl_id,
+                        nepl_id=new_nepl_id, 
                         material_description=eqp_model.material_desc,
                         make=eqp_model.make, model=eqp_model.model, range=eqp_model.range,
                         serial_no=eqp_model.serial_no, quantity=eqp_model.qty,
@@ -577,17 +606,9 @@ class InwardService:
                         photos=photo_paths,
                         engineer_remarks=eqp_model.engineer_remarks,
                         customer_remarks=None,
-                        
-                        # New items get 'created' or 'pending'
                         status=incoming_status or 'created' 
                     )
                     self.db.add(db_equipment)
-
-            # 4. DELETE REMOVED ITEMS
-            for old_id, old_obj in existing_eq_map.items():
-                if old_id not in processed_ids:
-                    print(f"[DEBUG] Deleting removed item ID: {old_id}")
-                    self.db.delete(old_obj)
 
             self.db.commit()
             self.db.refresh(db_inward)

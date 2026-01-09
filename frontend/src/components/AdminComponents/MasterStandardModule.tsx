@@ -1522,13 +1522,24 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
               <div className="col-span-1 md:col-span-2">
                  <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature <span className="text-red-500">*</span></label>
                  <div className="relative">
-                   <select name="nomenclature" value={formData.nomenclature} onChange={handleChange} className="w-full appearance-none bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 pr-8">
+                   <input 
+                     type="text"
+                     name="nomenclature" 
+                     value={formData.nomenclature} 
+                     onChange={handleChange}
+                     list="nomenclature-options"
+                     placeholder="Select or type manually"
+                     className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5"
+                   />
+                   <datalist id="nomenclature-options">
                      <option value="TORQUE_TRANSDUCER">TORQUE_TRANSDUCER</option>
                      <option value="DIGITAL PRESSURE GAUGE">DIGITAL PRESSURE GAUGE</option>
                      <option value="PRESSURE_GAUGE">PRESSURE_GAUGE</option>
                      <option value="HYDRAULIC_WRENCH">HYDRAULIC_WRENCH</option>
-                   </select>
-                   <ChevronDown className="absolute right-3 top-3 text-gray-400 pointer-events-none" size={16} />
+                     <option value="TORQUE TRANSDUCER (100 - 1500 Nm )">TORQUE TRANSDUCER (100 - 1500 Nm )</option>
+                     <option value="TORQUE TRANSDUCER (1000 - 40000 Nm)">TORQUE TRANSDUCER (1000 - 40000 Nm)</option>
+                     <option value="DIGITAL PRESSURE GAUGE 1000 bar">DIGITAL PRESSURE GAUGE 1000 bar</option>
+                   </datalist>
                  </div>
               </div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label><input type="text" name="manufacturer" value={formData.manufacturer} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, FormEvent, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useAuth } from '../auth/AuthProvider';
 import { User as BaseUser, UserRole } from '../types'; 
 import { api, ENDPOINTS } from '../api/config';
@@ -9,8 +9,8 @@ import Footer from '../components/Footer';
 import { 
   Shield, Power, PowerOff, UserPlus, Users, Info, Loader2,
   Settings, ChevronLeft, Ruler, AlertCircle, X, Search,
-  LayoutDashboard, Menu, Mail, List, Filter, Briefcase, Wrench, 
-  Building2, Grid, AlignJustify, LogOut, Lock, CheckCircle2, 
+  LayoutDashboard, Menu,  Filter, Briefcase, Wrench, 
+  Building2, Grid, AlignJustify,  Lock, CheckCircle2, 
   XCircle, ChevronDown
 } from 'lucide-react';
 

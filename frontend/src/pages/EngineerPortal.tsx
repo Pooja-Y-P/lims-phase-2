@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
-import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, Download } from "lucide-react";
+import { Wrench, FileText, Award, ClipboardList, AlertTriangle, ArrowRight, Mail, Download, Briefcase } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { User } from "../types";
@@ -18,6 +18,8 @@ import { DelayedEmailManager } from "../components/DelayedEmailManager";
 import { FailedNotificationsManager } from "../components/FailedNotificationManager";
 import ExportInwardPage from "../components/ExportInwardPage";
 import SrfListPage from "../components/SrfListPage";
+import JobsManagementPage from "../components/JobsManagementPage";
+import CalibrationPage from "../components/CalibrationPage";
 // import { ReviewedFirsPage } from "../components/ReviewedFirsPage";
 
 const CertificatesPage = () => (
@@ -186,6 +188,13 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         route: "deviations",
         colorClasses: "bg-gradient-to-r from-orange-500 to-red-500",
       },
+      {
+        label: "Jobs Management",
+        description: "Manage calibration jobs and job status",
+        icon: <Briefcase className="h-8 w-8" />,
+        route: "jobs",
+        colorClasses: "bg-gradient-to-r from-teal-500 to-cyan-600",
+      },
     ];
 
     return (
@@ -283,7 +292,8 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           <Route path="export-inward" element={<ExportInwardPage />} />
           <Route path="srfs" element={<SrfListPage />} />
           <Route path="srfs/:srfId" element={<SrfDetailPage />} />
-          
+          <Route path="jobs" element={<JobsManagementPage />} />
+          <Route path="calibration/:inwardId/:equipmentId" element={<CalibrationPage />} />
           {/* <Route path="reviewed-firs" element={<ReviewedFirsPage />} /> */}
           
           <Route path="certificates" element={<CertificatesPage />} />

@@ -1,14 +1,18 @@
-# backend/models/htw_master_standard.py
-
-from sqlalchemy import Column, Integer, String, Numeric, Date, Boolean, TIMESTAMP, func
+from sqlalchemy import Column, ForeignKey, Integer, String, Numeric, Date, Boolean, TIMESTAMP, func
 from backend.db import Base
-
-
+ 
+ 
 class HTWMasterStandard(Base):
     __tablename__ = "htw_master_standard"
-
+ 
     id = Column(Integer, primary_key=True, index=True)
     nomenclature = Column(String(255), nullable=False)
+    nomenclature_range_id = Column(
+        Integer,
+        ForeignKey("htw_nomenclature_range.id"),
+        nullable=False,
+        index=True
+    )
     range_min = Column(Numeric)
     range_max = Column(Numeric)
     range_unit = Column(String(50))
@@ -25,4 +29,3 @@ class HTWMasterStandard(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=func.now())
-

@@ -16,6 +16,8 @@ from .delayed_email_tasks import DelayedEmailTask
 from .inward_equipments import InwardEquipment
 from .htw_master_standard import HTWMasterStandard
 from .htw_manufacturer_spec import HTWManufacturerSpec
+from .htw_pressure_gauge_resolution import HTWPressureGaugeResolution
+from .htw_nomenclature_range import HTWNomenclatureRange
 
 # You might also want to import Base here to make it accessible
 from backend.db import Base

@@ -85,14 +85,36 @@ export const ENDPOINTS = {
     EXPORT_BATCH: `/htw-master-standards/export-batch`,
   },
 
+   HTW_JOBS: {
+    CREATE: "/htw-jobs/",
+    UPDATE: "/htw-jobs", // Used as: `${UPDATE}/${id}`
+    AUTO_SELECT_BASE: "/jobs"
+  },
   // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)
   HTW_MANUFACTURER_SPECS: {
-    LIST: `/htw-manufacturer-specs`,
+    LIST: `/htw-manufacturer-specs/`,
     GET: (id: number) => `/htw-manufacturer-specs/${id}`,
-    CREATE: `/htw-manufacturer-specs`,
+    CREATE: `/htw-manufacturer-specs/`,
     UPDATE: (id: number) => `/htw-manufacturer-specs/${id}`,
     UPDATE_STATUS: (id: number) => `/htw-manufacturer-specs/${id}/status`,
     DELETE: (id: number) => `/htw-manufacturer-specs/${id}`,
+  },
+
+  // HTW Pressure Gauge Resolution endpoints
+  HTW_PRESSURE_GAUGE_RESOLUTIONS: {
+    LIST: `/htw-pressure-gauge-resolutions/`,
+    UNITS: `/htw-pressure-gauge-resolutions/units`,
+  },
+
+  // HTW Nomenclature Range endpoints
+  HTW_NOMENCLATURE_RANGES: {
+    LIST: `/htw-nomenclature-ranges/`,
+    GET: (id: number) => `/htw-nomenclature-ranges/${id}`,
+    CREATE: `/htw-nomenclature-ranges/`,
+    UPDATE: (id: number) => `/htw-nomenclature-ranges/${id}`,
+    UPDATE_STATUS: (id: number) => `/htw-nomenclature-ranges/${id}/status`,
+    DELETE: (id: number) => `/htw-nomenclature-ranges/${id}`,
+    MATCH: `/htw-nomenclature-ranges/match`,
   }
 } as const;
 

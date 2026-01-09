@@ -21,7 +21,10 @@ from backend.routes import (
 )
 from backend.routes.htw_master_standard_router import router as htw_master_standard_router
 from backend.routes.htw_manufacturer_spec_router import router as htw_manufacturer_spec_router
-
+from backend.routes.htw_pressure_gauge_res_router import router as htw_pressure_gauge_res_router
+from backend.routes.htw_nomenclature_range_router import router as htw_nomenclature_range_router
+from backend.routes.htw_job_standard import router as htw_job_standard_router
+from backend.routes.htw_job import router as htw_job
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -78,8 +81,10 @@ app.include_router(password_reset_router.router, prefix="/api")
 app.include_router(invitation_routes.router, prefix="/api")
 app.include_router(htw_master_standard_router, prefix="/api")
 app.include_router(htw_manufacturer_spec_router, prefix="/api")
-
-
+app.include_router(htw_pressure_gauge_res_router, prefix="/api")
+app.include_router(htw_nomenclature_range_router, prefix="/api")
+app.include_router(htw_job_standard_router, prefix="/api")
+app.include_router(htw_job, prefix="/api")
 @app.get("/")
 def root():
     return {"message": "LIMS backend running successfully"}

@@ -249,6 +249,20 @@ CREATE TABLE IF NOT EXISTS public.htw_master_standard
     CONSTRAINT htw_master_standard_pkey PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS public.htw_nomenclature_range
+(
+    id serial NOT NULL,
+    nomenclature character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    range_min numeric NOT NULL,
+    range_max numeric NOT NULL,
+    is_active boolean DEFAULT true,
+    valid_upto date,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone,
+    CONSTRAINT htw_nomenclature_range_pkey PRIMARY KEY (id),
+    CONSTRAINT htw_nomenclature_range_range_check CHECK (range_min < range_max)
+);
+
 ALTER TABLE IF EXISTS public.delayed_email_tasks
     ADD CONSTRAINT delayed_email_tasks_created_by_fkey FOREIGN KEY (created_by)
     REFERENCES public.users (user_id) MATCH SIMPLE
