@@ -1,16 +1,15 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, desc, asc
 from backend.models import (
     HTWJob, 
     InwardEquipment, 
     HTWManufacturerSpec, 
-    HTWCorrectedStandardReference, 
+    HTWStandardUncertaintyReference, # CHANGED: New Reference Table
     HTWRepeatability, 
     HTWRepeatabilityReading
 )
 from backend.schemas.htw_repeatability_schemas import (
-    RepeatabilityCalculationRequest, 
-    RepeatabilityResponse
+    RepeatabilityCalculationRequest
 )
 from datetime import datetime
 
@@ -54,42 +53,73 @@ def get_set_values(specs: HTWManufacturerSpec, step_percent: float):
 
 def calculate_interpolation(db: Session, mean_xr: float) -> float:
     """
-    FR-15: Calculates Interpolated Error using htw_corrected_standard_reference table.
-    Logic: Linear Interpolation -> Absolute Value -> Round to 2 decimals.
+    FR-15: Calculates Interpolated Error using htw_standard_uncertainty_reference.
+    
+    New Logic:
+    1. Find the reference point just BELOW or EQUAL to mean_xr (x1, y1).
+    2. Find the reference point just ABOVE or EQUAL to mean_xr (x2, y2).
+    3. Perform linear interpolation between these two points.
     """
-    # Find the range where the Mean Xr falls
-    ref = db.query(HTWCorrectedStandardReference).filter(
+    
+    # Ensure we are working with float for comparison
+    val = float(mean_xr)
+
+    # 1. Find Lower Neighbor (x1)
+    # Order by indicated_torque DESC to get the closest value smaller than mean_xr
+    lower_ref = db.query(HTWStandardUncertaintyReference).filter(
         and_(
-            HTWCorrectedStandardReference.lower_range <= mean_xr,
-            HTWCorrectedStandardReference.higher_range >= mean_xr,
-            HTWCorrectedStandardReference.is_active == True
+            HTWStandardUncertaintyReference.indicated_torque <= val,
+            HTWStandardUncertaintyReference.is_active == True
         )
-    ).first()
+    ).order_by(desc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
-    if not ref:
-        return 0.0 
+    # 2. Find Higher Neighbor (x2)
+    # Order by indicated_torque ASC to get the closest value larger than mean_xr
+    upper_ref = db.query(HTWStandardUncertaintyReference).filter(
+        and_(
+            HTWStandardUncertaintyReference.indicated_torque >= val,
+            HTWStandardUncertaintyReference.is_active == True
+        )
+    ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
-    # Variables for Linear Interpolation
-    x = float(mean_xr)
-    x1 = float(ref.lower_range)
-    x2 = float(ref.higher_range)
-    y1 = float(ref.lower_error)
-    y2 = float(ref.higher_error)
+    # --- Scenario Handling ---
 
-    # Avoid division by zero
+    # Case A: No data at all
+    if not lower_ref and not upper_ref:
+        return 0.0
+
+    # Case B: Reading is lower than the lowest value in DB -> Extrapolate using lowest point
+    if not lower_ref and upper_ref:
+        return abs(float(upper_ref.error_value))
+
+    # Case C: Reading is higher than highest value in DB -> Extrapolate using highest point
+    if lower_ref and not upper_ref:
+        return abs(float(lower_ref.error_value))
+
+    # Case D: Exact Match (Lower and Upper are the same row)
+    if lower_ref.id == upper_ref.id:
+        return abs(float(lower_ref.error_value))
+
+    # Case E: Standard Interpolation between x1 and x2
+    x = val
+    x1 = float(lower_ref.indicated_torque)
+    y1 = float(lower_ref.error_value)
+    
+    x2 = float(upper_ref.indicated_torque)
+    y2 = float(upper_ref.error_value)
+
+    # Prevent division by zero (should cover Case D, but safe guard)
     if (x2 - x1) == 0:
         raw_y = y1
     else:
-        # Linear Interpolation Formula
+        # Linear Interpolation Formula: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
         raw_y = y1 + ((x - x1) * (y2 - y1) / (x2 - x1))
-    
-    # 1. Take Absolute Value
+
+    # FR-15 Requirement: Interpolation Error = |y|
     abs_y = abs(raw_y)
     
-    # 2. Round to 2 decimal places
-    final_y = round(abs_y, 2)
-    
-    return final_y
+    # Return rounded to 2 decimal places (standard practice for error)
+    return round(abs_y, 2)
 
 # --- MAIN SERVICE FUNCTION ---
 
@@ -113,20 +143,19 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         readings = step_data.readings
         mean_xr = sum(readings) / len(readings)
 
-        # C. Calculate Corrected Standard (Interpolation) - Absolute & Rounded (2 decimals)
+        # C. Calculate Corrected Standard (Interpolation) using NEW table logic
         corrected_standard = calculate_interpolation(db, mean_xr)
 
         # D. Calculate Corrected Mean
-        # Formula: Corrected Mean = Mean - Corrected Standard
+        # Formula: Corrected Mean = Mean - Corrected Standard (Interpolated Error)
         corrected_mean = mean_xr - corrected_standard
 
         # E. Calculate Deviation Percentage
-        # Formula: Deviation = [(Corrected Mean – Set Torque) * 100] / (Set Torque)
+        # FR-17: Deviation = [(Corrected Mean – Set Torque) * 100] / (Set Torque)
         ts_float = float(ts)
         
         if ts_float != 0:
             raw_deviation = ((corrected_mean - ts_float) * 100) / ts_float
-            # --- UPDATED: Round Deviation to 2 decimal places ---
             deviation_percent = round(raw_deviation, 2)
         else:
             deviation_percent = 0.0
@@ -152,7 +181,7 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
             mean_xr=mean_xr,
             corrected_standard=corrected_standard,
             corrected_mean=corrected_mean,
-            deviation_percent=deviation_percent, # Storing the rounded value
+            deviation_percent=deviation_percent,
             created_at=datetime.now()
         )
         db.add(header)
@@ -177,7 +206,7 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
             "set_torque": float(ts),
             "corrected_standard": corrected_standard, 
             "corrected_mean": round(corrected_mean, 4),
-            "deviation_percent": deviation_percent # Returning the rounded value
+            "deviation_percent": deviation_percent
         })
 
     db.commit()

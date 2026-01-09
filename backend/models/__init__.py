@@ -19,6 +19,7 @@ from .htw_manufacturer_spec import HTWManufacturerSpec
 from .htw_pressure_gauge_resolution import HTWPressureGaugeResolution
 from .htw_nomenclature_range import HTWNomenclatureRange
 from .htw_job import HTWJob
+from .htw_standard_uncertainty_reference import HTWStandardUncertaintyReference
 from .htw_repeatability import HTWRepeatability
 from .htw_repetability_reading import HTWRepeatabilityReading
 from .htw_corrected_standard_reference import HTWCorrectedStandardReference
