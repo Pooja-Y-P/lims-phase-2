@@ -13,7 +13,7 @@ from backend.schemas.htw_repeatability_schemas import (
 )
 from datetime import datetime
 
-
+# --- HELPER FUNCTIONS ---
 
 def get_job_and_specs(db: Session, job_id: int):
     """
@@ -96,6 +96,7 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
     if (x2 - x1) == 0:
         raw_y = y1
     else:
+        # Linear Interpolation Formula
         raw_y = y1 + ((x - x1) * (y2 - y1) / (x2 - x1))
 
     abs_y = abs(raw_y)
@@ -110,6 +111,10 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
     
     job, specs = get_job_and_specs(db, request.job_id)
     results_summary = []
+
+    # Get units from specs for response
+    p_unit = specs.pressure_unit or ""
+    t_unit = specs.torque_unit or ""
 
     for step_data in request.steps:
         
@@ -140,7 +145,7 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
 
         # --- DB OPERATIONS ---
 
-        # F. Delete existing record
+        # F. Delete existing record (to allow re-calculation)
         db.query(HTWRepeatability).filter(
             and_(
                 HTWRepeatability.job_id == request.job_id,
@@ -184,7 +189,10 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
             "set_torque": float(ts),
             "corrected_standard": corrected_standard, 
             "corrected_mean": round(corrected_mean, 4),
-            "deviation_percent": deviation_percent
+            "deviation_percent": deviation_percent,
+            "pressure_unit": p_unit, 
+            "torque_unit": t_unit,   
+            "stored_readings": readings
         })
 
     db.commit()
@@ -195,17 +203,23 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         "results": results_summary
     }
 
-# --- NEW FUNCTION TO FETCH STORED DATA ---
+# --- FETCH STORED DATA (FOR FRONTEND TABLE) ---
 
 def get_stored_repeatability(db: Session, job_id: int):
     """
     Fetches existing repeatability data (Headers + Readings) for a job.
-    
-    UPDATED: If no calculations exist, it fetches Manufacturer Specs
-    and returns Set Pressure/Torque values for 20, 60, 100 steps
-    so the frontend can populate the table before user input.
+    Includes Pressure/Torque Units from Manufacturer Specs.
     """
-    # 1. Fetch all step headers for this job (Existing Calculation)
+    
+    # 1. Always fetch specs first to get Units
+    try:
+        job, specs = get_job_and_specs(db, job_id)
+        p_unit = specs.pressure_unit or ""
+        t_unit = specs.torque_unit or ""
+    except ValueError:
+        return {"job_id": job_id, "status": "no_specs", "results": []}
+
+    # 2. Fetch existing calculation data
     steps_db = db.query(HTWRepeatability).filter(
         HTWRepeatability.job_id == job_id
     ).order_by(asc(HTWRepeatability.step_percent)).all()
@@ -229,34 +243,56 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "corrected_standard": float(step_row.corrected_standard) if step_row.corrected_standard is not None else 0.0,
                 "corrected_mean": float(step_row.corrected_mean) if step_row.corrected_mean is not None else 0.0,
                 "deviation_percent": float(step_row.deviation_percent) if step_row.deviation_percent is not None else 0.0,
-                "stored_readings": reading_values
+                "stored_readings": reading_values,
+                "pressure_unit": p_unit, 
+                "torque_unit": t_unit    
             })
     else:
         # CASE B: No Calculation Data (New Job)
-        # Fetch Specs to show Set Pressure/Torque to the user immediately
-        try:
-            job, specs = get_job_and_specs(db, job_id)
+        # Populate Set Values from specs, leave readings empty
+        for step in [20.0, 60.0, 100.0]:
+            ps, ts = get_set_values(specs, step)
             
-            # Pre-populate 20, 60, 100 steps with Set Values from specs
-            for step in [20.0, 60.0, 100.0]:
-                ps, ts = get_set_values(specs, step)
-                
-                results_summary.append({
-                    "step_percent": step,
-                    "mean_xr": 0.0,
-                    "set_pressure": float(ps) if ps is not None else 0.0,
-                    "set_torque": float(ts) if ts is not None else 0.0,
-                    "corrected_standard": 0.0,
-                    "corrected_mean": 0.0,
-                    "deviation_percent": 0.0,
-                    "stored_readings": [] # Empty list as no readings entered yet
-                })
-        except ValueError:
-            # If specs are missing, return empty list (frontend handles error or shows empty table)
-            return {"job_id": job_id, "status": "no_specs", "results": []}
+            results_summary.append({
+                "step_percent": step,
+                "mean_xr": 0.0,
+                "set_pressure": float(ps) if ps is not None else 0.0,
+                "set_torque": float(ts) if ts is not None else 0.0,
+                "corrected_standard": 0.0,
+                "corrected_mean": 0.0,
+                "deviation_percent": 0.0,
+                "stored_readings": [], 
+                "pressure_unit": p_unit, 
+                "torque_unit": t_unit    
+            })
 
     return {
         "job_id": job_id,
         "status": "success",
         "results": results_summary
     }
+
+# --- NEW FUNCTION FOR FRONTEND DYNAMIC CALCULATION ---
+
+def get_uncertainty_references(db: Session):
+    """
+    Returns the full reference table sorted by torque.
+    Used by frontend for dynamic real-time interpolation.
+    """
+    try:
+        # Note: Ensure 'is_active' exists in your SQL table
+        refs = db.query(HTWStandardUncertaintyReference).filter(
+            HTWStandardUncertaintyReference.is_active == True
+        ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).all()
+        
+        return [
+            {
+                "indicated_torque": float(r.indicated_torque),
+                "error_value": float(r.error_value)
+            }
+            for r in refs
+        ]
+    except Exception as e:
+        print(f"DB Error getting references: {e}")
+        # Return empty list on error so frontend doesn't crash
+        return []

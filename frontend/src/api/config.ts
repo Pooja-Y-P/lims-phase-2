@@ -94,6 +94,7 @@ export const ENDPOINTS = {
   HTW_REPEATABILITY: {
     CALCULATE: "/repeatability/calculate",
     GET: (jobId: number) => `/repeatability/${jobId}`,
+    REFERENCES: "/repeatability/references/list",
   },
 
   // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)
