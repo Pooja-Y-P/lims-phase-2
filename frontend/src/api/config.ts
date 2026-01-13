@@ -90,6 +90,12 @@ export const ENDPOINTS = {
     UPDATE: "/htw-jobs", // Used as: `${UPDATE}/${id}`
     AUTO_SELECT_BASE: "/jobs"
   },
+
+  HTW_REPEATABILITY: {
+    CALCULATE: "/repeatability/calculate",
+    GET: (jobId: number) => `/repeatability/${jobId}`,
+  },
+
   // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)
   HTW_MANUFACTURER_SPECS: {
     LIST: `/htw-manufacturer-specs/`,

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.db import get_db
-from  backend.schemas import htw_repeatability_schemas
+from backend.schemas import htw_repeatability_schemas
 from backend.services import htw_repeatability_services
 
 router = APIRouter(
@@ -29,4 +29,18 @@ def calculate_repeatability(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Calculation Error: {str(e)}"
+        )
+
+@router.get("/{job_id}")
+def get_repeatability(job_id: int, db: Session = Depends(get_db)):
+    """
+    Fetches saved repeatability data (Set Pressure, Torque, Readings, Results).
+    This endpoint allows the frontend to populate the table on page load.
+    """
+    try:
+        return htw_repeatability_services.get_stored_repeatability(db, job_id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Fetch Error: {str(e)}"
         )

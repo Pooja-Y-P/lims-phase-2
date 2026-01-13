@@ -1,10 +1,10 @@
 # backend/schemas/htw_master_standard_schemas.py
-
+ 
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import date, datetime
-
-
+ 
+ 
 class HTWMasterStandardBase(BaseModel):
     nomenclature: str = Field(..., description="Nomenclature of the master standard")
     range_min: Optional[float] = None
@@ -21,12 +21,12 @@ class HTWMasterStandardBase(BaseModel):
     resolution: Optional[float] = None
     resolution_unit: Optional[str] = None
     is_active: bool = True
-
-
+ 
+ 
 class HTWMasterStandardCreate(HTWMasterStandardBase):
     pass
-
-
+ 
+ 
 class HTWMasterStandardUpdate(BaseModel):
     nomenclature: Optional[str] = None
     range_min: Optional[float] = None
@@ -43,13 +43,17 @@ class HTWMasterStandardUpdate(BaseModel):
     resolution: Optional[float] = None
     resolution_unit: Optional[str] = None
     is_active: Optional[bool] = None
-
-
+ 
+ 
 class HTWMasterStandardResponse(HTWMasterStandardBase):
     id: int
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
+ 
     class Config:
         from_attributes = True
-
+ 
+ 
+ 
+ 
+ 

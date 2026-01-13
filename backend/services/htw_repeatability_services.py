@@ -4,7 +4,7 @@ from backend.models import (
     HTWJob, 
     InwardEquipment, 
     HTWManufacturerSpec, 
-    HTWStandardUncertaintyReference, # CHANGED: New Reference Table
+    HTWStandardUncertaintyReference, 
     HTWRepeatability, 
     HTWRepeatabilityReading
 )
@@ -13,7 +13,7 @@ from backend.schemas.htw_repeatability_schemas import (
 )
 from datetime import datetime
 
-# --- HELPER FUNCTIONS ---
+
 
 def get_job_and_specs(db: Session, job_id: int):
     """
@@ -54,18 +54,10 @@ def get_set_values(specs: HTWManufacturerSpec, step_percent: float):
 def calculate_interpolation(db: Session, mean_xr: float) -> float:
     """
     FR-15: Calculates Interpolated Error using htw_standard_uncertainty_reference.
-    
-    New Logic:
-    1. Find the reference point just BELOW or EQUAL to mean_xr (x1, y1).
-    2. Find the reference point just ABOVE or EQUAL to mean_xr (x2, y2).
-    3. Perform linear interpolation between these two points.
     """
-    
-    # Ensure we are working with float for comparison
     val = float(mean_xr)
 
     # 1. Find Lower Neighbor (x1)
-    # Order by indicated_torque DESC to get the closest value smaller than mean_xr
     lower_ref = db.query(HTWStandardUncertaintyReference).filter(
         and_(
             HTWStandardUncertaintyReference.indicated_torque <= val,
@@ -74,7 +66,6 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
     ).order_by(desc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
     # 2. Find Higher Neighbor (x2)
-    # Order by indicated_torque ASC to get the closest value larger than mean_xr
     upper_ref = db.query(HTWStandardUncertaintyReference).filter(
         and_(
             HTWStandardUncertaintyReference.indicated_torque >= val,
@@ -83,24 +74,18 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
     ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
     # --- Scenario Handling ---
-
-    # Case A: No data at all
     if not lower_ref and not upper_ref:
         return 0.0
 
-    # Case B: Reading is lower than the lowest value in DB -> Extrapolate using lowest point
     if not lower_ref and upper_ref:
         return abs(float(upper_ref.error_value))
 
-    # Case C: Reading is higher than highest value in DB -> Extrapolate using highest point
     if lower_ref and not upper_ref:
         return abs(float(lower_ref.error_value))
 
-    # Case D: Exact Match (Lower and Upper are the same row)
     if lower_ref.id == upper_ref.id:
         return abs(float(lower_ref.error_value))
 
-    # Case E: Standard Interpolation between x1 and x2
     x = val
     x1 = float(lower_ref.indicated_torque)
     y1 = float(lower_ref.error_value)
@@ -108,20 +93,15 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
     x2 = float(upper_ref.indicated_torque)
     y2 = float(upper_ref.error_value)
 
-    # Prevent division by zero (should cover Case D, but safe guard)
     if (x2 - x1) == 0:
         raw_y = y1
     else:
-        # Linear Interpolation Formula: y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
         raw_y = y1 + ((x - x1) * (y2 - y1) / (x2 - x1))
 
-    # FR-15 Requirement: Interpolation Error = |y|
     abs_y = abs(raw_y)
-    
-    # Return rounded to 2 decimal places (standard practice for error)
     return round(abs_y, 2)
 
-# --- MAIN SERVICE FUNCTION ---
+# --- MAIN SERVICE FUNCTION (CALCULATE) ---
 
 def process_repeatability_calculation(db: Session, request: RepeatabilityCalculationRequest):
     """
@@ -143,15 +123,13 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         readings = step_data.readings
         mean_xr = sum(readings) / len(readings)
 
-        # C. Calculate Corrected Standard (Interpolation) using NEW table logic
+        # C. Calculate Corrected Standard (Interpolation)
         corrected_standard = calculate_interpolation(db, mean_xr)
 
         # D. Calculate Corrected Mean
-        # Formula: Corrected Mean = Mean - Corrected Standard (Interpolated Error)
         corrected_mean = mean_xr - corrected_standard
 
         # E. Calculate Deviation Percentage
-        # FR-17: Deviation = [(Corrected Mean – Set Torque) * 100] / (Set Torque)
         ts_float = float(ts)
         
         if ts_float != 0:
@@ -162,7 +140,7 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
 
         # --- DB OPERATIONS ---
 
-        # F. Delete existing record (to allow re-calculation)
+        # F. Delete existing record
         db.query(HTWRepeatability).filter(
             and_(
                 HTWRepeatability.job_id == request.job_id,
@@ -213,6 +191,72 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
 
     return {
         "job_id": request.job_id,
+        "status": "success",
+        "results": results_summary
+    }
+
+# --- NEW FUNCTION TO FETCH STORED DATA ---
+
+def get_stored_repeatability(db: Session, job_id: int):
+    """
+    Fetches existing repeatability data (Headers + Readings) for a job.
+    
+    UPDATED: If no calculations exist, it fetches Manufacturer Specs
+    and returns Set Pressure/Torque values for 20, 60, 100 steps
+    so the frontend can populate the table before user input.
+    """
+    # 1. Fetch all step headers for this job (Existing Calculation)
+    steps_db = db.query(HTWRepeatability).filter(
+        HTWRepeatability.job_id == job_id
+    ).order_by(asc(HTWRepeatability.step_percent)).all()
+
+    results_summary = []
+
+    if steps_db:
+        # CASE A: Data exists in DB (Previously calculated)
+        for step_row in steps_db:
+            readings_db = db.query(HTWRepeatabilityReading).filter(
+                HTWRepeatabilityReading.repeatability_id == step_row.id
+            ).order_by(HTWRepeatabilityReading.reading_order).all()
+
+            reading_values = [float(r.indicated_reading) for r in readings_db]
+
+            results_summary.append({
+                "step_percent": float(step_row.step_percent),
+                "mean_xr": float(step_row.mean_xr) if step_row.mean_xr is not None else 0.0,
+                "set_pressure": float(step_row.set_pressure_ps) if step_row.set_pressure_ps is not None else 0.0,
+                "set_torque": float(step_row.set_torque_ts) if step_row.set_torque_ts is not None else 0.0,
+                "corrected_standard": float(step_row.corrected_standard) if step_row.corrected_standard is not None else 0.0,
+                "corrected_mean": float(step_row.corrected_mean) if step_row.corrected_mean is not None else 0.0,
+                "deviation_percent": float(step_row.deviation_percent) if step_row.deviation_percent is not None else 0.0,
+                "stored_readings": reading_values
+            })
+    else:
+        # CASE B: No Calculation Data (New Job)
+        # Fetch Specs to show Set Pressure/Torque to the user immediately
+        try:
+            job, specs = get_job_and_specs(db, job_id)
+            
+            # Pre-populate 20, 60, 100 steps with Set Values from specs
+            for step in [20.0, 60.0, 100.0]:
+                ps, ts = get_set_values(specs, step)
+                
+                results_summary.append({
+                    "step_percent": step,
+                    "mean_xr": 0.0,
+                    "set_pressure": float(ps) if ps is not None else 0.0,
+                    "set_torque": float(ts) if ts is not None else 0.0,
+                    "corrected_standard": 0.0,
+                    "corrected_mean": 0.0,
+                    "deviation_percent": 0.0,
+                    "stored_readings": [] # Empty list as no readings entered yet
+                })
+        except ValueError:
+            # If specs are missing, return empty list (frontend handles error or shows empty table)
+            return {"job_id": job_id, "status": "no_specs", "results": []}
+
+    return {
+        "job_id": job_id,
         "status": "success",
         "results": results_summary
     }
