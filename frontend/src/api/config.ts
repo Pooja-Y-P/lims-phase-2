@@ -92,9 +92,14 @@ export const ENDPOINTS = {
   },
 
   HTW_REPEATABILITY: {
-    CALCULATE: "/repeatability/calculate",
-    GET: (jobId: number) => `/repeatability/${jobId}`,
-    REFERENCES: "/repeatability/references/list",
+    CALCULATE: "/htw-calculations/repeatability/calculate",
+  GET: (jobId: number) => `/htw-calculations/repeatability/${jobId}`,
+  REFERENCES: "/htw-calculations/repeatability/references/list",
+  },
+  
+    HTW_REPRODUCIBILITY: {
+    CALCULATE: "/reproducibility/calculate",
+    GET: (jobId: number) => `/reproducibility/${jobId}`,
   },
 
   // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)

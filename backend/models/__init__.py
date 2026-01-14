@@ -22,5 +22,7 @@ from .htw_job import HTWJob
 from .htw_standard_uncertainty_reference import HTWStandardUncertaintyReference
 from .htw_repeatability import HTWRepeatability
 from .htw_repetability_reading import HTWRepeatabilityReading
+from .htw_reproducibility import HTWReproducibility
+from .htw_reproducibility_reading import HTWReproducibilityReading
 
 from backend.db import Base

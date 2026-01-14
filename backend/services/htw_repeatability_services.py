@@ -1,40 +1,59 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, asc
+from datetime import datetime
+
+# --- MODELS ---
 from backend.models import (
     HTWJob, 
     InwardEquipment, 
     HTWManufacturerSpec, 
     HTWStandardUncertaintyReference, 
     HTWRepeatability, 
-    HTWRepeatabilityReading
+    HTWRepeatabilityReading,
+    HTWReproducibility, 
+    HTWReproducibilityReading
 )
-from backend.schemas.htw_repeatability_schemas import (
-    RepeatabilityCalculationRequest
-)
-from datetime import datetime
 
-# --- HELPER FUNCTIONS ---
+# --- SCHEMAS ---
+from backend.schemas.htw_repeatability_schemas import RepeatabilityCalculationRequest, ReproducibilityCalculationRequest
+
+
+# ==================================================================================
+#                                SHARED HELPERS
+# ==================================================================================
 
 def get_job_and_specs(db: Session, job_id: int):
     """
-    Fetches Job, Equipment, and Manufacturer Specs.
+    Core Helper: Fetches Job, Equipment, and Manufacturer Specs.
+    Used by both Repeatability and Reproducibility calculations.
     """
+    # 1. Fetch Job
     job = db.query(HTWJob).filter(HTWJob.job_id == job_id).first()
     if not job:
         raise ValueError(f"Job ID {job_id} not found")
 
+    # 2. Fetch Equipment
     eqp = db.query(InwardEquipment).filter(InwardEquipment.inward_eqp_id == job.inward_eqp_id).first()
     if not eqp:
         raise ValueError("Equipment details not found for this job")
 
+    # 3. Fetch Manufacturer Specs
     specs = db.query(HTWManufacturerSpec).filter(
-        and_(HTWManufacturerSpec.make == eqp.make, HTWManufacturerSpec.model == eqp.model)
+        and_(
+            HTWManufacturerSpec.make == eqp.make, 
+            HTWManufacturerSpec.model == eqp.model,
+            HTWManufacturerSpec.is_active == True
+        )
     ).first()
     
     if not specs:
         raise ValueError(f"Manufacturer specifications not found for Make: {eqp.make}, Model: {eqp.model}")
         
     return job, specs
+
+# ==================================================================================
+#                           SECTION A: REPEATABILITY
+# ==================================================================================
 
 def get_set_values(specs: HTWManufacturerSpec, step_percent: float):
     """
@@ -102,13 +121,10 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
     abs_y = abs(raw_y)
     return round(abs_y, 2)
 
-# --- MAIN SERVICE FUNCTION (CALCULATE) ---
-
 def process_repeatability_calculation(db: Session, request: RepeatabilityCalculationRequest):
     """
-    Main logic to calculate Mean, Interpolation, Deviation.
+    Main logic to calculate Mean, Interpolation, Deviation for Repeatability.
     """
-    
     job, specs = get_job_and_specs(db, request.job_id)
     results_summary = []
 
@@ -203,14 +219,11 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         "results": results_summary
     }
 
-# --- FETCH STORED DATA (FOR FRONTEND TABLE) ---
-
 def get_stored_repeatability(db: Session, job_id: int):
     """
     Fetches existing repeatability data (Headers + Readings) for a job.
     Includes Pressure/Torque Units from Manufacturer Specs.
     """
-    
     # 1. Always fetch specs first to get Units
     try:
         job, specs = get_job_and_specs(db, job_id)
@@ -272,15 +285,12 @@ def get_stored_repeatability(db: Session, job_id: int):
         "results": results_summary
     }
 
-# --- NEW FUNCTION FOR FRONTEND DYNAMIC CALCULATION ---
-
 def get_uncertainty_references(db: Session):
     """
     Returns the full reference table sorted by torque.
     Used by frontend for dynamic real-time interpolation.
     """
     try:
-        # Note: Ensure 'is_active' exists in your SQL table
         refs = db.query(HTWStandardUncertaintyReference).filter(
             HTWStandardUncertaintyReference.is_active == True
         ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).all()
@@ -294,5 +304,138 @@ def get_uncertainty_references(db: Session):
         ]
     except Exception as e:
         print(f"DB Error getting references: {e}")
-        # Return empty list on error so frontend doesn't crash
         return []
+
+# ==================================================================================
+#                           SECTION B: REPRODUCIBILITY
+# ==================================================================================
+
+def get_job_and_20_percent_torque(db: Session, job_id: int):
+    """
+    Fetches the 20% torque value via the shared helper.
+    """
+    job, specs = get_job_and_specs(db, job_id)
+    
+    if specs.torque_20 is None:
+        raise ValueError("20% Torque value is missing in Manufacturer Specifications")
+    
+    return float(specs.torque_20), specs
+
+def process_reproducibility_calculation(db: Session, request: ReproducibilityCalculationRequest):
+    """
+    Calculates b_rep (Range of Means) for 4 sequences.
+    """
+    # 1. Get the Set Torque (20% value) and specs for Unit
+    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    torque_unit = specs.torque_unit or ""
+
+    # 2. Process Sequences
+    sequence_results = []
+    all_means = []
+
+    if len(request.sequences) != 4:
+        raise ValueError("Exactly 4 sequences (I, II, III, IV) are required for Reproducibility.")
+
+    for seq in request.sequences:
+        mean_val = sum(seq.readings) / len(seq.readings)
+        all_means.append(mean_val)
+        
+        sequence_results.append({
+            "sequence_no": seq.sequence_no,
+            "readings": seq.readings,
+            "mean_xr": mean_val
+        })
+
+    # 3. Calculate Error due to Reproducibility (b_rep)
+    # Formula: b_rep = Max(Means) - Min(Means)
+    b_rep = max(all_means) - min(all_means)
+    b_rep_rounded = round(b_rep, 4)
+
+    # --- DB OPERATIONS ---
+
+    # 4. Clear existing Reproducibility data
+    db.query(HTWReproducibility).filter(HTWReproducibility.job_id == request.job_id).delete(synchronize_session=False)
+    db.flush()
+
+    # 5. Insert New Data
+    for seq_item in sequence_results:
+        # Create Parent Row
+        repro_entry = HTWReproducibility(
+            job_id=request.job_id,
+            set_torque_ts=set_torque_val,
+            sequence_no=seq_item['sequence_no'],
+            mean_xr=seq_item['mean_xr'],
+            error_due_to_reproducibility=b_rep_rounded,
+            created_at=datetime.now()
+        )
+        db.add(repro_entry)
+        db.flush() 
+
+        # Create Child Rows
+        reading_rows = []
+        for i, val in enumerate(seq_item['readings'], start=1):
+            reading_rows.append(HTWReproducibilityReading(
+                reproducibility_id=repro_entry.id,
+                reading_order=i,
+                indicated_reading=val
+            ))
+        db.add_all(reading_rows)
+
+    db.commit()
+
+    return {
+        "job_id": request.job_id,
+        "status": "success",
+        "set_torque_20": set_torque_val,
+        "error_due_to_reproducibility": b_rep_rounded,
+        "torque_unit": torque_unit,  # Return unit so UI can update immediately
+        "sequences": sequence_results
+    }
+
+def get_stored_reproducibility(db: Session, job_id: int):
+    """
+    Retrieves saved data. If no data exists, returns the Set Torque (20%).
+    Also returns the Torque Unit.
+    """
+    
+    # Fetch Set Torque & Specs
+    try:
+        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        torque_unit = specs.torque_unit or ""
+    except Exception:
+        set_torque_val = 0.0
+        torque_unit = ""
+
+    # Fetch stored sequences
+    repro_rows = db.query(HTWReproducibility).filter(
+        HTWReproducibility.job_id == job_id
+    ).order_by(HTWReproducibility.sequence_no).all()
+
+    sequences = []
+    b_rep = 0.0
+
+    if repro_rows:
+        # b_rep is stored in every row for the job
+        b_rep = float(repro_rows[0].error_due_to_reproducibility or 0)
+        
+        for row in repro_rows:
+            readings_db = db.query(HTWReproducibilityReading).filter(
+                HTWReproducibilityReading.reproducibility_id == row.id
+            ).order_by(HTWReproducibilityReading.reading_order).all()
+            
+            readings_list = [float(r.indicated_reading) for r in readings_db]
+
+            sequences.append({
+                "sequence_no": row.sequence_no,
+                "mean_xr": float(row.mean_xr or 0),
+                "readings": readings_list
+            })
+
+    return {
+        "job_id": job_id,
+        "status": "success" if repro_rows else "no_data",
+        "set_torque_20": set_torque_val,
+        "error_due_to_reproducibility": b_rep,
+        "torque_unit": torque_unit,
+        "sequences": sequences
+    }

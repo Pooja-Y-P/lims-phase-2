@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, ENDPOINTS } from "../api/config";
 import RepeatabilitySection from "../components/RepeatabilitySection";
+import ReproducibilitySection from "../components/ReproducibilitySection";
 import {
   ArrowLeft,
   Save,
@@ -10,11 +11,11 @@ import {
   CheckCircle,
   Lock,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  Check 
 } from "lucide-react";
 
-// --- Interfaces ---
-
+// --- Interfaces (No Changes) ---
 interface HTWJobResponse {
   job_id: number;
   inward_eqp_id: number;
@@ -103,8 +104,11 @@ const CalibrationPage: React.FC = () => {
   const [isValidated, setIsValidated] = useState(false);
   const [validating, setValidating] = useState(false);
   
-  // Workflow State: Controls visibility of Repeatability Section
+  // Workflow State
   const [isWorksheetSaved, setIsWorksheetSaved] = useState(false);
+
+  // Tab State: 'A' or 'B'
+  const [activeTab, setActiveTab] = useState<'A' | 'B'>('A');
 
   // Master Standards Data
   const [masterStandards, setMasterStandards] = useState<HTWMasterStandard[]>([]);
@@ -143,9 +147,7 @@ const CalibrationPage: React.FC = () => {
     resolutionOfPressureGauge: ""
   });
 
-  // --- Effects ---
-
-  // 1. MAIN INITIALIZATION
+  // --- Effects (Data Loading) ---
   useEffect(() => {
     const initData = async () => {
       if (!inwardId || !equipmentId) return;
@@ -193,8 +195,6 @@ const CalibrationPage: React.FC = () => {
         if (existingJob) {
             setJobId(existingJob.job_id);
             setIsValidated(true);
-            
-            // If job exists, we assume worksheet basics were saved, so enable Repeatability
             setIsWorksheetSaved(true);
 
             setDeviceDetails({
@@ -213,6 +213,18 @@ const CalibrationPage: React.FC = () => {
             });
 
         } else {
+            // --- UPDATED: Smarter Unit Extraction ---
+            let extractedRangeUnit = foundEquipment.range_unit || "";
+            // If API didn't give a separate unit, try to regex it from the range string (e.g. "0-600 bar")
+            if (!extractedRangeUnit && foundEquipment.range) {
+                const rangeStr = foundEquipment.range.trim();
+                // Match letters at end of string
+                const match = rangeStr.match(/([a-zA-Z°]+)$/); 
+                if (match) {
+                    extractedRangeUnit = match[1];
+                }
+            }
+
             setDeviceDetails(prev => ({
                 ...prev,
                 materialNomenclature: foundEquipment.material_description || "",
@@ -220,7 +232,7 @@ const CalibrationPage: React.FC = () => {
                 model: foundEquipment.model || "",
                 serialNo: foundEquipment.serial_no || "",
                 range: foundEquipment.range || "",
-                rangeUnit: foundEquipment.range_unit || "",
+                rangeUnit: extractedRangeUnit, // Use extracted unit
                 resolutionOfPressureGaugeUnit: defaultResUnit,
                 resolutionOfPressureGauge: defaultPressure
             }));
@@ -238,7 +250,7 @@ const CalibrationPage: React.FC = () => {
     initData();
   }, [inwardId, equipmentId]);
 
-  // 2. Fetch Manufacturer Spec
+  // Fetch Spec
   useEffect(() => {
     const fetchManufacturerSpec = async () => {
       if (loading || !deviceDetails.make || !deviceDetails.model) {
@@ -259,28 +271,55 @@ const CalibrationPage: React.FC = () => {
   }, [deviceDetails.make, deviceDetails.model, loading]);
 
 
-  // 3. Auto-populate Range Unit
+  // --- UPDATED: Auto Range Unit & Resolution Population ---
   useEffect(() => {
-    if (loading || isValidated) return; 
-    if (!manufacturerSpec) return;
-    if (deviceDetails.rangeUnit && deviceDetails.rangeUnit.trim() !== "") return;
+    if (loading || isValidated || !manufacturerSpec) return; 
 
-    const isHydraulicTorqueWrench = deviceDetails.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
-    let unitToUse: string | undefined;
+    setDeviceDetails((prev) => {
+        const newState = { ...prev };
+        let hasChanges = false;
 
-    if (isHydraulicTorqueWrench && manufacturerSpec.torque_unit) {
-      unitToUse = manufacturerSpec.torque_unit;
-    } else if (manufacturerSpec.pressure_unit) {
-      unitToUse = manufacturerSpec.pressure_unit;
-    }
+        const isHydraulicTorqueWrench = prev.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
 
-    if (unitToUse) {
-      setDeviceDetails(prev => ({ ...prev, rangeUnit: unitToUse! }));
-    }
-  }, [manufacturerSpec, deviceDetails.materialNomenclature, deviceDetails.rangeUnit, loading, isValidated]);
+        // 1. Auto-Populate Range Unit (Only if currently empty)
+        if (!prev.rangeUnit || prev.rangeUnit.trim() === "") {
+            let unitToUse: string | undefined;
+            if (isHydraulicTorqueWrench && manufacturerSpec.torque_unit) {
+                unitToUse = manufacturerSpec.torque_unit;
+            } else if (manufacturerSpec.pressure_unit) {
+                unitToUse = manufacturerSpec.pressure_unit;
+            }
+            if (unitToUse) {
+                newState.rangeUnit = unitToUse;
+                hasChanges = true;
+            }
+        }
+
+        // 2. Auto-Populate Resolution of Pressure Gauge (Check against Spec)
+        // HTW usually relies on pressure units for resolution settings
+        if (manufacturerSpec.pressure_unit) {
+            const specPressureUnit = manufacturerSpec.pressure_unit;
+
+            // If current unit is different from spec (or is just the default loaded one)
+            if (prev.resolutionOfPressureGaugeUnit !== specPressureUnit) {
+                // Find matching resolution config
+                const matchingRes = allResolutions.find(r => r.unit.toLowerCase() === specPressureUnit.toLowerCase());
+                
+                if (matchingRes) {
+                    newState.resolutionOfPressureGaugeUnit = matchingRes.unit;
+                    newState.resolutionOfPressureGauge = String(matchingRes.pressure);
+                    hasChanges = true;
+                }
+            }
+        }
+
+        return hasChanges ? newState : prev;
+    });
+
+  }, [manufacturerSpec, deviceDetails.materialNomenclature, allResolutions, loading, isValidated]);
 
 
-  // 4. Auto-select Standards
+  // Auto Select Standards
   useEffect(() => {
     if (loading || !masterStandards.length || !deviceDetails.materialNomenclature) return;
     if (selectedStandardIds.standard1) return;
@@ -390,7 +429,6 @@ const CalibrationPage: React.FC = () => {
   const handleResolutionUnitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedUnit = e.target.value;
     const matchedResolution = allResolutions.find(res => res.unit === selectedUnit);
-    
     setDeviceDetails(prev => ({
         ...prev,
         resolutionOfPressureGaugeUnit: selectedUnit,
@@ -410,17 +448,18 @@ const CalibrationPage: React.FC = () => {
       setMasterStandardInputs(prev => ({
         ...prev,
         [standard]: {
-          id: selectedStandard.id,
-          nomenclature: selectedStandard.nomenclature || "",
-          manufacturer: selectedStandard.manufacturer || "",
-          model_serial_no: selectedStandard.model_serial_no || "",
-          uncertainty: selectedStandard.uncertainty || undefined,
-          uncertainty_unit: selectedStandard.uncertainty_unit || "",
-          certificate_no: selectedStandard.certificate_no || "",
-          calibration_valid_upto: selectedStandard.calibration_valid_upto || "",
-          resolution: selectedStandard.resolution || undefined,
-          resolution_unit: selectedStandard.resolution_unit || "",
-          traceable_to_lab: selectedStandard.traceable_to_lab || ""
+            ...prev[standard],
+            id: selectedStandard.id,
+            nomenclature: selectedStandard.nomenclature || "",
+            manufacturer: selectedStandard.manufacturer || "",
+            model_serial_no: selectedStandard.model_serial_no || "",
+            uncertainty: selectedStandard.uncertainty || undefined,
+            uncertainty_unit: selectedStandard.uncertainty_unit || "",
+            certificate_no: selectedStandard.certificate_no || "",
+            calibration_valid_upto: selectedStandard.calibration_valid_upto || "",
+            resolution: selectedStandard.resolution || undefined,
+            resolution_unit: selectedStandard.resolution_unit || "",
+            traceable_to_lab: selectedStandard.traceable_to_lab || ""
         }
       }));
     }
@@ -438,7 +477,6 @@ const CalibrationPage: React.FC = () => {
       alert("Missing Required Fields:\n- Date of Calibration\n- Nomenclature\n- Make\n- Range");
       return;
     }
-
     try {
       setValidating(true);
       const payload = {
@@ -467,7 +505,13 @@ const CalibrationPage: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       if (err.response) {
-        alert(`Server Error: ${err.response.data?.detail || "Validation Failed"}`);
+        let errorMessage = "Failed to validate and create job.";
+        if (err.response.data?.detail) {
+            errorMessage = typeof err.response.data.detail === 'string' 
+                ? err.response.data.detail 
+                : JSON.stringify(err.response.data.detail, null, 2);
+        }
+        alert(`Server Error (${err.response.status}):\n${errorMessage}`);
       } else {
         alert(`Error: ${err.message}`);
       }
@@ -476,12 +520,8 @@ const CalibrationPage: React.FC = () => {
     }
   };
 
-  // --- Save Worksheet Action ---
   const handleSaveWorksheet = async () => {
-    if (!jobId) {
-        console.error("Save attempted without Job ID.");
-        return;
-    }
+    if (!jobId) return;
     try {
       setLoading(true);
       const url = `${ENDPOINTS.HTW_JOBS.AUTO_SELECT_BASE}/${jobId}/auto-select-standards`;
@@ -492,11 +532,9 @@ const CalibrationPage: React.FC = () => {
           }
         }
       );
-
       if (response.status === 200 || response.data.status === "success") {
-        // SUCCESS: Enable Repeatability Section
         setIsWorksheetSaved(true);
-        alert("Worksheet Saved! Enter readings in the table below.");
+        alert("Worksheet Saved! Proceed to calculations.");
       } else {
         alert("Saved, but unexpected response from server.");
       }
@@ -687,20 +725,88 @@ const CalibrationPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 2. REPEATABILITY SECTION (Full Width - Below) */}
+                {/* 2. DYNAMIC CALCULATION SECTIONS */}
                 <div>
                     {isWorksheetSaved ? (
-                        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-                             <RepeatabilitySection jobId={jobId} />
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
+                            
+                            {/* PROFESSIONAL STEPPER SWITCH */}
+                            <div className="flex flex-col items-center justify-center w-full max-w-2xl mx-auto mb-10">
+                                <div className="relative flex items-center justify-between w-full">
+                                    
+                                    {/* Background Line */}
+                                    <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-200 -z-0 transform -translate-y-1/2 rounded-full"></div>
+                                    
+                                    {/* Active Progress Line */}
+                                    <div 
+                                        className="absolute left-0 top-1/2 h-1 bg-blue-600 -z-0 transform -translate-y-1/2 rounded-full transition-all duration-500 ease-in-out" 
+                                        style={{ width: activeTab === 'B' ? '100%' : '0%' }}
+                                    ></div>
+
+                                    {/* STEP A */}
+                                    <button 
+                                        onClick={() => setActiveTab('A')}
+                                        className="relative group focus:outline-none z-10"
+                                    >
+                                        <div className={`
+                                            w-12 h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
+                                            ${activeTab === 'B' 
+                                                ? "bg-green-600 border-green-600 text-white" // Completed state
+                                                : activeTab === 'A'
+                                                    ? "bg-blue-600 border-blue-600 text-white scale-110" // Active State
+                                                    : "bg-white border-gray-300 text-gray-500" // Inactive (shouldn't happen here really)
+                                            }
+                                        `}>
+                                            {activeTab === 'B' ? <Check className="h-6 w-6" /> : <span className="text-lg font-bold">A</span>}
+                                        </div>
+                                        <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${activeTab === 'A' ? "text-blue-700" : "text-gray-500"}`}>
+                                            Repeatability
+                                        </span>
+                                    </button>
+
+                                    {/* STEP B */}
+                                    <button 
+                                        onClick={() => setActiveTab('B')}
+                                        className="relative group focus:outline-none z-10"
+                                    >
+                                        <div className={`
+                                            w-12 h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
+                                            ${activeTab === 'B'
+                                                ? "bg-blue-600 border-blue-600 text-white scale-110" // Active State
+                                                : "bg-white border-gray-300 text-gray-400 hover:border-blue-300" // Inactive State
+                                            }
+                                        `}>
+                                            <span className="text-lg font-bold">B</span>
+                                        </div>
+                                        <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${activeTab === 'B' ? "text-blue-700" : "text-gray-400"}`}>
+                                            Reproducibility
+                                        </span>
+                                    </button>
+
+                                </div>
+                            </div>
+
+                            {/* CONTENT AREA */}
+                            <div className="mt-8">
+                                {activeTab === 'A' ? (
+                                    <RepeatabilitySection jobId={jobId} />
+                                ) : (
+                                    <ReproducibilitySection 
+                                        jobId={jobId} 
+                                        torqueUnit={deviceDetails.rangeUnit} 
+                                    />
+                                )}
+                            </div>
+
                         </div>
                     ) : (
                         <div className="border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center text-center p-12 transition-all">
                             <div className="bg-white p-4 rounded-full shadow-sm mb-4">
                                 <Lock className="h-8 w-8 text-gray-400" />
                             </div>
-                            <h3 className="text-gray-900 font-bold mb-1">Repeatability Section Locked</h3>
+                            <h3 className="text-gray-900 font-bold mb-1">Calculations Locked</h3>
                             <p className="text-gray-500 text-sm max-w-[300px]">
-                                Please confirm and save the master standards above to unlock the repeatability table.
+                                Please confirm and save the master standards above to unlock the calculations.
                             </p>
                         </div>
                     )}
