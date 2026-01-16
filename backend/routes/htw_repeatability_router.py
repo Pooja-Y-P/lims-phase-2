@@ -89,3 +89,92 @@ def get_reproducibility(job_id: int, db: Session = Depends(get_db)):
         return services.get_stored_reproducibility(db, job_id)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    
+# ... (Previous Imports and A/B Routes remain unchanged) ...
+
+# ==============================================================================
+#                     SECTION C: OUTPUT DRIVE VARIATION
+# ==============================================================================
+
+@router.post("/output-drive/calculate", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def calculate_output_drive(
+    request: htw_repeatability_schemas.GeometricCalculationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Calculates Output Drive Variation (b_out).
+    Positions: 0, 90, 180, 270.
+    10 readings per position.
+    Result = Max(Means) - Min(Means).
+    """
+    try:
+        return services.process_output_drive_calculation(db, request)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.get("/output-drive/{job_id}", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def get_output_drive(job_id: int, db: Session = Depends(get_db)):
+    try:
+        return services.get_stored_output_drive(db, job_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+# ==============================================================================
+#                     SECTION D: DRIVE INTERFACE VARIATION
+# ==============================================================================
+
+@router.post("/drive-interface/calculate", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def calculate_drive_interface(
+    request: htw_repeatability_schemas.GeometricCalculationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Calculates Drive Interface Variation (b_int).
+    Positions: 0, 90, 180, 270.
+    10 readings per position.
+    Result = Max(Means) - Min(Means).
+    """
+    try:
+        return services.process_drive_interface_calculation(db, request)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.get("/drive-interface/{job_id}", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def get_drive_interface(job_id: int, db: Session = Depends(get_db)):
+    try:
+        return services.get_stored_drive_interface(db, job_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+# ==============================================================================
+#                     SECTION E: LOADING POINT VARIATION
+# ==============================================================================
+
+@router.post("/loading-point/calculate", response_model=htw_repeatability_schemas.LoadingPointResponse)
+def calculate_loading_point(
+    request: htw_repeatability_schemas.LoadingPointRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Calculates Loading Point Variation (b_l).
+    Positions: -10mm, 10mm.
+    10 readings per position.
+    Result = | Mean(-10) - Mean(+10) |.
+    """
+    try:
+        return services.process_loading_point_calculation(db, request)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@router.get("/loading-point/{job_id}", response_model=htw_repeatability_schemas.LoadingPointResponse)
+def get_loading_point(job_id: int, db: Session = Depends(get_db)):
+    try:
+        return services.get_stored_loading_point(db, job_id)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

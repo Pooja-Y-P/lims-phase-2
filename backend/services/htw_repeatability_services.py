@@ -11,11 +11,20 @@ from backend.models import (
     HTWRepeatability, 
     HTWRepeatabilityReading,
     HTWReproducibility, 
-    HTWReproducibilityReading
+    HTWReproducibilityReading,
+    # NEW MODELS
+    HTWOutputDriveVariation, HTWOutputDriveVariationReading,
+    HTWDriveInterfaceVariation, HTWDriveInterfaceVariationReading,
+    HTWLoadingPointVariation, HTWLoadingPointVariationReading
 )
 
 # --- SCHEMAS ---
-from backend.schemas.htw_repeatability_schemas import RepeatabilityCalculationRequest, ReproducibilityCalculationRequest
+from backend.schemas.htw_repeatability_schemas import (
+    RepeatabilityCalculationRequest, 
+    ReproducibilityCalculationRequest,
+    GeometricCalculationRequest, 
+    LoadingPointRequest
+)
 
 
 # ==================================================================================
@@ -25,7 +34,6 @@ from backend.schemas.htw_repeatability_schemas import RepeatabilityCalculationRe
 def get_job_and_specs(db: Session, job_id: int):
     """
     Core Helper: Fetches Job, Equipment, and Manufacturer Specs.
-    Used by both Repeatability and Reproducibility calculations.
     """
     # 1. Fetch Job
     job = db.query(HTWJob).filter(HTWJob.job_id == job_id).first()
@@ -50,6 +58,19 @@ def get_job_and_specs(db: Session, job_id: int):
         raise ValueError(f"Manufacturer specifications not found for Make: {eqp.make}, Model: {eqp.model}")
         
     return job, specs
+
+def get_job_and_20_percent_torque(db: Session, job_id: int):
+    """
+    Helper: Fetches the 20% Set Torque value.
+    Used by Reproducibility (B), Output Drive (C), Drive Interface (D), Loading Point (E).
+    """
+    job, specs = get_job_and_specs(db, job_id)
+    
+    if specs.torque_20 is None:
+        raise ValueError("20% Torque value is missing in Manufacturer Specifications")
+    
+    return float(specs.torque_20), specs
+
 
 # ==================================================================================
 #                           SECTION A: REPEATABILITY
@@ -286,22 +307,11 @@ def get_stored_repeatability(db: Session, job_id: int):
     }
 
 def get_uncertainty_references(db: Session):
-    """
-    Returns the full reference table sorted by torque.
-    Used by frontend for dynamic real-time interpolation.
-    """
     try:
         refs = db.query(HTWStandardUncertaintyReference).filter(
             HTWStandardUncertaintyReference.is_active == True
         ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).all()
-        
-        return [
-            {
-                "indicated_torque": float(r.indicated_torque),
-                "error_value": float(r.error_value)
-            }
-            for r in refs
-        ]
+        return [{"indicated_torque": float(r.indicated_torque), "error_value": float(r.error_value)} for r in refs]
     except Exception as e:
         print(f"DB Error getting references: {e}")
         return []
@@ -309,17 +319,6 @@ def get_uncertainty_references(db: Session):
 # ==================================================================================
 #                           SECTION B: REPRODUCIBILITY
 # ==================================================================================
-
-def get_job_and_20_percent_torque(db: Session, job_id: int):
-    """
-    Fetches the 20% torque value via the shared helper.
-    """
-    job, specs = get_job_and_specs(db, job_id)
-    
-    if specs.torque_20 is None:
-        raise ValueError("20% Torque value is missing in Manufacturer Specifications")
-    
-    return float(specs.torque_20), specs
 
 def process_reproducibility_calculation(db: Session, request: ReproducibilityCalculationRequest):
     """
@@ -347,7 +346,6 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         })
 
     # 3. Calculate Error due to Reproducibility (b_rep)
-    # Formula: b_rep = Max(Means) - Min(Means)
     b_rep = max(all_means) - min(all_means)
     b_rep_rounded = round(b_rep, 4)
 
@@ -359,7 +357,6 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
 
     # 5. Insert New Data
     for seq_item in sequence_results:
-        # Create Parent Row
         repro_entry = HTWReproducibility(
             job_id=request.job_id,
             set_torque_ts=set_torque_val,
@@ -371,7 +368,6 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         db.add(repro_entry)
         db.flush() 
 
-        # Create Child Rows
         reading_rows = []
         for i, val in enumerate(seq_item['readings'], start=1):
             reading_rows.append(HTWReproducibilityReading(
@@ -388,17 +384,11 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         "status": "success",
         "set_torque_20": set_torque_val,
         "error_due_to_reproducibility": b_rep_rounded,
-        "torque_unit": torque_unit,  # Return unit so UI can update immediately
+        "torque_unit": torque_unit,
         "sequences": sequence_results
     }
 
 def get_stored_reproducibility(db: Session, job_id: int):
-    """
-    Retrieves saved data. If no data exists, returns the Set Torque (20%).
-    Also returns the Torque Unit.
-    """
-    
-    # Fetch Set Torque & Specs
     try:
         set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
@@ -406,7 +396,6 @@ def get_stored_reproducibility(db: Session, job_id: int):
         set_torque_val = 0.0
         torque_unit = ""
 
-    # Fetch stored sequences
     repro_rows = db.query(HTWReproducibility).filter(
         HTWReproducibility.job_id == job_id
     ).order_by(HTWReproducibility.sequence_no).all()
@@ -415,9 +404,7 @@ def get_stored_reproducibility(db: Session, job_id: int):
     b_rep = 0.0
 
     if repro_rows:
-        # b_rep is stored in every row for the job
         b_rep = float(repro_rows[0].error_due_to_reproducibility or 0)
-        
         for row in repro_rows:
             readings_db = db.query(HTWReproducibilityReading).filter(
                 HTWReproducibilityReading.reproducibility_id == row.id
@@ -438,4 +425,328 @@ def get_stored_reproducibility(db: Session, job_id: int):
         "error_due_to_reproducibility": b_rep,
         "torque_unit": torque_unit,
         "sequences": sequences
+    }
+
+# ==================================================================================
+#                     SECTION C: OUTPUT DRIVE VARIATION (b_out)
+# ==================================================================================
+
+def process_output_drive_calculation(db: Session, request: GeometricCalculationRequest):
+    # UPDATED: Use 20% torque instead of 100%
+    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    torque_unit = specs.torque_unit or ""
+    
+    position_results = []
+    means = []
+
+    # 1. Calculate Means
+    for pos in request.positions:
+        mean_val = sum(pos.readings) / len(pos.readings)
+        means.append(mean_val)
+        position_results.append({
+            "position_deg": pos.position_deg,
+            "readings": pos.readings,
+            "mean_value": mean_val
+        })
+
+    # 2. Calculate b_out = Max(Means) - Min(Means)
+    if not means:
+        b_out = 0.0
+    else:
+        b_out = max(means) - min(means)
+    
+    b_out_rounded = round(b_out, 4)
+
+    # 3. DB Transaction
+    db.query(HTWOutputDriveVariation).filter(HTWOutputDriveVariation.job_id == request.job_id).delete(synchronize_session=False)
+    db.flush()
+
+    for item in position_results:
+        var_entry = HTWOutputDriveVariation(
+            job_id=request.job_id,
+            set_torque_ts=set_torque_val,
+            position_deg=item['position_deg'],
+            mean_value=item['mean_value'],
+            created_at=datetime.now()
+        )
+        db.add(var_entry)
+        db.flush()
+
+        readings_rows = [
+            HTWOutputDriveVariationReading(
+                output_drive_variation_id=var_entry.id,
+                reading_order=i,
+                indicated_reading=val
+            ) for i, val in enumerate(item['readings'], start=1)
+        ]
+        db.add_all(readings_rows)
+
+    db.commit()
+
+    return {
+        "job_id": request.job_id,
+        "status": "success",
+        "set_torque": set_torque_val,
+        "error_value": b_out_rounded,
+        "torque_unit": torque_unit,
+        "positions": position_results
+    }
+
+def get_stored_output_drive(db: Session, job_id: int):
+    try:
+        # UPDATED: Use 20% torque instead of 100%
+        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        torque_unit = specs.torque_unit or ""
+    except:
+        set_torque_val = 0.0
+        torque_unit = ""
+
+    rows = db.query(HTWOutputDriveVariation).filter(
+        HTWOutputDriveVariation.job_id == job_id
+    ).order_by(HTWOutputDriveVariation.position_deg).all()
+
+    means = []
+    positions = []
+
+    for row in rows:
+        readings_db = db.query(HTWOutputDriveVariationReading).filter(
+            HTWOutputDriveVariationReading.output_drive_variation_id == row.id
+        ).order_by(HTWOutputDriveVariationReading.reading_order).all()
+        
+        vals = [float(r.indicated_reading) for r in readings_db]
+        mean_val = float(row.mean_value or 0)
+        means.append(mean_val)
+        
+        positions.append({
+            "position_deg": row.position_deg,
+            "readings": vals,
+            "mean_value": mean_val
+        })
+
+    b_out = (max(means) - min(means)) if means else 0.0
+
+    return {
+        "job_id": job_id,
+        "status": "success" if rows else "no_data",
+        "set_torque": set_torque_val,
+        "error_value": round(b_out, 4),
+        "torque_unit": torque_unit,
+        "positions": positions
+    }
+
+# ==================================================================================
+#                   SECTION D: DRIVE INTERFACE VARIATION (b_int)
+# ==================================================================================
+
+def process_drive_interface_calculation(db: Session, request: GeometricCalculationRequest):
+    # UPDATED: Use 20% torque instead of 100%
+    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    torque_unit = specs.torque_unit or ""
+
+    position_results = []
+    means = []
+
+    for pos in request.positions:
+        mean_val = sum(pos.readings) / len(pos.readings)
+        means.append(mean_val)
+        position_results.append({
+            "position_deg": pos.position_deg,
+            "readings": pos.readings,
+            "mean_value": mean_val
+        })
+
+    # Calculate b_int = Max(Means) - Min(Means)
+    if not means:
+        b_int = 0.0
+    else:
+        b_int = max(means) - min(means)
+    
+    b_int_rounded = round(b_int, 4)
+
+    # DB Transaction
+    db.query(HTWDriveInterfaceVariation).filter(HTWDriveInterfaceVariation.job_id == request.job_id).delete(synchronize_session=False)
+    db.flush()
+
+    for item in position_results:
+        var_entry = HTWDriveInterfaceVariation(
+            job_id=request.job_id,
+            set_torque_ts=set_torque_val,
+            position_deg=item['position_deg'],
+            mean_value=item['mean_value'],
+            created_at=datetime.now()
+        )
+        db.add(var_entry)
+        db.flush()
+
+        readings_rows = [
+            HTWDriveInterfaceVariationReading(
+                drive_interface_variation_id=var_entry.id,
+                reading_order=i,
+                indicated_reading=val
+            ) for i, val in enumerate(item['readings'], start=1)
+        ]
+        db.add_all(readings_rows)
+
+    db.commit()
+
+    return {
+        "job_id": request.job_id,
+        "status": "success",
+        "set_torque": set_torque_val,
+        "error_value": b_int_rounded,
+        "torque_unit": torque_unit,
+        "positions": position_results
+    }
+
+def get_stored_drive_interface(db: Session, job_id: int):
+    try:
+        # UPDATED: Use 20% torque instead of 100%
+        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        torque_unit = specs.torque_unit or ""
+    except:
+        set_torque_val = 0.0
+        torque_unit = ""
+
+    rows = db.query(HTWDriveInterfaceVariation).filter(
+        HTWDriveInterfaceVariation.job_id == job_id
+    ).order_by(HTWDriveInterfaceVariation.position_deg).all()
+
+    means = []
+    positions = []
+
+    for row in rows:
+        readings_db = db.query(HTWDriveInterfaceVariationReading).filter(
+            HTWDriveInterfaceVariationReading.drive_interface_variation_id == row.id
+        ).order_by(HTWDriveInterfaceVariationReading.reading_order).all()
+        
+        vals = [float(r.indicated_reading) for r in readings_db]
+        mean_val = float(row.mean_value or 0)
+        means.append(mean_val)
+        
+        positions.append({
+            "position_deg": row.position_deg,
+            "readings": vals,
+            "mean_value": mean_val
+        })
+
+    b_int = (max(means) - min(means)) if means else 0.0
+
+    return {
+        "job_id": job_id,
+        "status": "success" if rows else "no_data",
+        "set_torque": set_torque_val,
+        "error_value": round(b_int, 4),
+        "torque_unit": torque_unit,
+        "positions": positions
+    }
+
+# ==================================================================================
+#                     SECTION E: LOADING POINT VARIATION (b_l)
+# ==================================================================================
+
+def process_loading_point_calculation(db: Session, request: LoadingPointRequest):
+    # UPDATED: Use 20% torque instead of 100%
+    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    torque_unit = specs.torque_unit or ""
+
+    position_results = []
+    mean_dict = {}
+
+    for pos in request.positions:
+        mean_val = sum(pos.readings) / len(pos.readings)
+        mean_dict[pos.loading_position_mm] = mean_val
+        
+        position_results.append({
+            "loading_position_mm": pos.loading_position_mm,
+            "readings": pos.readings,
+            "mean_value": mean_val
+        })
+
+    # Calculate b_l = Abs(Mean(-10) - Mean(+10)) - STRICT ABSOLUTE VALUE
+    if -10 in mean_dict and 10 in mean_dict:
+        b_l = abs(mean_dict[-10] - mean_dict[10])
+    else:
+        b_l = 0.0
+
+    b_l_rounded = round(b_l, 4)
+
+    # DB Transaction
+    db.query(HTWLoadingPointVariation).filter(HTWLoadingPointVariation.job_id == request.job_id).delete(synchronize_session=False)
+    db.flush()
+
+    for item in position_results:
+        var_entry = HTWLoadingPointVariation(
+            job_id=request.job_id,
+            set_torque_ts=set_torque_val,
+            loading_position_mm=item['loading_position_mm'],
+            mean_value=item['mean_value'],
+            created_at=datetime.now()
+        )
+        db.add(var_entry)
+        db.flush()
+
+        readings_rows = [
+            HTWLoadingPointVariationReading(
+                loading_point_variation_id=var_entry.id,
+                reading_order=i,
+                indicated_reading=val
+            ) for i, val in enumerate(item['readings'], start=1)
+        ]
+        db.add_all(readings_rows)
+
+    db.commit()
+
+    return {
+        "job_id": request.job_id,
+        "status": "success",
+        "set_torque": set_torque_val,
+        "error_due_to_loading_point": b_l_rounded,
+        "torque_unit": torque_unit,
+        "positions": position_results
+    }
+
+def get_stored_loading_point(db: Session, job_id: int):
+    try:
+        # UPDATED: Use 20% torque instead of 100%
+        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        torque_unit = specs.torque_unit or ""
+    except:
+        set_torque_val = 0.0
+        torque_unit = ""
+
+    rows = db.query(HTWLoadingPointVariation).filter(
+        HTWLoadingPointVariation.job_id == job_id
+    ).order_by(HTWLoadingPointVariation.loading_position_mm).all()
+
+    positions = []
+    mean_dict = {}
+
+    for row in rows:
+        readings_db = db.query(HTWLoadingPointVariationReading).filter(
+            HTWLoadingPointVariationReading.loading_point_variation_id == row.id
+        ).order_by(HTWLoadingPointVariationReading.reading_order).all()
+        
+        vals = [float(r.indicated_reading) for r in readings_db]
+        mean_val = float(row.mean_value or 0)
+        mean_dict[row.loading_position_mm] = mean_val
+        
+        positions.append({
+            "loading_position_mm": row.loading_position_mm,
+            "readings": vals,
+            "mean_value": mean_val
+        })
+
+    # Calculate b_l = Abs(Mean(-10) - Mean(+10)) - STRICT ABSOLUTE VALUE
+    if -10 in mean_dict and 10 in mean_dict:
+        b_l = abs(mean_dict[-10] - mean_dict[10])
+    else:
+        b_l = 0.0
+
+    return {
+        "job_id": job_id,
+        "status": "success" if rows else "no_data",
+        "set_torque": set_torque_val,
+        "error_due_to_loading_point": round(b_l, 4),
+        "torque_unit": torque_unit,
+        "positions": positions
     }

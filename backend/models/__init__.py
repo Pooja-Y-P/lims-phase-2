@@ -24,5 +24,11 @@ from .htw_repeatability import HTWRepeatability
 from .htw_repetability_reading import HTWRepeatabilityReading
 from .htw_reproducibility import HTWReproducibility
 from .htw_reproducibility_reading import HTWReproducibilityReading
+from .htw_drive_interface_variation import HTWDriveInterfaceVariation
+from .htw_drive_interface_variation_reading import HTWDriveInterfaceVariationReading
+from .htw_loading_point_variation import HTWLoadingPointVariation
+from .htw_loading_point_variation_reading import HTWLoadingPointVariationReading
+from .htw_output_drive_variation import HTWOutputDriveVariation
+from .htw_output_drive_variation_reading import HTWOutputDriveVariationReading
 
 from backend.db import Base

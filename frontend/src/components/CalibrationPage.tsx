@@ -3,6 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, ENDPOINTS } from "../api/config";
 import RepeatabilitySection from "../components/RepeatabilitySection";
 import ReproducibilitySection from "../components/ReproducibilitySection";
+import OutputDriveSection from "../components/OutputDriveSection"; // New
+import DriveInterfaceSection from "../components/DriveInterfaceSection"; // New
+import LoadingPointSection from "../components/LoadingPointSection"; // New
+
 import {
   ArrowLeft,
   Save,
@@ -90,6 +94,17 @@ interface HTWPressureGaugeResolution {
   unit: string;
 }
 
+// Define the steps for the Stepper
+const STEPS = [
+    { id: 'A', label: 'Repeatability' },
+    { id: 'B', label: 'Reproducibility' },
+    { id: 'C', label: 'Output Drive' },
+    { id: 'D', label: 'Drive Interface' },
+    { id: 'E', label: 'Loading Point' }
+] as const;
+
+type StepId = typeof STEPS[number]['id'];
+
 const CalibrationPage: React.FC = () => {
   const { inwardId, equipmentId } = useParams<{ inwardId: string; equipmentId: string }>();
   const navigate = useNavigate();
@@ -107,8 +122,8 @@ const CalibrationPage: React.FC = () => {
   // Workflow State
   const [isWorksheetSaved, setIsWorksheetSaved] = useState(false);
 
-  // Tab State: 'A' or 'B'
-  const [activeTab, setActiveTab] = useState<'A' | 'B'>('A');
+  // Tab State
+  const [activeTab, setActiveTab] = useState<StepId>('A');
 
   // Master Standards Data
   const [masterStandards, setMasterStandards] = useState<HTWMasterStandard[]>([]);
@@ -213,12 +228,10 @@ const CalibrationPage: React.FC = () => {
             });
 
         } else {
-            // --- UPDATED: Smarter Unit Extraction ---
+            // Smarter Unit Extraction
             let extractedRangeUnit = foundEquipment.range_unit || "";
-            // If API didn't give a separate unit, try to regex it from the range string (e.g. "0-600 bar")
             if (!extractedRangeUnit && foundEquipment.range) {
                 const rangeStr = foundEquipment.range.trim();
-                // Match letters at end of string
                 const match = rangeStr.match(/([a-zA-Z°]+)$/); 
                 if (match) {
                     extractedRangeUnit = match[1];
@@ -232,7 +245,7 @@ const CalibrationPage: React.FC = () => {
                 model: foundEquipment.model || "",
                 serialNo: foundEquipment.serial_no || "",
                 range: foundEquipment.range || "",
-                rangeUnit: extractedRangeUnit, // Use extracted unit
+                rangeUnit: extractedRangeUnit, 
                 resolutionOfPressureGaugeUnit: defaultResUnit,
                 resolutionOfPressureGauge: defaultPressure
             }));
@@ -271,7 +284,7 @@ const CalibrationPage: React.FC = () => {
   }, [deviceDetails.make, deviceDetails.model, loading]);
 
 
-  // --- UPDATED: Auto Range Unit & Resolution Population ---
+  // Auto Range Unit & Resolution Population
   useEffect(() => {
     if (loading || isValidated || !manufacturerSpec) return; 
 
@@ -281,7 +294,6 @@ const CalibrationPage: React.FC = () => {
 
         const isHydraulicTorqueWrench = prev.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
 
-        // 1. Auto-Populate Range Unit (Only if currently empty)
         if (!prev.rangeUnit || prev.rangeUnit.trim() === "") {
             let unitToUse: string | undefined;
             if (isHydraulicTorqueWrench && manufacturerSpec.torque_unit) {
@@ -295,16 +307,10 @@ const CalibrationPage: React.FC = () => {
             }
         }
 
-        // 2. Auto-Populate Resolution of Pressure Gauge (Check against Spec)
-        // HTW usually relies on pressure units for resolution settings
         if (manufacturerSpec.pressure_unit) {
             const specPressureUnit = manufacturerSpec.pressure_unit;
-
-            // If current unit is different from spec (or is just the default loaded one)
             if (prev.resolutionOfPressureGaugeUnit !== specPressureUnit) {
-                // Find matching resolution config
                 const matchingRes = allResolutions.find(r => r.unit.toLowerCase() === specPressureUnit.toLowerCase());
-                
                 if (matchingRes) {
                     newState.resolutionOfPressureGaugeUnit = matchingRes.unit;
                     newState.resolutionOfPressureGauge = String(matchingRes.pressure);
@@ -612,7 +618,7 @@ const CalibrationPage: React.FC = () => {
         {isValidated && jobId && (
             <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 
-                {/* 1. MASTER STANDARDS (Full Width) */}
+                {/* 1. MASTER STANDARDS */}
                 <div>
                     <div className="mb-4">
                         <h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 border-l-4 border-purple-500 pl-2">
@@ -725,13 +731,13 @@ const CalibrationPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 2. DYNAMIC CALCULATION SECTIONS */}
+                {/* 2. DYNAMIC CALCULATION SECTIONS (A, B, C, D, E) */}
                 <div>
                     {isWorksheetSaved ? (
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
                             
-                            {/* PROFESSIONAL STEPPER SWITCH */}
-                            <div className="flex flex-col items-center justify-center w-full max-w-2xl mx-auto mb-10">
+                            {/* --- MULTI-STEPPER SWITCH --- */}
+                            <div className="flex flex-col items-center justify-center w-full max-w-4xl mx-auto mb-10">
                                 <div className="relative flex items-center justify-between w-full">
                                     
                                     {/* Background Line */}
@@ -740,62 +746,50 @@ const CalibrationPage: React.FC = () => {
                                     {/* Active Progress Line */}
                                     <div 
                                         className="absolute left-0 top-1/2 h-1 bg-blue-600 -z-0 transform -translate-y-1/2 rounded-full transition-all duration-500 ease-in-out" 
-                                        style={{ width: activeTab === 'B' ? '100%' : '0%' }}
+                                        style={{ 
+                                            width: `${(STEPS.findIndex(s => s.id === activeTab) / (STEPS.length - 1)) * 100}%` 
+                                        }}
                                     ></div>
 
-                                    {/* STEP A */}
-                                    <button 
-                                        onClick={() => setActiveTab('A')}
-                                        className="relative group focus:outline-none z-10"
-                                    >
-                                        <div className={`
-                                            w-12 h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
-                                            ${activeTab === 'B' 
-                                                ? "bg-green-600 border-green-600 text-white" // Completed state
-                                                : activeTab === 'A'
-                                                    ? "bg-blue-600 border-blue-600 text-white scale-110" // Active State
-                                                    : "bg-white border-gray-300 text-gray-500" // Inactive (shouldn't happen here really)
-                                            }
-                                        `}>
-                                            {activeTab === 'B' ? <Check className="h-6 w-6" /> : <span className="text-lg font-bold">A</span>}
-                                        </div>
-                                        <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${activeTab === 'A' ? "text-blue-700" : "text-gray-500"}`}>
-                                            Repeatability
-                                        </span>
-                                    </button>
+                                    {/* Stepper Nodes */}
+                                    {STEPS.map((step, index) => {
+                                        const currentIndex = STEPS.findIndex(s => s.id === activeTab);
+                                        const isActive = step.id === activeTab;
+                                        const isCompleted = index < currentIndex;
 
-                                    {/* STEP B */}
-                                    <button 
-                                        onClick={() => setActiveTab('B')}
-                                        className="relative group focus:outline-none z-10"
-                                    >
-                                        <div className={`
-                                            w-12 h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
-                                            ${activeTab === 'B'
-                                                ? "bg-blue-600 border-blue-600 text-white scale-110" // Active State
-                                                : "bg-white border-gray-300 text-gray-400 hover:border-blue-300" // Inactive State
-                                            }
-                                        `}>
-                                            <span className="text-lg font-bold">B</span>
-                                        </div>
-                                        <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${activeTab === 'B' ? "text-blue-700" : "text-gray-400"}`}>
-                                            Reproducibility
-                                        </span>
-                                    </button>
-
+                                        return (
+                                            <button 
+                                                key={step.id}
+                                                onClick={() => setActiveTab(step.id)}
+                                                className="relative group focus:outline-none z-10"
+                                            >
+                                                <div className={`
+                                                    w-10 h-10 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
+                                                    ${isCompleted
+                                                        ? "bg-green-600 border-green-600 text-white" // Completed
+                                                        : isActive
+                                                            ? "bg-blue-600 border-blue-600 text-white scale-110" // Active
+                                                            : "bg-white border-gray-300 text-gray-400 hover:border-blue-300" // Inactive
+                                                    }
+                                                `}>
+                                                    {isCompleted ? <Check className="h-5 w-5" /> : <span className="text-sm font-bold">{step.id}</span>}
+                                                </div>
+                                                <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${isActive ? "text-blue-700" : "text-gray-400"}`}>
+                                                    {step.label}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             {/* CONTENT AREA */}
                             <div className="mt-8">
-                                {activeTab === 'A' ? (
-                                    <RepeatabilitySection jobId={jobId} />
-                                ) : (
-                                    <ReproducibilitySection 
-                                        jobId={jobId} 
-                                        torqueUnit={deviceDetails.rangeUnit} 
-                                    />
-                                )}
+                                {activeTab === 'A' && <RepeatabilitySection jobId={jobId} />}
+                                {activeTab === 'B' && <ReproducibilitySection jobId={jobId} torqueUnit={deviceDetails.rangeUnit} />}
+                                {activeTab === 'C' && <OutputDriveSection jobId={jobId} />}
+                                {activeTab === 'D' && <DriveInterfaceSection jobId={jobId} />}
+                                {activeTab === 'E' && <LoadingPointSection jobId={jobId} />}
                             </div>
 
                         </div>

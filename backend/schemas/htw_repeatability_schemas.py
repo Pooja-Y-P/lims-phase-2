@@ -66,3 +66,72 @@ class ReproducibilityResponse(BaseModel):
     error_due_to_reproducibility: float  # b_rep
     torque_unit: Optional[str] = None    # Added to support unit display in frontend
     sequences: List[SequenceResultResponse]
+
+
+# ... (Previous Repeatability A and Reproducibility B schemas remain unchanged) ...
+
+# ==============================================================================
+#                      C & D. GEOMETRIC VARIATIONS (Output & Drive)
+# ==============================================================================
+
+class GeometricVariationInput(BaseModel):
+    position_deg: int = Field(..., description="Must be 0, 90, 180, or 270")
+    readings: conlist(float, min_length=10, max_length=10) = Field(
+        ..., description="List of exactly 10 indicated readings"
+    )
+
+    @field_validator("position_deg")
+    def validate_position(cls, v):
+        if v not in [0, 90, 180, 270]:
+            raise ValueError("Position must be 0, 90, 180, or 270 degrees")
+        return v
+
+class GeometricCalculationRequest(BaseModel):
+    job_id: int
+    positions: List[GeometricVariationInput]
+
+class GeometricPositionResult(BaseModel):
+    position_deg: int
+    readings: List[float]
+    mean_value: float
+
+class GeometricVariationResponse(BaseModel):
+    job_id: int
+    status: str
+    set_torque: float
+    error_value: float  # b_out or b_int
+    torque_unit: Optional[str] = None
+    positions: List[GeometricPositionResult]
+
+# ==============================================================================
+#                        E. LOADING POINT VARIATION
+# ==============================================================================
+
+class LoadingPointInput(BaseModel):
+    loading_position_mm: int = Field(..., description="Must be -10 or 10")
+    readings: conlist(float, min_length=10, max_length=10) = Field(
+        ..., description="List of exactly 10 indicated readings"
+    )
+
+    @field_validator("loading_position_mm")
+    def validate_mm(cls, v):
+        if v not in [-10, 10]:
+            raise ValueError("Loading position must be -10 or 10")
+        return v
+
+class LoadingPointRequest(BaseModel):
+    job_id: int
+    positions: List[LoadingPointInput]
+
+class LoadingPointResult(BaseModel):
+    loading_position_mm: int
+    readings: List[float]
+    mean_value: float
+
+class LoadingPointResponse(BaseModel):
+    job_id: int
+    status: str
+    set_torque: float
+    error_due_to_loading_point: float  # b_l
+    torque_unit: Optional[str] = None
+    positions: List[LoadingPointResult]

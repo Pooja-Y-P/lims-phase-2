@@ -1,11 +1,10 @@
 import axios from "axios";
 
-export const BACKEND_ROOT_URL = "http://127.0.0.1:8000"; // Base URL for backend, including static files
-// Using the more specific base URL, common for versioned APIs
+export const BACKEND_ROOT_URL = "http://127.0.0.1:8000"; 
 export const API_BASE_URL = `${BACKEND_ROOT_URL}/api`;
 
 export const ENDPOINTS = {
-  // Authentication, session, and password management
+  // Authentication
   AUTH: {
     LOGIN: `/users/login`,
     LOGOUT: `/users/logout`,
@@ -16,38 +15,36 @@ export const ENDPOINTS = {
     VERIFY_TOKEN: (token: string) => `/auth/verify-reset-token/${token}`,
   },
   
-  // User resource management (e.g., for Admins)
+  // User management
   USERS: {
     ALL_USERS: `/users`,
     UPDATE_STATUS: (id: number) => `/users/${id}/status`,
   },
 
-  // Invitation management
+  // Invitations
   INVITATIONS: {
     SEND: '/invitations/send',
     ACCEPT: '/invitations/accept',
     VALIDATE: '/invitations/validate',
   },
   
-  // Staff-specific routes
+  // Staff
   STAFF: {
     SRFS: `/staff/srfs`,
     INWARDS: `/staff/inwards`,
     INWARDS_UPDATED: `/staff/inwards/updated`,
-    INWARDS_EXPORTABLE: `/staff/inwards/exportable-list`, // <-- NEW ENDPOINT ADDED
+    INWARDS_EXPORTABLE: `/staff/inwards/exportable-list`,
     INWARD_EXPORT: (id: number) => `/staff/inwards/${id}/export`,
     INWARD_EXPORT_BATCH: `/staff/inwards/export-batch`,
-    INWARD_EXPORT_BATCH_INWARD_ONLY: `/staff/inwards/export-batch-inward-only`, // For "View and Update Inward" - exports only inward data (no SRF)
+    INWARD_EXPORT_BATCH_INWARD_ONLY: `/staff/inwards/export-batch-inward-only`,
     INWARD_SEND_REPORT: (id: number) => `/staff/inwards/${id}/send-report`,
-    
-    // Simplified Draft endpoints
     DRAFTS: `/staff/inwards/drafts`,
     DRAFT: `/staff/inwards/draft`,
     SUBMIT: `/staff/inwards/submit`,
     DRAFT_DELETE: (id: number) => `/staff/inwards/drafts/${id}`,
   },
   
-  // Customer-facing portal routes
+  // Portal
   PORTAL: {
     ACTIVATE: `/portal/activate-account`,
     INWARDS: `/portal/inwards`,
@@ -58,14 +55,14 @@ export const ENDPOINTS = {
     CUSTOMERS_DROPDOWN: `/portal/customers/dropdown`,
   },
 
-  // Other primary resources
+  // Common
   CUSTOMERS: `/customers`,
   JOBS: `/jobs`,
   DEVIATIONS: `/deviations`,
   NOTIFICATIONS: `/notifications`,
   SRFS: `/srfs/`,
 
-  // SRF Draft endpoints
+  // SRF Drafts
   SRF_DRAFTS: {
     SAVE: (id: number) => `/srfs/draft/${id}`,
     CREATE: `/srfs/draft`,
@@ -73,7 +70,7 @@ export const ENDPOINTS = {
     CLEAR: (id: number) => `/srfs/draft/${id}`,
   },
 
-  // HTW Master Standard endpoints (Hydraulic Torque Wrench only)
+  // HTW Masters
   HTW_MASTER_STANDARDS: {
     LIST: `/htw-master-standards/`,
     GET: (id: number) => `/htw-master-standards/${id}`,
@@ -85,24 +82,41 @@ export const ENDPOINTS = {
     EXPORT_BATCH: `/htw-master-standards/export-batch`,
   },
 
-   HTW_JOBS: {
+  // HTW Jobs
+  HTW_JOBS: {
     CREATE: "/htw-jobs/",
-    UPDATE: "/htw-jobs", // Used as: `${UPDATE}/${id}`
+    UPDATE: "/htw-jobs",
     AUTO_SELECT_BASE: "/jobs"
   },
 
+  // --- CALCULATION ENDPOINTS ---
+  
+  // Section A (Legacy mapping)
   HTW_REPEATABILITY: {
     CALCULATE: "/htw-calculations/repeatability/calculate",
-  GET: (jobId: number) => `/htw-calculations/repeatability/${jobId}`,
-  REFERENCES: "/htw-calculations/repeatability/references/list",
+    GET: (jobId: number) => `/htw-calculations/repeatability/${jobId}`,
+    REFERENCES: "/htw-calculations/repeatability/references/list",
   },
   
-    HTW_REPRODUCIBILITY: {
-    CALCULATE: "/reproducibility/calculate",
-    GET: (jobId: number) => `/reproducibility/${jobId}`,
+  // Section B (Legacy mapping)
+  HTW_REPRODUCIBILITY: {
+    CALCULATE: "/htw-calculations/reproducibility/calculate", // Updated to match new router prefix
+    GET: (jobId: number) => `/htw-calculations/reproducibility/${jobId}`,
   },
 
-  // HTW Manufacturer Spec endpoints (Hydraulic Torque Wrench only)
+  // Unified Group for New Sections (C, D, E)
+  HTW_CALCULATIONS: {
+    OUTPUT_DRIVE: `/htw-calculations/output-drive`, // GET append /{jobId}
+    OUTPUT_DRIVE_CALCULATE: `/htw-calculations/output-drive/calculate`,
+    
+    DRIVE_INTERFACE: `/htw-calculations/drive-interface`, // GET append /{jobId}
+    DRIVE_INTERFACE_CALCULATE: `/htw-calculations/drive-interface/calculate`,
+    
+    LOADING_POINT: `/htw-calculations/loading-point`, // GET append /{jobId}
+    LOADING_POINT_CALCULATE: `/htw-calculations/loading-point/calculate`,
+  },
+
+  // Specs & Resolutions
   HTW_MANUFACTURER_SPECS: {
     LIST: `/htw-manufacturer-specs/`,
     GET: (id: number) => `/htw-manufacturer-specs/${id}`,
@@ -112,13 +126,11 @@ export const ENDPOINTS = {
     DELETE: (id: number) => `/htw-manufacturer-specs/${id}`,
   },
 
-  // HTW Pressure Gauge Resolution endpoints
   HTW_PRESSURE_GAUGE_RESOLUTIONS: {
     LIST: `/htw-pressure-gauge-resolutions/`,
     UNITS: `/htw-pressure-gauge-resolutions/units`,
   },
 
-  // HTW Nomenclature Range endpoints
   HTW_NOMENCLATURE_RANGES: {
     LIST: `/htw-nomenclature-ranges/`,
     GET: (id: number) => `/htw-nomenclature-ranges/${id}`,
@@ -130,7 +142,6 @@ export const ENDPOINTS = {
   }
 } as const;
 
-// Create axios instance with default configuration
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -138,7 +149,7 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor to add the authentication token to headers
+// ... (Rest of interceptors remain unchanged)
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -147,10 +158,10 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
+
+// ... (Response interceptor code remains unchanged)
 
 type FailedQueueItem = {
   resolve: (token: string | null) => void;
