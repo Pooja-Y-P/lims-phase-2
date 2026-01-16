@@ -89,6 +89,15 @@ export const ENDPOINTS = {
     AUTO_SELECT_BASE: "/jobs"
   },
 
+  // --- NEW: HTW ENVIRONMENT ---
+  HTW_ENVIRONMENT: {
+    // GET (list) or POST (create) environment record
+    BASE: (jobId: number) => `/staff/jobs/${jobId}/environment`, 
+    // Check status gates
+    PRE_STATUS: (jobId: number) => `/staff/jobs/${jobId}/environment/pre-status`,
+    POST_STATUS: (jobId: number) => `/staff/jobs/${jobId}/environment/post-status`,
+  },
+
   // --- CALCULATION ENDPOINTS ---
   
   // Section A (Legacy mapping)
@@ -100,7 +109,7 @@ export const ENDPOINTS = {
   
   // Section B (Legacy mapping)
   HTW_REPRODUCIBILITY: {
-    CALCULATE: "/htw-calculations/reproducibility/calculate", // Updated to match new router prefix
+    CALCULATE: "/htw-calculations/reproducibility/calculate",
     GET: (jobId: number) => `/htw-calculations/reproducibility/${jobId}`,
   },
 
@@ -161,8 +170,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ... (Response interceptor code remains unchanged)
-
 type FailedQueueItem = {
   resolve: (token: string | null) => void;
   reject: (error: unknown) => void;
@@ -202,7 +209,6 @@ const handleUnauthorized = (error: any) => {
   }
 };
 
-// Enhanced response interceptor with automatic token refresh
 api.interceptors.response.use(
   (response) => response,
   (error) => {

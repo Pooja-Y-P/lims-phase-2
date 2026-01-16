@@ -25,6 +25,7 @@ from backend.routes.htw_pressure_gauge_res_router import router as htw_pressure_
 from backend.routes.htw_nomenclature_range_router import router as htw_nomenclature_range_router
 from backend.routes.htw_job_standard import router as htw_job_standard_router
 from backend.routes.htw_job import router as htw_job
+from backend.routes.htw_job_environment_router  import router as htw_job_environment_router
 from backend.routes.htw_repeatability_router import router as htw_repeatability_router
 
 
@@ -88,7 +89,7 @@ app.include_router(htw_nomenclature_range_router, prefix="/api")
 app.include_router(htw_job_standard_router, prefix="/api")
 app.include_router(htw_job, prefix="/api")
 app.include_router(htw_repeatability_router, prefix="/api")
-
+app.include_router(htw_job_environment_router, prefix="/api")
 @app.get("/")
 def root():
     return {"message": "LIMS backend running successfully"}

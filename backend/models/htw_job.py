@@ -61,3 +61,8 @@ class HTWJob(Base):
     
     # Link to Repeatability
     repeatability = relationship("HTWRepeatability", back_populates="job_rel")
+    environments = relationship(
+        "HTWJobEnvironment", 
+        back_populates="job", 
+        cascade="all, delete-orphan"
+    )
