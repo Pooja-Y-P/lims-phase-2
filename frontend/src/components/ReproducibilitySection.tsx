@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
-import { Loader2, Save, AlertCircle, Edit, Trash2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, Cloud, Trash2 } from "lucide-react";
+import useDebounce from "../hooks/useDebounce"; // Import your hook
 
 interface ReproducibilitySectionProps {
   jobId: number;
-  torqueUnit?: string; // Prop from parent (fallback)
+  torqueUnit?: string; // Prop from parent
 }
 
 interface SequenceData {
@@ -18,7 +19,6 @@ interface BackendReproducibilityResponse {
   status: string;
   set_torque_20: number;
   error_due_to_reproducibility: number;
-  // Handle variations in backend naming
   torque_unit?: string; 
   unit?: string;
   pressure_unit?: string;
@@ -30,17 +30,21 @@ interface BackendReproducibilityResponse {
 }
 
 const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, torqueUnit }) => {
-  const [loading, setLoading] = useState(false);
-  const [calculating, setCalculating] = useState(false);
+  // --- STATE ---
+  const [loading, setLoading] = useState(false); // Initial load
   const [dataLoaded, setDataLoaded] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  
+  // Auto-Save Status State
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const lastSavedPayload = useRef<string | null>(null);
 
-  // State
+
+  // Data State
   const [setTorque, setSetTorque] = useState<number | null>(null);
   const [bRep, setBRep] = useState<number | null>(null);
-  const [fetchedUnit, setFetchedUnit] = useState<string | null>(null); // Store unit from DB
+  const [fetchedUnit, setFetchedUnit] = useState<string | null>(null); 
   
-  // Initialize 4 Sequences
   const [sequences, setSequences] = useState<SequenceData[]>([
     { sequence_no: 1, readings: ["", "", "", "", ""], mean_xr: null },
     { sequence_no: 2, readings: ["", "", "", "", ""], mean_xr: null },
@@ -50,7 +54,11 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
   const sequenceLabels = ["I", "II", "III", "IV"];
 
-  // LOGIC: Prefer Backend Unit -> Then Parent Prop -> Then Default "Nm"
+  // --- DEBOUNCE SETUP ---
+  const debouncedSequences = useDebounce(sequences, 1000);
+    const hasUserEdited = useRef(false);
+  
+  // --- UNIT LOGIC ---
   const displayUnit = useMemo(() => {
     if (fetchedUnit && fetchedUnit.trim() !== "") return fetchedUnit;
     if (torqueUnit && torqueUnit.trim() !== "") return torqueUnit;
@@ -66,17 +74,12 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       .then(res => {
         if (res.data.status === "success" || res.data.status === "no_data") {
           setSetTorque(res.data.set_torque_20);
+          setBRep(res.data.error_due_to_reproducibility);
           
-          // ROBUST UNIT CHECK: Check all possible keys from backend
           const backendUnit = res.data.torque_unit || res.data.unit || res.data.pressure_unit;
-          if (backendUnit) {
-            setFetchedUnit(backendUnit);
-          }
+          if (backendUnit) setFetchedUnit(backendUnit);
 
           if (res.data.sequences && res.data.sequences.length > 0) {
-            setIsSaved(true);
-            setBRep(res.data.error_due_to_reproducibility);
-            
             const newSeqs = sequences.map(defaultSeq => {
               const found = res.data.sequences.find(s => s.sequence_no === defaultSeq.sequence_no);
               if (found) {
@@ -91,69 +94,45 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
             setSequences(newSeqs);
           }
           setDataLoaded(true);
+          hasUserEdited.current = false;
         }
       })
       .catch(err => console.error("Failed to fetch reproducibility", err))
       .finally(() => setLoading(false));
   }, [jobId]);
 
-  // --- 2. INPUT HANDLING ---
-  const handleReadingChange = (seqIndex: number, readingIndex: number, value: string) => {
-    if (isSaved) return;
-    if (!/^\d*\.?\d*$/.test(value)) return;
+  // --- 2. AUTO-SAVE EFFECT ---
+useEffect(() => {
+  if (!dataLoaded) return;
+  if (!hasUserEdited.current) return;
 
-    setSequences(prev => {
-      const newSeqs = [...prev];
-      const currentSeq = { ...newSeqs[seqIndex] };
-      const newReadings = [...currentSeq.readings];
-      
-      newReadings[readingIndex] = value;
-      currentSeq.readings = newReadings;
+  const hasAnyValue = debouncedSequences.some(seq =>
+    seq.readings.some(r => r !== "")
+  );
+  if (!hasAnyValue) return;
 
-      const validNums = newReadings.filter(str => str !== "").map(Number);
-
-      if (validNums.length === 5) {
-        const sum = validNums.reduce((a, b) => a + b, 0);
-        currentSeq.mean_xr = sum / 5;
-      } else {
-        currentSeq.mean_xr = null;
-      }
-
-      newSeqs[seqIndex] = currentSeq;
-
-      // Local Calc for UI feedback
-      const allMeans = newSeqs.map(s => s.mean_xr).filter(m => m !== null) as number[];
-      if (allMeans.length === 4) {
-        const maxMean = Math.max(...allMeans);
-        const minMean = Math.min(...allMeans);
-        setBRep(maxMean - minMean);
-      } else {
-        setBRep(null);
-      }
-
-      return newSeqs;
-    });
-  };
-
-  const isFormComplete = useMemo(() => {
-    return sequences.every(s => s.readings.every(r => r !== ""));
-  }, [sequences]);
-
-  // --- 3. ACTIONS ---
-  const handleSave = async () => {
-    if (!isFormComplete) return;
-    setCalculating(true);
+  const performAutoSave = async () => {
+    setSaveStatus("saving");
 
     try {
       const payload = {
         job_id: jobId,
-        // IMPORTANT: Send the currently displayed unit to save it to DB
-        torque_unit: displayUnit, 
-        sequences: sequences.map(s => ({
+        torque_unit: displayUnit,
+        sequences: debouncedSequences.map(s => ({
           sequence_no: s.sequence_no,
-          readings: s.readings.map(Number)
+          readings: s.readings.map(r =>
+            r === "" || isNaN(Number(r)) ? 0 : Number(r)
+          )
         }))
       };
+      const payloadString = JSON.stringify(payload);
+
+if (payloadString === lastSavedPayload.current) {
+  setSaveStatus("saved");
+  return;
+}
+
+lastSavedPayload.current = payloadString;
 
       const res = await api.post<BackendReproducibilityResponse>(
         ENDPOINTS.HTW_REPRODUCIBILITY.CALCULATE,
@@ -162,46 +141,77 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
       setSetTorque(res.data.set_torque_20);
       setBRep(res.data.error_due_to_reproducibility);
-      
-      // Update local state with whatever the backend confirmed
-      const confirmedUnit = res.data.torque_unit || res.data.unit || res.data.pressure_unit;
-      if (confirmedUnit) {
-        setFetchedUnit(confirmedUnit);
-      }
-      
-      const updatedSeqs = sequences.map(s => {
-        const found = res.data.sequences.find(b => b.sequence_no === s.sequence_no);
-        if(found) return { ...s, mean_xr: found.mean_xr };
-        return s;
-      });
-      setSequences(updatedSeqs);
-      setIsSaved(true);
-      alert("Reproducibility Saved!");
-    } catch (err: any) {
-      alert(`Error: ${err.response?.data?.detail || "Save failed"}`);
-    } finally {
-      setCalculating(false);
+
+      const confirmedUnit = res.data.torque_unit || res.data.unit;
+      if (confirmedUnit) setFetchedUnit(confirmedUnit);
+
+      setSaveStatus("saved");
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error("Auto-save failed", err);
+      setSaveStatus("error");
     }
   };
 
-  const handleEdit = () => {
-    if (window.confirm("Unlock to edit? Changes are not saved until you click 'Calculate & Save'.")) {
-        setIsSaved(false);
+  performAutoSave();
+}, [debouncedSequences, jobId]);
+
+
+
+
+
+  // --- 3. INPUT HANDLING ---
+const handleReadingChange = (seqIndex: number, readingIndex: number, value: string) => {
+  if (!/^\d*\.?\d*$/.test(value)) return;
+
+  hasUserEdited.current = true;
+  setSaveStatus("idle"); // ✅ ADD THIS
+
+  setSequences(prev => {
+    const newSeqs = [...prev];
+    const currentSeq = { ...newSeqs[seqIndex] };
+    const newReadings = [...currentSeq.readings];
+
+    newReadings[readingIndex] = value;
+    currentSeq.readings = newReadings;
+
+    const validNums = newReadings.filter(v => v !== "").map(Number);
+    currentSeq.mean_xr =
+      validNums.length === 5
+        ? validNums.reduce((a, b) => a + b, 0) / 5
+        : null;
+
+    newSeqs[seqIndex] = currentSeq;
+
+    const allMeans = newSeqs.map(s => s.mean_xr).filter(m => m !== null) as number[];
+    if (allMeans.length === 4) {
+      setBRep(Math.max(...allMeans) - Math.min(...allMeans));
     }
-  };
+
+    return newSeqs;
+  });
+};
+
+
 
   const handleClear = () => {
-    if (isSaved) return;
-    if (window.confirm("Clear all reproducibility readings?")) {
-        setSequences(prev => prev.map(s => ({
-            ...s,
-            readings: ["", "", "", "", ""],
-            mean_xr: null
-        })));
-        setBRep(null);
-    }
-  };
+  if (window.confirm("Clear all reproducibility readings?")) {
+    hasUserEdited.current = true;   // ✅ ADD
+    setSaveStatus("idle");          // ✅ ADD
 
+    setSequences(prev =>
+      prev.map(s => ({
+        ...s,
+        readings: ["", "", "", "", ""],
+        mean_xr: null
+      }))
+    );
+    setBRep(null);
+  }
+};
+
+
+  // --- RENDER ---
   if (loading && !dataLoaded) {
     return (
         <div className="h-48 flex flex-col items-center justify-center text-gray-400 border border-gray-200 rounded-xl bg-gray-50 mt-6">
@@ -211,18 +221,10 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
     );
   }
 
-  // --- STYLES ---
   const thBase = "border border-gray-300 px-2 py-2 font-bold text-center align-middle bg-gray-100 text-gray-700 text-xs";
   const thUnit = "border border-gray-300 px-1 py-1 font-bold text-center align-middle bg-blue-50 text-blue-800 text-[10px]";
   const tdBase = "border border-gray-300 px-2 py-2 text-center align-middle text-gray-800 font-medium text-sm";
   const inputCell = "border border-gray-300 p-0 h-9 w-[100px] relative";
-  
-  const inputStyle = `
-    w-full h-full text-center text-sm font-medium focus:outline-none transition-colors
-    ${isSaved 
-        ? 'bg-gray-50 text-gray-500 cursor-not-allowed' 
-        : 'bg-white text-black hover:bg-gray-50 focus:bg-blue-50 focus:text-blue-900 placeholder-gray-200'}
-  `;
 
   return (
     <>
@@ -234,17 +236,30 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
             B. Reproducibility
         </h2>
         
-        <div className="flex gap-2">
-            {!isSaved && !isFormComplete && (
-                <div className="flex items-center gap-2 text-[10px] text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
-                    <AlertCircle className="h-3 w-3" />
-                    <span>Enter all 20 readings</span>
-                </div>
+        {/* Status Indicator */}
+        <div className="flex items-center gap-2 text-xs font-medium">
+            {saveStatus === "saving" && (
+                <span className="text-blue-600 flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                </span>
             )}
-            {isSaved && (
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
-                    <Save className="h-3 w-3" /> Saved (Read-Only)
-                </div>
+            {saveStatus === "saved" && (
+                <span className="text-green-600 flex items-center gap-1 transition-opacity duration-1000">
+                    <CheckCircle2 className="h-3 w-3" /> Saved 
+                    <span className="text-gray-400 text-[10px] ml-1">
+                        {lastSaved?.toLocaleTimeString()}
+                    </span>
+                </span>
+            )}
+            {saveStatus === "error" && (
+                <span className="text-red-600 flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" /> Save Failed
+                </span>
+            )}
+            {saveStatus === "idle" && (
+                <span className="text-gray-400 flex items-center gap-1">
+                    <Cloud className="h-3 w-3" /> Up to date
+                </span>
             )}
         </div>
       </div>
@@ -283,8 +298,7 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
                       type="text"
                       value={seq.readings[readingIndex]}
                       onChange={(e) => handleReadingChange(seqIndex, readingIndex, e.target.value)}
-                      disabled={isSaved}
-                      className={inputStyle}
+                      className="w-full h-full text-center text-sm font-medium focus:outline-none bg-white text-black hover:bg-gray-50 focus:bg-blue-50 focus:text-blue-900 placeholder-gray-200"
                       placeholder="-"
                     />
                   </td>
@@ -314,9 +328,9 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       </div>
 
       {/* FOOTER ACTIONS */}
-      <div className="flex justify-between items-center mt-5">
+      <div className="flex justify-between items-center mt-3 h-8">
          <div>
-            {!isSaved && sequences.some(s => s.readings.some(r => r !== "")) && (
+            {sequences.some(s => s.readings.some(r => r !== "")) && (
                  <button 
                     onClick={handleClear}
                     className="flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
@@ -325,29 +339,8 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
                 </button>
             )}
          </div>
-         <div>
-            {isSaved ? (
-                <button
-                    onClick={handleEdit}
-                    className="px-5 py-2 text-xs font-bold uppercase tracking-wider border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 rounded-lg shadow-sm flex items-center gap-2"
-                >
-                    <Edit className="h-3 w-3" /> Edit Data
-                </button>
-            ) : (
-                <button
-                    onClick={handleSave}
-                    disabled={!isFormComplete || calculating}
-                    className={`
-                        px-5 py-2 text-xs font-bold uppercase tracking-wider border border-black rounded-lg shadow-sm flex items-center gap-2 transition-all
-                        ${isFormComplete 
-                            ? "bg-black text-white hover:bg-gray-800" 
-                            : "bg-gray-100 text-gray-400 cursor-not-allowed"}
-                    `}
-                >
-                    {calculating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                    {calculating ? "Processing..." : "Calculate & Save"}
-                </button>
-            )}
+         <div className="text-[10px] text-gray-400 italic">
+            Changes save automatically
          </div>
       </div>
     </div>

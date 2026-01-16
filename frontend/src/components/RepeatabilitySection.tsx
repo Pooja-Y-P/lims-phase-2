@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
-import { Loader2, AlertCircle, Save, Edit, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, Cloud, AlertCircle } from "lucide-react";
+
+// --- IMPORT YOUR HOOK ---
+// Ensure this path matches where you saved the hook
+import useDebounce from "../hooks/useDebounce"; 
 
 interface RepeatabilitySectionProps {
   jobId: number;
 }
 
-// Unified Row Interface used for State
+// Unified Row Interface
 interface RepeatabilityRowData {
   step_percent: number;
   set_pressure: number;
@@ -20,6 +24,12 @@ interface RepeatabilityRowData {
   torque_unit: string;
 }
 
+interface UncertaintyReference {
+  indicated_torque: number;
+  error_value: number;
+}
+
+// Types for API Responses
 interface BackendResult {
   step_percent: number;
   mean_xr: number;
@@ -39,28 +49,34 @@ interface RepeatabilityResponse {
   results: BackendResult[];
 }
 
-// Interface for Reference Data (for frontend interpolation)
-interface UncertaintyReference {
-  indicated_torque: number;
-  error_value: number;
-}
-
 const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) => {
-  const [loading, setLoading] = useState(false);
-  const [calculating, setCalculating] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  // --- STATE ---
+  const [loading, setLoading] = useState(false); // Initial Load
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
   const [tableData, setTableData] = useState<RepeatabilityRowData[]>([]);
   const [references, setReferences] = useState<UncertaintyReference[]>([]);
 
-  // State: Is the form currently saved (read-only)?
-  const [isSaved, setIsSaved] = useState(false);
+  // --- DEBOUNCE SETUP ---
+  // We debounce the entire tableData object. API calls trigger 1000ms after last change.
+  const debouncedReadings = useDebounce(
+  tableData.map(r => ({
+    step_percent: r.step_percent,
+    readings: r.readings
+  })),
+  1000
+);
 
-  // Extract units for display (Safe access from first row)
+  
+  // Ref to prevent auto-save running immediately on component mount
+  const isFirstRender = useRef(true);
+
+  // Extract units for display
   const pressureUnit = tableData.length > 0 ? tableData[0].pressure_unit : "-";
   const torqueUnit = tableData.length > 0 ? tableData[0].torque_unit : "-";
 
-  // --- 1. INITIAL FETCH ---
+  // --- 1. INITIAL DATA FETCH ---
   useEffect(() => {
     const init = async () => {
         if (!jobId) return;
@@ -74,10 +90,6 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
             setReferences(refRes.data);
 
             if (jobRes.data.status === "success" && jobRes.data.results.length > 0) {
-                // Check if we have actual saved readings to set Read-Only mode
-                const hasSavedReadings = jobRes.data.results.some(r => r.stored_readings && r.stored_readings.length > 0);
-                setIsSaved(hasSavedReadings);
-
                 const formattedData: RepeatabilityRowData[] = jobRes.data.results.map(item => ({
                     step_percent: item.step_percent,
                     set_pressure: item.set_pressure,
@@ -94,7 +106,6 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                 }));
                 formattedData.sort((a, b) => a.step_percent - b.step_percent);
                 setTableData(formattedData);
-                setDataLoaded(true);
             }
         } catch (err) {
             console.error("Failed to load data", err);
@@ -105,7 +116,49 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
     init();
   }, [jobId]);
 
-  // --- 2. LOCAL MATH HELPERS ---
+  // --- 2. AUTO-SAVE EFFECT ---
+  useEffect(() => {
+  if (isFirstRender.current) {
+    isFirstRender.current = false;
+    return;
+  }
+
+  if (!debouncedReadings || debouncedReadings.length === 0) return;
+
+  const hasAnyInput = debouncedReadings.some(r =>
+    r.readings.some(v => v !== "" && !isNaN(Number(v)))
+  );
+
+  if (!hasAnyInput) return;
+
+  const autoSave = async () => {
+    try {
+      setSaveStatus("saving");
+
+      await api.post(ENDPOINTS.HTW_REPEATABILITY.CALCULATE, {
+        job_id: jobId,
+        steps: debouncedReadings.map(r => ({
+          step_percent: r.step_percent,
+          readings: r.readings.map(v =>
+            v === "" || isNaN(Number(v)) ? 0 : Number(v)
+          )
+        }))
+      });
+
+      setSaveStatus("saved");
+      setLastSaved(new Date());
+    } catch {
+      setSaveStatus("error");
+    }
+  };
+
+  autoSave();
+}, [debouncedReadings, jobId]);
+
+
+
+
+  // --- 3. LOCAL MATH HELPERS ---
   const calculateInterpolation = (val: number): number => {
       if (references.length === 0) return 0;
       const lowerCandidates = references.filter(r => r.indicated_torque <= val);
@@ -130,9 +183,9 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
       return 0;
   };
 
-  // --- 3. DYNAMIC INPUT HANDLER ---
+  // --- 4. INPUT HANDLER ---
   const handleReadingChange = (rowIndex: number, readingIndex: number, value: string) => {
-    if (isSaved) return; // Block edits if saved
+    // Basic validation: allow numbers and one decimal point
     if (!/^\d*\.?\d*$/.test(value)) return;
 
     setTableData(prevData => {
@@ -142,17 +195,22 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         newReadings[readingIndex] = value;
         row.readings = newReadings;
 
-        // --- REAL-TIME CALCULATION ---
+        // --- REAL-TIME LOCAL CALCULATION ---
+        // We calculate locally so the UI feels instant (0ms latency), 
+        // while the debounce logic handles the "Save" (1000ms latency).
         const validReadings = newReadings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
         
         if (validReadings.length === 5) {
              const sum = validReadings.reduce((a, b) => a + b, 0);
              const mean = sum / 5;
              row.mean_xr = mean;
+             
              const corrStd = calculateInterpolation(mean);
              row.corrected_standard = corrStd;
+             
              const corrMean = mean - corrStd;
              row.corrected_mean = corrMean;
+             
              if (row.set_torque !== 0) {
                  const dev = ((corrMean - row.set_torque) * 100) / row.set_torque;
                  row.deviation_percent = dev;
@@ -160,6 +218,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                  row.deviation_percent = 0;
              }
         } else {
+             // If data is partial, clear calculations visually
              row.mean_xr = null;
              row.corrected_standard = null;
              row.corrected_mean = null;
@@ -170,66 +229,8 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
     });
   };
 
-  const isFormComplete = useMemo(() => {
-      if (tableData.length === 0) return false;
-      return tableData.every(row => 
-          row.readings.every(r => r !== "" && !isNaN(Number(r)))
-      );
-  }, [tableData]);
-
-  // --- 4. ACTIONS ---
-  
-  const handleSave = async () => {
-    if (!isFormComplete) return;
-    setCalculating(true);
-    try {
-      const payload = {
-        job_id: jobId,
-        steps: tableData.map(row => ({
-          step_percent: row.step_percent,
-          readings: row.readings.map(Number)
-        }))
-      };
-      
-      await api.post<RepeatabilityResponse>(
-        ENDPOINTS.HTW_REPEATABILITY.CALCULATE, 
-        payload
-      );
-      
-      setIsSaved(true); // Lock the form
-      alert("Worksheet Saved Successfully!");
-    } catch (error: any) {
-      console.error("Save failed", error);
-      alert(`Error: ${error.response?.data?.detail || "Failed to save."}`);
-    } finally {
-      setCalculating(false);
-    }
-  };
-
-  // Unlock for editing
-  const handleEdit = () => {
-      if (window.confirm("Unlock to edit? Unsaved changes will be lost if you don't save again.")) {
-          setIsSaved(false);
-      }
-  };
-
-  // Clear unsaved data
-  const handleClear = () => {
-      if (isSaved) return;
-      if (!window.confirm("Clear all readings?")) return;
-
-      setTableData(prev => prev.map(row => ({
-          ...row,
-          readings: ["", "", "", "", ""],
-          mean_xr: null,
-          corrected_standard: null,
-          corrected_mean: null,
-          deviation_percent: null
-      })));
-  };
-
   // --- RENDER ---
-  if (loading && !dataLoaded) {
+  if (loading) {
       return (
           <div className="h-48 flex flex-col items-center justify-center text-gray-400 border border-gray-200 rounded-xl bg-gray-50">
               <Loader2 className="h-6 w-6 animate-spin mb-2" />
@@ -238,26 +239,41 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
       );
   }
 
-  // --- STYLES (Kept exactly as requested) ---
-  const thBase = "border border-black px-1 py-1.5 font-bold text-center align-middle bg-gray-50 text-black";
-  const thUnit = "border border-black px-1 py-1 font-bold text-center align-middle bg-blue-50 text-blue-800 text-[10px]";
-  const tdBase = "border border-black px-1 py-1 text-center align-middle text-black font-medium";
-
   return (
     <div className="flex flex-col w-full animate-in fade-in duration-500 bg-white border border-gray-200 rounded-xl shadow-sm p-4">
         
-        {/* HEADER Title */}
+        {/* HEADER Title & Status */}
         <div className="mb-4 flex justify-between items-center">
             <h2 className="text-sm font-bold text-black uppercase tracking-tight border-l-4 border-orange-500 pl-2">
                 A. Repeatability (ISO 6789-1)
             </h2>
             
-            {/* Added: Saved Badge */}
-            {isSaved && (
-                <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-1 rounded-full text-xs font-bold border border-green-200">
-                    <Save className="h-3 w-3" /> Saved (Read-Only)
-                </div>
-            )}
+            {/* Auto-Save Status Indicator */}
+            <div className="flex items-center gap-2 text-xs font-medium">
+                {saveStatus === "saving" && (
+                    <span className="text-blue-600 flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                    </span>
+                )}
+                {saveStatus === "saved" && (
+                    <span className="text-green-600 flex items-center gap-1 transition-opacity duration-1000">
+                        <CheckCircle2 className="h-3 w-3" /> Saved 
+                        <span className="text-gray-400 text-[10px] ml-1">
+                            {lastSaved?.toLocaleTimeString()}
+                        </span>
+                    </span>
+                )}
+                {saveStatus === "error" && (
+                    <span className="text-red-600 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" /> Save Failed
+                    </span>
+                )}
+                {saveStatus === "idle" && (
+                    <span className="text-gray-400 flex items-center gap-1">
+                        <Cloud className="h-3 w-3" /> Up to date
+                    </span>
+                )}
+            </div>
         </div>
 
         {/* STRICT ISO TABLE */}
@@ -289,26 +305,18 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
 
                     {/* 3. Unit Header (Dynamic) */}
                     <tr className="bg-gray-50 text-[9px] font-bold text-blue-700 text-center">
-                        {/* Ps Unit */}
                         <th className="border border-gray-300 p-1">{pressureUnit}</th>
-                        
-                        {/* Ts Unit */}
                         <th className="border border-gray-300 p-1">{torqueUnit}</th>
                         
-                        {/* S1-S5 Units (Green) */}
                         {[1, 2, 3, 4, 5].map(i => (
                             <th key={i} className="border border-gray-300 p-1 bg-green-50">{torqueUnit}</th>
                         ))}
 
-                        {/* EXPANDED UNITS */}
                         <th className="border border-gray-300 p-1">{torqueUnit}</th> 
                         <th className="border border-gray-300 p-1">{torqueUnit}</th> 
                         <th className="border border-gray-300 p-1">{torqueUnit}</th> 
 
-                        {/* Deviation */}
                         <th className="border border-gray-300 p-1">%</th>
-                        
-                        {/* Tolerance */}
                         <th className="border border-gray-300 p-1">±4%</th>
                     </tr>
                 </thead>
@@ -341,13 +349,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                             type="text"
                                             value={reading}
                                             onChange={(e) => handleReadingChange(rowIndex, rIndex, e.target.value)}
-                                            disabled={isSaved} // Disable if saved
-                                            className={`w-full h-full p-2 text-center text-sm font-medium focus:outline-none 
-                                                ${isSaved 
-                                                    ? 'bg-gray-100 text-gray-500 cursor-not-allowed' // Locked style
-                                                    : 'bg-transparent text-gray-700 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400' // Editable style
-                                                }
-                                            `}
+                                            className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-700 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400"
                                             placeholder="-"
                                         />
                                     </td>
@@ -393,53 +395,11 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                 </tbody>
             </table>
         </div>
-
-        {/* FOOTER ACTIONS (UPDATED) */}
-        <div className="flex justify-between items-center mt-4">
-            
-            {/* Left: Clear or Warning */}
-            <div className="flex gap-2">
-                {!isSaved && tableData.some(r => r.readings.some(v => v !== "")) && (
-                    <button 
-                        onClick={handleClear}
-                        className="flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
-                    >
-                        <Trash2 className="h-3 w-3" /> Clear
-                    </button>
-                )}
-                {!isSaved && !isFormComplete && tableData.length > 0 && (
-                     <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-100">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>Enter all readings</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Right: Save or Edit */}
-            {isSaved ? (
-                <button
-                    onClick={handleEdit}
-                    className="px-5 py-2 text-xs font-bold uppercase tracking-wider border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 rounded-lg shadow-sm flex items-center gap-2"
-                >
-                    <Edit className="h-3 w-3" /> Edit Readings
-                </button>
-            ) : (
-                <button
-                    onClick={handleSave}
-                    disabled={!isFormComplete || calculating}
-                    className={`
-                        px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-lg flex items-center gap-2 shadow-sm transition-all
-                        ${isFormComplete 
-                            ? "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md" 
-                            : "bg-gray-200 text-gray-400 cursor-not-allowed"}
-                    `}
-                >
-                    {calculating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {calculating ? "Calculate & Save" : "Save Worksheet"}
-                </button>
-            )}
+        
+        {/* Footer Note */}
+        <div className="mt-2 text-[10px] text-gray-400 italic text-right">
+             Changes save automatically
         </div>
-
     </div>
   );
 };
