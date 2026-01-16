@@ -269,8 +269,8 @@ const handleReadingChange = (seqIndex: number, readingIndex: number, value: stri
         <table className="w-full min-w-[600px] border-collapse">
           <thead>
             <tr>
-              <th rowSpan={2} className={`${thBase} w-[120px]`}>Set Torque<br/><span className="font-normal text-[10px]">(20% Value)</span></th>
-              <th colSpan={4} className={thBase}>Sequence (Reading Series)</th>
+              <th rowSpan={2} className={`${thBase} w-[120px]`}>Set Torque<br/></th>
+              <th colSpan={4} className={thBase}>Sequence</th>
             </tr>
             <tr>
               {sequenceLabels.map(label => (

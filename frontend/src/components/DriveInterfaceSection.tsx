@@ -29,6 +29,7 @@ interface DriveInterfaceResponse {
 const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // Critical for Auto-Save logic
   
   // Auto-Save Status
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -46,7 +47,10 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
   const [meta, setMeta] = useState({ set_torque: 0, error_value: 0, torque_unit: "-" });
 
   // --- DEBOUNCE SETUP ---
+  // Wait 1000ms after typing stops before updating this variable
   const debouncedTableData = useDebounce(tableData, 1000);
+  
+  // Ref to prevent initial mount trigger
   const isFirstRender = useRef(true);
 
   // --- 1. INITIAL FETCH ---
@@ -56,6 +60,14 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
       setLoading(true);
       try {
         const res = await api.get<DriveInterfaceResponse>(`${ENDPOINTS.HTW_CALCULATIONS.DRIVE_INTERFACE}/${jobId}`);
+        
+        let currentData = [
+          { position_deg: 0, readings: Array(10).fill(""), mean_value: null },
+          { position_deg: 90, readings: Array(10).fill(""), mean_value: null },
+          { position_deg: 180, readings: Array(10).fill(""), mean_value: null },
+          { position_deg: 270, readings: Array(10).fill(""), mean_value: null },
+        ] as GeometricRowData[];
+
         if (res.data.status === "success" && res.data.positions.length > 0) {
           const mappedData = res.data.positions.map(p => ({
             position_deg: p.position_deg,
@@ -63,19 +75,37 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
             mean_value: p.mean_value
           }));
 
-          const sorted = [0, 90, 180, 270].map(deg =>
+          currentData = [0, 90, 180, 270].map(deg =>
             mappedData.find(d => d.position_deg === deg) || { position_deg: deg, readings: Array(10).fill(""), mean_value: null }
           );
 
-          setTableData(sorted);
           setMeta({
             set_torque: res.data.set_torque,
             error_value: res.data.error_value,
             torque_unit: res.data.torque_unit || "-"
           });
         } else {
-          setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
+            // Even if empty, set meta
+            setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
         }
+
+        setTableData(currentData);
+
+        // --- CRITICAL FIX: SYNC REFERENCE ---
+        // We calculate what the payload looks like NOW, so the Auto-Save effect 
+        // knows that the data we just fetched is "clean" and doesn't need saving.
+        const initialPayload = { 
+          job_id: jobId, 
+          positions: currentData.map(r => ({
+            position_deg: r.position_deg,
+            readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
+          }))
+        };
+        lastSavedPayload.current = JSON.stringify(initialPayload);
+        
+        // Mark as loaded so the Auto-Save effect can start listening
+        setDataLoaded(true);
+
       } catch (err) {
         console.error(err);
       } finally {
@@ -87,39 +117,47 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
 
   // --- 2. AUTO-SAVE EFFECT ---
   useEffect(() => {
+    // Skip if component just mounted
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
+    // Skip if we haven't finished loading data from DB yet
+    if (!dataLoaded) return;
 
     const performAutoSave = async () => {
+      // 1. Construct Payload
+      const payload = { 
+        job_id: jobId, 
+        positions: debouncedTableData.map(r => ({
+          position_deg: r.position_deg,
+          // Convert empty strings to 0 for backend Pydantic validation
+          readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
+        }))
+      };
+
+      // 2. Compare with last successful save to prevent duplicate requests
+      const payloadString = JSON.stringify(payload);
+      if (payloadString === lastSavedPayload.current) {
+        return; 
+      }
+
       setSaveStatus("saving");
+
       try {
-        const payload = { 
-          job_id: jobId, 
-          positions: debouncedTableData.map(r => ({
-            position_deg: r.position_deg,
-            readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
-          }))
-        };
-
-        const payloadString = JSON.stringify(payload);
-        if (payloadString === lastSavedPayload.current) {
-          setSaveStatus("saved"); // Avoid redundant saves
-          return;
-        }
-
         const res = await api.post<DriveInterfaceResponse>(
           ENDPOINTS.HTW_CALCULATIONS.DRIVE_INTERFACE_CALCULATE,
           payload
         );
 
+        // 3. Update Meta from response (Calculated Errors/Means)
         setMeta({
           set_torque: res.data.set_torque,
           error_value: res.data.error_value,
           torque_unit: res.data.torque_unit || "-"
         });
 
+        // 4. Update Reference
         lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
         setLastSaved(new Date());
@@ -130,11 +168,13 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
     };
 
     performAutoSave();
-  }, [debouncedTableData, jobId]);
+  }, [debouncedTableData, jobId, dataLoaded]);
 
   // --- 3. HANDLERS ---
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
+    
+    // Visually indicate change is pending
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -143,13 +183,13 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
       row.readings = [...row.readings];
       row.readings[readIdx] = val;
 
-      // Instant mean calculation
+      // Instant local mean calculation for UI responsiveness
       const nums = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
       row.mean_value = nums.length === 10 ? nums.reduce((a, b) => a + b, 0) / 10 : null;
 
       newData[rowIdx] = row;
 
-      // Instant error calculation (b_int)
+      // Instant error calculation (b_int) for UI responsiveness
       const means = newData.map(r => r.mean_value).filter((m): m is number => m !== null);
       if (means.length === 4) {
         setMeta(m => ({ ...m, error_value: Math.max(...means) - Math.min(...means) }));
