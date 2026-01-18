@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, conlist
+from pydantic import BaseModel, Field, conlist, field_validator
 from typing import List, Optional
 
 # ==============================================================================
@@ -6,17 +6,17 @@ from typing import List, Optional
 # ==============================================================================
 
 class RepeatabilityStepInput(BaseModel):
-    step_percent: float = Field(..., description="Must be 20, 60, or 100")
+    # Removed rigid validator to allow 40%, 80%, etc.
+    step_percent: float = Field(..., description="Step percentage (e.g., 20, 40, 60, 80, 100)")
+    
+    # Accept manual set values from frontend (Optional, default to 0 for drafts)
+    set_pressure: Optional[float] = 0.0
+    set_torque: Optional[float] = 0.0
+    
+    # Drafts accept 0s for empty readings
     readings: conlist(float, min_length=5, max_length=5) = Field(
-        ..., description="List of exactly 5 indicated readings (S1 to S5)"
+        ..., description="List of exactly 5 indicated readings. Send 0.0 for empty."
     )
-
-    @field_validator("step_percent")
-    def validate_step(cls, v: float) -> float:
-        allowed = [20.0, 60.0, 100.0]
-        if v not in allowed:
-            raise ValueError(f"Step percent must be one of {allowed}")
-        return v
 
 class RepeatabilityCalculationRequest(BaseModel):
     job_id: int
@@ -46,12 +46,14 @@ class RepeatabilityResponse(BaseModel):
 
 class ReproducibilitySequenceInput(BaseModel):
     sequence_no: int = Field(..., ge=1, le=4, description="Sequence Number (1=I, 2=II, 3=III, 4=IV)")
+    # Allow floats, including 0.0 for empty fields
     readings: conlist(float, min_length=5, max_length=5) = Field(
-        ..., description="List of exactly 5 indicated readings"
+        ..., description="List of exactly 5 indicated readings. Use 0.0 for empty."
     )
 
 class ReproducibilityCalculationRequest(BaseModel):
     job_id: int
+    torque_unit: Optional[str] = None  # Added to allow saving unit preference if needed
     sequences: List[ReproducibilitySequenceInput]
 
 class SequenceResultResponse(BaseModel):
@@ -63,12 +65,10 @@ class ReproducibilityResponse(BaseModel):
     job_id: int
     status: str
     set_torque_20: float
-    error_due_to_reproducibility: float  # b_rep
-    torque_unit: Optional[str] = None    # Added to support unit display in frontend
+    error_due_to_reproducibility: float
+    torque_unit: Optional[str] = None
     sequences: List[SequenceResultResponse]
 
-
-# ... (Previous Repeatability A and Reproducibility B schemas remain unchanged) ...
 
 # ==============================================================================
 #                      C & D. GEOMETRIC VARIATIONS (Output & Drive)
@@ -76,12 +76,14 @@ class ReproducibilityResponse(BaseModel):
 
 class GeometricVariationInput(BaseModel):
     position_deg: int = Field(..., description="Must be 0, 90, 180, or 270")
+    # Drafts accept 0.0 for empty readings
     readings: conlist(float, min_length=10, max_length=10) = Field(
-        ..., description="List of exactly 10 indicated readings"
+        ..., description="List of exactly 10 indicated readings. Use 0.0 for empty."
     )
 
     @field_validator("position_deg")
     def validate_position(cls, v):
+        # We keep this validation because the UI rows are fixed
         if v not in [0, 90, 180, 270]:
             raise ValueError("Position must be 0, 90, 180, or 270 degrees")
         return v
@@ -103,18 +105,21 @@ class GeometricVariationResponse(BaseModel):
     torque_unit: Optional[str] = None
     positions: List[GeometricPositionResult]
 
+
 # ==============================================================================
 #                        E. LOADING POINT VARIATION
 # ==============================================================================
 
 class LoadingPointInput(BaseModel):
     loading_position_mm: int = Field(..., description="Must be -10 or 10")
+    # Drafts accept 0.0 for empty readings
     readings: conlist(float, min_length=10, max_length=10) = Field(
-        ..., description="List of exactly 10 indicated readings"
+        ..., description="List of exactly 10 indicated readings. Use 0.0 for empty."
     )
 
     @field_validator("loading_position_mm")
     def validate_mm(cls, v):
+        # We keep this validation because the UI rows are fixed
         if v not in [-10, 10]:
             raise ValueError("Loading position must be -10 or 10")
         return v

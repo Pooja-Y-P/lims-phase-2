@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, CheckCircle2, AlertCircle, Cloud, Trash2 } from "lucide-react";
+import useDebounce from "../hooks/useDebounce"; 
 
 interface LoadingPointSectionProps {
   jobId: number;
@@ -28,6 +29,8 @@ interface LoadingPointResponse {
 const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // Critical for auto-save
+  
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const lastSavedPayload = useRef<string | null>(null);
@@ -39,7 +42,11 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
   const [meta, setMeta] = useState({ set_torque: 0, error_value: 0, torque_unit: "-" });
 
-  // --- FETCH INITIAL DATA ---
+  // --- DEBOUNCE SETUP ---
+  const debouncedTableData = useDebounce(tableData, 1000);
+  const hasUserEdited = useRef(false);
+
+  // --- 1. FETCH INITIAL DATA ---
   useEffect(() => {
     if (!jobId) return;
     setLoading(true);
@@ -47,6 +54,12 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
     const fetchData = async () => {
       try {
         const res = await api.get<LoadingPointResponse>(`${ENDPOINTS.HTW_CALCULATIONS.LOADING_POINT}/${jobId}`);
+        
+        let currentData = [
+            { loading_position_mm: -10, readings: Array(10).fill(""), mean_value: null },
+            { loading_position_mm: 10, readings: Array(10).fill(""), mean_value: null },
+        ] as LoadingRowData[];
+
         if (res.data.status === "success" && res.data.positions.length > 0) {
           const mapped = res.data.positions.map(p => ({
             loading_position_mm: p.loading_position_mm,
@@ -54,12 +67,11 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
             mean_value: p.mean_value
           }));
 
-          const sorted = [-10, 10].map(mm =>
+          currentData = [-10, 10].map(mm =>
             mapped.find(d => d.loading_position_mm === mm) ||
             { loading_position_mm: mm, readings: Array(10).fill(""), mean_value: null }
           );
 
-          setTableData(sorted);
           setMeta({
             set_torque: res.data.set_torque,
             error_value: res.data.error_due_to_loading_point,
@@ -68,6 +80,21 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
         } else {
           setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
         }
+
+        setTableData(currentData);
+
+        // --- SYNC REFERENCE TO PREVENT IMMEDIATE SAVE ---
+        const initialPayload = {
+            job_id: jobId,
+            positions: currentData.map(r => ({
+                loading_position_mm: r.loading_position_mm,
+                readings: r.readings.map(v => (v === "" ? 0 : Number(v)))
+            }))
+        };
+        lastSavedPayload.current = JSON.stringify(initialPayload);
+        
+        setDataLoaded(true); // Enable auto-save
+
       } catch (err) {
         console.error("Failed to load Loading Point data", err);
       } finally {
@@ -78,39 +105,47 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
     fetchData();
   }, [jobId]);
 
-  // --- AUTO-SAVE ---
+  // --- 2. AUTO-SAVE EFFECT (DRAFT) ---
   useEffect(() => {
-    if (!jobId) return;
+    if (!dataLoaded) return;
+    
+    // Only save if user edited or data exists
+    if (!hasUserEdited.current && !tableData.some(r => r.readings.some(v => v !== ""))) return;
 
-    const timer = setTimeout(async () => {
-      setSaveStatus("saving");
-
+    const performAutoSave = async () => {
+      // 1. Construct Payload (Convert "" to 0)
       const payload = {
         job_id: jobId,
-        positions: tableData.map(r => ({
+        positions: debouncedTableData.map(r => ({
           loading_position_mm: r.loading_position_mm,
           readings: r.readings.map(v => (v === "" ? 0 : Number(v)))
         }))
       };
 
+      // 2. Prevent Duplicate Saves
       const payloadString = JSON.stringify(payload);
       if (payloadString === lastSavedPayload.current) {
         setSaveStatus("saved");
         return;
       }
 
+      setSaveStatus("saving");
+
       try {
+        // --- CALL DRAFT ENDPOINT ---
         const res = await api.post<LoadingPointResponse>(
-          ENDPOINTS.HTW_CALCULATIONS.LOADING_POINT_CALCULATE,
+          "/htw-calculations/loading-point/draft", // UPDATED URL
           payload
         );
 
+        // 3. Update Meta
         setMeta({
           set_torque: res.data.set_torque,
           error_value: res.data.error_due_to_loading_point,
           torque_unit: res.data.torque_unit || "-"
         });
 
+        // 4. Update Reference
         lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
         setLastSaved(new Date());
@@ -118,14 +153,16 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
         console.error("Auto-save failed", err);
         setSaveStatus("error");
       }
-    }, 1000); // 1s debounce
+    };
 
-    return () => clearTimeout(timer);
-  }, [tableData, jobId]);
+    performAutoSave();
+  }, [debouncedTableData, jobId, dataLoaded]);
 
-  // --- HANDLERS ---
+  // --- 3. HANDLERS ---
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
+    
+    hasUserEdited.current = true;
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -133,11 +170,11 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
       const row = newData[rowIdx];
       row.readings[readIdx] = val;
 
-      // Mean calculation even for partial readings
+      // Mean calculation even for partial readings (Instant UI feedback)
       const nums = row.readings.filter(r => r !== "").map(Number);
       row.mean_value = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
 
-      // Instant error b_l
+      // Instant error b_l (Instant UI feedback)
       const m1 = newData[0].mean_value ?? 0;
       const m2 = newData[1].mean_value ?? 0;
       setMeta(m => ({ ...m, error_value: Math.abs(m1 - m2) }));
@@ -148,9 +185,10 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
   const handleClear = () => {
     if (window.confirm("Clear all readings?")) {
+      hasUserEdited.current = true;
+      setSaveStatus("idle"); // Trigger auto-save to clear backend
       setTableData(prev => prev.map(r => ({ ...r, readings: Array(10).fill(""), mean_value: null })));
       setMeta(m => ({ ...m, error_value: 0 }));
-      setSaveStatus("idle");
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, CheckCircle2, AlertCircle, Cloud, Trash2 } from "lucide-react";
-import useDebounce from "../hooks/useDebounce"; // Ensure this path is correct
+import useDebounce from "../hooks/useDebounce"; 
 
 interface DriveInterfaceSectionProps {
   jobId: number;
@@ -47,11 +47,8 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
   const [meta, setMeta] = useState({ set_torque: 0, error_value: 0, torque_unit: "-" });
 
   // --- DEBOUNCE SETUP ---
-  // Wait 1000ms after typing stops before updating this variable
   const debouncedTableData = useDebounce(tableData, 1000);
-  
-  // Ref to prevent initial mount trigger
-  const isFirstRender = useRef(true);
+  const hasUserEdited = useRef(false);
 
   // --- 1. INITIAL FETCH ---
   useEffect(() => {
@@ -85,15 +82,12 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
             torque_unit: res.data.torque_unit || "-"
           });
         } else {
-            // Even if empty, set meta
             setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
         }
 
         setTableData(currentData);
 
-        // --- CRITICAL FIX: SYNC REFERENCE ---
-        // We calculate what the payload looks like NOW, so the Auto-Save effect 
-        // knows that the data we just fetched is "clean" and doesn't need saving.
+        // --- SYNC REFERENCE TO PREVENT IMMEDIATE SAVE ---
         const initialPayload = { 
           job_id: jobId, 
           positions: currentData.map(r => ({
@@ -103,7 +97,6 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
         };
         lastSavedPayload.current = JSON.stringify(initialPayload);
         
-        // Mark as loaded so the Auto-Save effect can start listening
         setDataLoaded(true);
 
       } catch (err) {
@@ -115,42 +108,40 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
     init();
   }, [jobId]);
 
-  // --- 2. AUTO-SAVE EFFECT ---
+  // --- 2. AUTO-SAVE EFFECT (DRAFT) ---
   useEffect(() => {
-    // Skip if component just mounted
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    // Skip if we haven't finished loading data from DB yet
     if (!dataLoaded) return;
+    
+    // Only save if user edited OR if we have data (redundant check but safe)
+    if (!hasUserEdited.current && !tableData.some(r => r.readings.some(v => v !== ""))) return;
 
     const performAutoSave = async () => {
-      // 1. Construct Payload
+      // 1. Construct Payload (Convert "" to 0)
       const payload = { 
         job_id: jobId, 
         positions: debouncedTableData.map(r => ({
           position_deg: r.position_deg,
-          // Convert empty strings to 0 for backend Pydantic validation
           readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
         }))
       };
 
-      // 2. Compare with last successful save to prevent duplicate requests
+      // 2. Prevent Duplicate Saves
       const payloadString = JSON.stringify(payload);
       if (payloadString === lastSavedPayload.current) {
+        setSaveStatus("saved");
         return; 
       }
 
       setSaveStatus("saving");
 
       try {
+        // --- CALL DRAFT ENDPOINT ---
         const res = await api.post<DriveInterfaceResponse>(
-          ENDPOINTS.HTW_CALCULATIONS.DRIVE_INTERFACE_CALCULATE,
+          "/htw-calculations/drive-interface/draft", 
           payload
         );
 
-        // 3. Update Meta from response (Calculated Errors/Means)
+        // 3. Update Meta (Backend Calculations)
         setMeta({
           set_torque: res.data.set_torque,
           error_value: res.data.error_value,
@@ -174,7 +165,7 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
     
-    // Visually indicate change is pending
+    hasUserEdited.current = true;
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -183,13 +174,13 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
       row.readings = [...row.readings];
       row.readings[readIdx] = val;
 
-      // Instant local mean calculation for UI responsiveness
+      // Instant UI Mean
       const nums = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
       row.mean_value = nums.length === 10 ? nums.reduce((a, b) => a + b, 0) / 10 : null;
 
       newData[rowIdx] = row;
 
-      // Instant error calculation (b_int) for UI responsiveness
+      // Instant UI Error (b_int)
       const means = newData.map(r => r.mean_value).filter((m): m is number => m !== null);
       if (means.length === 4) {
         setMeta(m => ({ ...m, error_value: Math.max(...means) - Math.min(...means) }));
@@ -201,6 +192,8 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
 
   const handleClear = () => {
     if (window.confirm("Clear all readings?")) {
+      hasUserEdited.current = true;
+      setSaveStatus("idle");
       setTableData(prev => prev.map(r => ({ ...r, readings: Array(10).fill(""), mean_value: null })));
       setMeta(m => ({ ...m, error_value: 0 }));
     }
@@ -261,7 +254,7 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
                     {meta.set_torque}
                   </td>
                 )}
-                <td className={`border-r border-gray-400 p-2 font-bold text-center text-gray-700 bg-gray-50 text-xs sticky left-[100px] z-10`}>
+                <td className={`border-r border-gray-400 p-2 font-bold text-center text-gray-700 bg-gray-50 text-xs sticky left-[100px] z-10 shadow-sm`}>
                   {row.position_deg}°
                 </td>
                 {row.readings.map((val, cIdx) => (

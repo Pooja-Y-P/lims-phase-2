@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, AlertCircle, CheckCircle2, Cloud, Trash2 } from "lucide-react";
-import useDebounce from "../hooks/useDebounce"; // Import your hook
+import useDebounce from "../hooks/useDebounce"; 
 
 interface ReproducibilitySectionProps {
   jobId: number;
-  torqueUnit?: string; // Prop from parent
+  torqueUnit?: string; 
 }
 
 interface SequenceData {
@@ -31,14 +31,13 @@ interface BackendReproducibilityResponse {
 
 const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, torqueUnit }) => {
   // --- STATE ---
-  const [loading, setLoading] = useState(false); // Initial load
+  const [loading, setLoading] = useState(false); 
   const [dataLoaded, setDataLoaded] = useState(false);
   
   // Auto-Save Status State
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const lastSavedPayload = useRef<string | null>(null);
-
 
   // Data State
   const [setTorque, setSetTorque] = useState<number | null>(null);
@@ -56,7 +55,7 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
   // --- DEBOUNCE SETUP ---
   const debouncedSequences = useDebounce(sequences, 1000);
-    const hasUserEdited = useRef(false);
+  const hasUserEdited = useRef(false);
   
   // --- UNIT LOGIC ---
   const displayUnit = useMemo(() => {
@@ -101,115 +100,116 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       .finally(() => setLoading(false));
   }, [jobId]);
 
-  // --- 2. AUTO-SAVE EFFECT ---
-useEffect(() => {
-  if (!dataLoaded) return;
-  if (!hasUserEdited.current) return;
+  // --- 2. AUTO-SAVE EFFECT (DRAFT MODE) ---
+  useEffect(() => {
+    if (!dataLoaded) return;
+    if (!hasUserEdited.current) return;
 
-  const hasAnyValue = debouncedSequences.some(seq =>
-    seq.readings.some(r => r !== "")
-  );
-  if (!hasAnyValue) return;
+    // Check if there is literally any data to save
+    const hasAnyValue = debouncedSequences.some(seq =>
+      seq.readings.some(r => r !== "")
+    );
+    
+    // If empty and not explicitly cleared by user action, skip
+    // (Note: handleClear sets hasUserEdited=true, so clearing *will* trigger save below)
+    if (!hasAnyValue && !hasUserEdited.current) return;
 
-  const performAutoSave = async () => {
-    setSaveStatus("saving");
+    const performAutoSave = async () => {
+      setSaveStatus("saving");
 
-    try {
-      const payload = {
-        job_id: jobId,
-        torque_unit: displayUnit,
-        sequences: debouncedSequences.map(s => ({
-          sequence_no: s.sequence_no,
-          readings: s.readings.map(r =>
-            r === "" || isNaN(Number(r)) ? 0 : Number(r)
-          )
-        }))
-      };
-      const payloadString = JSON.stringify(payload);
+      try {
+        const payload = {
+          job_id: jobId,
+          torque_unit: displayUnit,
+          sequences: debouncedSequences.map(s => ({
+            sequence_no: s.sequence_no,
+            // Convert empty/invalid inputs to 0 for draft saving
+            readings: s.readings.map(r =>
+              r === "" || isNaN(Number(r)) ? 0 : Number(r)
+            )
+          }))
+        };
+        const payloadString = JSON.stringify(payload);
 
-if (payloadString === lastSavedPayload.current) {
-  setSaveStatus("saved");
-  return;
-}
+        if (payloadString === lastSavedPayload.current) {
+          setSaveStatus("saved");
+          return;
+        }
 
-lastSavedPayload.current = payloadString;
+        lastSavedPayload.current = payloadString;
 
-      const res = await api.post<BackendReproducibilityResponse>(
-        ENDPOINTS.HTW_REPRODUCIBILITY.CALCULATE,
-        payload
-      );
+        // --- UPDATED ENDPOINT FOR DRAFT SAVING ---
+        const res = await api.post<BackendReproducibilityResponse>(
+          "/htw-calculations/reproducibility/draft", 
+          payload
+        );
 
-      setSetTorque(res.data.set_torque_20);
-      setBRep(res.data.error_due_to_reproducibility);
+        setSetTorque(res.data.set_torque_20);
+        setBRep(res.data.error_due_to_reproducibility);
 
-      const confirmedUnit = res.data.torque_unit || res.data.unit;
-      if (confirmedUnit) setFetchedUnit(confirmedUnit);
+        const confirmedUnit = res.data.torque_unit || res.data.unit;
+        if (confirmedUnit) setFetchedUnit(confirmedUnit);
 
-      setSaveStatus("saved");
-      setLastSaved(new Date());
-    } catch (err) {
-      console.error("Auto-save failed", err);
-      setSaveStatus("error");
-    }
-  };
+        setSaveStatus("saved");
+        setLastSaved(new Date());
+      } catch (err) {
+        console.error("Auto-save failed", err);
+        setSaveStatus("error");
+      }
+    };
 
-  performAutoSave();
-}, [debouncedSequences, jobId]);
-
-
-
-
+    performAutoSave();
+  }, [debouncedSequences, jobId]);
 
   // --- 3. INPUT HANDLING ---
-const handleReadingChange = (seqIndex: number, readingIndex: number, value: string) => {
-  if (!/^\d*\.?\d*$/.test(value)) return;
+  const handleReadingChange = (seqIndex: number, readingIndex: number, value: string) => {
+    if (!/^\d*\.?\d*$/.test(value)) return;
 
-  hasUserEdited.current = true;
-  setSaveStatus("idle"); // ✅ ADD THIS
+    hasUserEdited.current = true;
+    setSaveStatus("idle");
 
-  setSequences(prev => {
-    const newSeqs = [...prev];
-    const currentSeq = { ...newSeqs[seqIndex] };
-    const newReadings = [...currentSeq.readings];
+    setSequences(prev => {
+      const newSeqs = [...prev];
+      const currentSeq = { ...newSeqs[seqIndex] };
+      const newReadings = [...currentSeq.readings];
 
-    newReadings[readingIndex] = value;
-    currentSeq.readings = newReadings;
+      newReadings[readingIndex] = value;
+      currentSeq.readings = newReadings;
 
-    const validNums = newReadings.filter(v => v !== "").map(Number);
-    currentSeq.mean_xr =
-      validNums.length === 5
-        ? validNums.reduce((a, b) => a + b, 0) / 5
-        : null;
+      const validNums = newReadings.filter(v => v !== "").map(Number);
+      // Calculate local mean immediately for UI feedback
+      currentSeq.mean_xr =
+        validNums.length === 5
+          ? validNums.reduce((a, b) => a + b, 0) / 5
+          : null;
 
-    newSeqs[seqIndex] = currentSeq;
+      newSeqs[seqIndex] = currentSeq;
 
-    const allMeans = newSeqs.map(s => s.mean_xr).filter(m => m !== null) as number[];
-    if (allMeans.length === 4) {
-      setBRep(Math.max(...allMeans) - Math.min(...allMeans));
-    }
+      // Calculate local b_rep immediately for UI feedback
+      const allMeans = newSeqs.map(s => s.mean_xr).filter(m => m !== null) as number[];
+      if (allMeans.length === 4) {
+        setBRep(Math.max(...allMeans) - Math.min(...allMeans));
+      }
 
-    return newSeqs;
-  });
-};
-
-
+      return newSeqs;
+    });
+  };
 
   const handleClear = () => {
-  if (window.confirm("Clear all reproducibility readings?")) {
-    hasUserEdited.current = true;   // ✅ ADD
-    setSaveStatus("idle");          // ✅ ADD
+    if (window.confirm("Clear all reproducibility readings?")) {
+      hasUserEdited.current = true;
+      setSaveStatus("idle");
 
-    setSequences(prev =>
-      prev.map(s => ({
-        ...s,
-        readings: ["", "", "", "", ""],
-        mean_xr: null
-      }))
-    );
-    setBRep(null);
-  }
-};
-
+      setSequences(prev =>
+        prev.map(s => ({
+          ...s,
+          readings: ["", "", "", "", ""],
+          mean_xr: null
+        }))
+      );
+      setBRep(null);
+    }
+  };
 
   // --- RENDER ---
   if (loading && !dataLoaded) {

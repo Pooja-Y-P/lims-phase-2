@@ -15,6 +15,26 @@ router = APIRouter(
 #                            A. REPEATABILITY ROUTES
 # ==============================================================================
 
+# --- NEW DRAFT ENDPOINT ---
+@router.post("/repeatability/draft", response_model=htw_repeatability_schemas.RepeatabilityResponse)
+def save_repeatability_draft(
+    request: htw_repeatability_schemas.RepeatabilityCalculationRequest, 
+    db: Session = Depends(get_db)
+):
+    """
+    Draft Endpoint:
+    - Saves current table state immediately.
+    - Does not enforce strict spec compliance.
+    - Calculates interim results (Mean, Deviation) where data exists.
+    """
+    try:
+        return services.process_repeatability_draft(db, request)
+    except Exception as e:
+        # Log the error internally but return a 500
+        print(f"Draft Save Error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Draft Error: {str(e)}")
+
+
 @router.post("/repeatability/calculate", response_model=htw_repeatability_schemas.RepeatabilityResponse)
 def calculate_repeatability(
     request: htw_repeatability_schemas.RepeatabilityCalculationRequest, 
@@ -62,16 +82,29 @@ def get_repeatability(job_id: int, db: Session = Depends(get_db)):
 #                           B. REPRODUCIBILITY ROUTES
 # ==============================================================================
 
+@router.post("/reproducibility/draft", response_model=htw_repeatability_schemas.ReproducibilityResponse)
+def save_reproducibility_draft(
+    request: htw_repeatability_schemas.ReproducibilityCalculationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Draft Endpoint for Reproducibility:
+    - Saves sequences immediately.
+    - Calculates b_rep if data is sufficient, otherwise sets it to 0.
+    """
+    try:
+        return services.process_reproducibility_draft(db, request)
+    except Exception as e:
+        print(f"Draft Save Error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Draft Error: {str(e)}")
+
 @router.post("/reproducibility/calculate", response_model=htw_repeatability_schemas.ReproducibilityResponse)
 def calculate_reproducibility(
     request: htw_repeatability_schemas.ReproducibilityCalculationRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Calculates Reproducibility (Section B - B-Test).
-    1. Fetches 20% Set Torque from Manufacturer Specs.
-    2. Accepts 4 Sequences of 5 Readings.
-    3. Calculates b_rep (Max Mean - Min Mean).
+    Standard Calculation Endpoint.
     """
     try:
         return services.process_reproducibility_calculation(db, request)
@@ -82,19 +115,24 @@ def calculate_reproducibility(
 
 @router.get("/reproducibility/{job_id}", response_model=htw_repeatability_schemas.ReproducibilityResponse)
 def get_reproducibility(job_id: int, db: Session = Depends(get_db)):
-    """
-    Fetches stored reproducibility data or sets up the table for a new calculation.
-    """
     try:
         return services.get_stored_reproducibility(db, job_id)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-    
-# ... (Previous Imports and A/B Routes remain unchanged) ...
 
 # ==============================================================================
 #                     SECTION C: OUTPUT DRIVE VARIATION
 # ==============================================================================
+
+@router.post("/output-drive/draft", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def save_output_drive_draft(
+    request: htw_repeatability_schemas.GeometricCalculationRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        return services.process_output_drive_draft(db, request)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/output-drive/calculate", response_model=htw_repeatability_schemas.GeometricVariationResponse)
 def calculate_output_drive(
@@ -125,6 +163,16 @@ def get_output_drive(job_id: int, db: Session = Depends(get_db)):
 #                     SECTION D: DRIVE INTERFACE VARIATION
 # ==============================================================================
 
+@router.post("/drive-interface/draft", response_model=htw_repeatability_schemas.GeometricVariationResponse)
+def save_drive_interface_draft(
+    request: htw_repeatability_schemas.GeometricCalculationRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        return services.process_drive_interface_draft(db, request)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 @router.post("/drive-interface/calculate", response_model=htw_repeatability_schemas.GeometricVariationResponse)
 def calculate_drive_interface(
     request: htw_repeatability_schemas.GeometricCalculationRequest,
@@ -153,6 +201,16 @@ def get_drive_interface(job_id: int, db: Session = Depends(get_db)):
 # ==============================================================================
 #                     SECTION E: LOADING POINT VARIATION
 # ==============================================================================
+
+@router.post("/loading-point/draft", response_model=htw_repeatability_schemas.LoadingPointResponse)
+def save_loading_point_draft(
+    request: htw_repeatability_schemas.LoadingPointRequest,
+    db: Session = Depends(get_db)
+):
+    try:
+        return services.process_loading_point_draft(db, request)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @router.post("/loading-point/calculate", response_model=htw_repeatability_schemas.LoadingPointResponse)
 def calculate_loading_point(

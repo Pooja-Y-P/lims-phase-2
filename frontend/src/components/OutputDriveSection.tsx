@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, CheckCircle2, AlertCircle, Cloud, Trash2 } from "lucide-react";
-import useDebounce from "../hooks/useDebounce"; // Ensure this path is correct
+import useDebounce from "../hooks/useDebounce"; 
 
 interface OutputDriveSectionProps {
   jobId: number;
@@ -9,7 +9,7 @@ interface OutputDriveSectionProps {
 
 interface GeometricRowData {
   position_deg: number;
-  readings: string[]; // 10 readings per row
+  readings: string[]; 
   mean_value: number | null;
 }
 
@@ -29,14 +29,12 @@ interface OutputDriveResponse {
 const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
-  const lastSavedPayload = useRef<string | null>(null);
-
+  const [dataLoaded, setDataLoaded] = useState(false); // Add dataLoaded state
   
-  // Auto-Save Status
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const lastSavedPayload = useRef<string | null>(null);
 
-  // Data
   const [tableData, setTableData] = useState<GeometricRowData[]>([
     { position_deg: 0, readings: Array(10).fill(""), mean_value: null },
     { position_deg: 90, readings: Array(10).fill(""), mean_value: null },
@@ -46,16 +44,15 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
 
   const [meta, setMeta] = useState({ set_torque: 0, error_value: 0, torque_unit: "-" });
 
-  // --- DEBOUNCE SETUP ---
   const debouncedReadings = useDebounce(
-  tableData.map(r => ({
-    position_deg: r.position_deg,
-    readings: r.readings
-  })),
-  1000
-);
+    tableData.map(r => ({
+      position_deg: r.position_deg,
+      readings: r.readings
+    })),
+    1000
+  );
 
-  const isFirstRender = useRef(true);
+  const hasUserEdited = useRef(false);
 
   // --- 1. INITIAL FETCH ---
   useEffect(() => {
@@ -64,111 +61,118 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
       setLoading(true);
       try {
         const res = await api.get<OutputDriveResponse>(`${ENDPOINTS.HTW_CALCULATIONS.OUTPUT_DRIVE}/${jobId}`);
+        
+        let currentData = [
+            { position_deg: 0, readings: Array(10).fill(""), mean_value: null },
+            { position_deg: 90, readings: Array(10).fill(""), mean_value: null },
+            { position_deg: 180, readings: Array(10).fill(""), mean_value: null },
+            { position_deg: 270, readings: Array(10).fill(""), mean_value: null },
+        ] as GeometricRowData[];
+
         if (res.data.status === "success" && res.data.positions.length > 0) {
             const mapped = res.data.positions.map((p) => ({
                 position_deg: p.position_deg,
                 readings: p.readings.map(String),
                 mean_value: p.mean_value
             }));
-            const sorted = [0, 90, 180, 270].map(deg => 
+            
+            currentData = [0, 90, 180, 270].map(deg => 
                 mapped.find((d) => d.position_deg === deg) || 
                 { position_deg: deg, readings: Array(10).fill(""), mean_value: null }
             );
             
-            setTableData(sorted);
             setMeta({ 
                 set_torque: res.data.set_torque, 
                 error_value: res.data.error_value, 
                 torque_unit: res.data.torque_unit || "-" 
             });
-            lastSavedPayload.current = JSON.stringify({
-            job_id: jobId,
-            positions: sorted.map(r => ({
-                position_deg: r.position_deg,
-                readings: r.readings.map(v =>
-                v === "" || isNaN(Number(v)) ? 0 : Number(v)
-                )
-            }))
-            });
-            isFirstRender.current = true;
- // ✅ MISSING LINE
-
-            setSaveStatus("saved");
-            setLastSaved(new Date());
         } else {
              setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
         }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+
+        setTableData(currentData);
+
+        // --- SYNC REFERENCE TO PREVENT IMMEDIATE SAVE ---
+        const initialPayload = {
+            job_id: jobId,
+            positions: currentData.map(r => ({
+                position_deg: r.position_deg,
+                readings: r.readings.map(v => v === "" || isNaN(Number(v)) ? 0 : Number(v))
+            }))
+        };
+        lastSavedPayload.current = JSON.stringify(initialPayload);
+        
+        setDataLoaded(true); // Mark data as ready for auto-save logic
+
+      } catch (err) { 
+          console.error(err); 
+      } finally { 
+          setLoading(false); 
+      }
     };
     init();
   }, [jobId]);
 
-  // --- 2. AUTO-SAVE EFFECT ---
-useEffect(() => {
-  if (isFirstRender.current) {
-    isFirstRender.current = false;
-    return;
-  }
+  // --- 2. AUTO-SAVE EFFECT (DRAFT MODE) ---
+  useEffect(() => {
+    // Only proceed if initial data fetch is complete
+    if (!dataLoaded) return;
 
-  if (!jobId || debouncedReadings.length === 0) return;
+    // Only save if user has edited OR if there is data (redundant safe check)
+    if (!hasUserEdited.current && !debouncedReadings.some(r => r.readings.some(v => v !== ""))) return;
 
-  // 🔒 Guard: don't save empty tables
-  const hasAnyInput = debouncedReadings.some(r =>
-    r.readings.some(v => v !== "" && !isNaN(Number(v)))
-  );
+    const performAutoSave = async () => {
+      try {
+        setSaveStatus("saving");
 
-  if (!hasAnyInput) return;
+        // 1. Construct Payload (Convert empty strings to 0 for draft endpoint)
+        const payload = {
+          job_id: jobId,
+          positions: debouncedReadings.map(r => ({
+            position_deg: r.position_deg,
+            readings: r.readings.map(v => v === "" || isNaN(Number(v)) ? 0 : Number(v))
+          }))
+        };
 
-  const performAutoSave = async () => {
-    try {
-      setSaveStatus("saving");
-
-      const payload = {
-        job_id: jobId,
-        positions: debouncedReadings.map(r => ({
-          position_deg: r.position_deg,
-          readings: r.readings.map(v =>
-            v === "" || isNaN(Number(v)) ? 0 : Number(v)
-          )
-        }))
-      };
-      const payloadString = JSON.stringify(payload);
-
+        // 2. Prevent Duplicate Saves
+        const payloadString = JSON.stringify(payload);
         if (payloadString === lastSavedPayload.current) {
-        setSaveStatus("idle");
-        return; // ⛔ Skip duplicate save
+          setSaveStatus("saved");
+          return; 
         }
 
+        // 3. POST to DRAFT endpoint
+        const res = await api.post<OutputDriveResponse>(
+          "/htw-calculations/output-drive/draft", // UPDATED ENDPOINT
+          payload
+        );
 
-      const res = await api.post<OutputDriveResponse>(
-        ENDPOINTS.HTW_CALCULATIONS.OUTPUT_DRIVE_CALCULATE,
-        payload
-      );
+        // 4. Update Meta from Response
+        setMeta({
+          set_torque: res.data.set_torque,
+          error_value: res.data.error_value,
+          torque_unit: res.data.torque_unit || "-"
+        });
+        
+        // 5. Update Reference
+        lastSavedPayload.current = payloadString;
+        setSaveStatus("saved");
+        setLastSaved(new Date());
+      } catch (err) {
+        console.error("Auto-save failed", err);
+        setSaveStatus("error");
+      }
+    };
 
-      // 🔄 Sync backend-calculated values
-      setMeta({
-        set_torque: res.data.set_torque,
-        error_value: res.data.error_value,
-        torque_unit: res.data.torque_unit || "-"
-      });
-      lastSavedPayload.current = payloadString;
-
-
-      setSaveStatus("saved");
-      setLastSaved(new Date());
-    } catch (err) {
-      console.error("Auto-save failed", err);
-      setSaveStatus("error");
-    }
-  };
-
-  performAutoSave();
-}, [debouncedReadings, jobId]);
-
+    performAutoSave();
+  }, [debouncedReadings, jobId, dataLoaded]);
 
   // --- 3. HANDLERS ---
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
+    
+    hasUserEdited.current = true;
+    setSaveStatus("idle");
 
     setTableData(prev => {
         const newData = [...prev];
@@ -176,7 +180,7 @@ useEffect(() => {
         row.readings = [...row.readings];
         row.readings[readIdx] = val;
         
-        // Local Mean Calc
+        // Local Mean Calc (Instant UI feedback)
         const nums = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
         row.mean_value = nums.length === 10 ? nums.reduce((a, b) => a + b, 0) / 10 : null;
         newData[rowIdx] = row;
@@ -189,22 +193,15 @@ useEffect(() => {
 
         return newData;
     });
-    setSaveStatus("idle");
-
   };
 
-const handleClear = async () => {
-  if (!window.confirm("Clear all readings?")) return;
+  const handleClear = async () => {
+    if (!window.confirm("Clear all readings?")) return;
+    
+    hasUserEdited.current = true;
+    setSaveStatus("idle");
 
-  setSaveStatus("saving");
-
-  try {
-    await api.delete(
-      `${ENDPOINTS.HTW_CALCULATIONS.OUTPUT_DRIVE}/${jobId}`
-    );
-
-    lastSavedPayload.current = null;
-
+    // Clear local state; auto-save effect will handle syncing 0s to backend
     setTableData(prev =>
       prev.map(r => ({
         ...r,
@@ -212,17 +209,8 @@ const handleClear = async () => {
         mean_value: null
       }))
     );
-
     setMeta(m => ({ ...m, error_value: 0 }));
-    setSaveStatus("saved");
-    setLastSaved(new Date());
-  } catch (err) {
-    console.error("Clear failed", err);
-    setSaveStatus("error");
-  }
-};
-
-
+  };
 
   if (loading) return <div className="p-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-purple-600"/></div>;
 

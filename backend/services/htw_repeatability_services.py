@@ -12,7 +12,6 @@ from backend.models import (
     HTWRepeatabilityReading,
     HTWReproducibility, 
     HTWReproducibilityReading,
-    # NEW MODELS
     HTWOutputDriveVariation, HTWOutputDriveVariationReading,
     HTWDriveInterfaceVariation, HTWDriveInterfaceVariationReading,
     HTWLoadingPointVariation, HTWLoadingPointVariationReading
@@ -26,7 +25,6 @@ from backend.schemas.htw_repeatability_schemas import (
     LoadingPointRequest
 )
 
-
 # ==================================================================================
 #                                SHARED HELPERS
 # ==================================================================================
@@ -35,17 +33,14 @@ def get_job_and_specs(db: Session, job_id: int):
     """
     Core Helper: Fetches Job, Equipment, and Manufacturer Specs.
     """
-    # 1. Fetch Job
     job = db.query(HTWJob).filter(HTWJob.job_id == job_id).first()
     if not job:
         raise ValueError(f"Job ID {job_id} not found")
 
-    # 2. Fetch Equipment
     eqp = db.query(InwardEquipment).filter(InwardEquipment.inward_eqp_id == job.inward_eqp_id).first()
     if not eqp:
         raise ValueError("Equipment details not found for this job")
 
-    # 3. Fetch Manufacturer Specs
     specs = db.query(HTWManufacturerSpec).filter(
         and_(
             HTWManufacturerSpec.make == eqp.make, 
@@ -62,104 +57,93 @@ def get_job_and_specs(db: Session, job_id: int):
 def get_job_and_20_percent_torque(db: Session, job_id: int):
     """
     Helper: Fetches the 20% Set Torque value.
-    Used by Reproducibility (B), Output Drive (C), Drive Interface (D), Loading Point (E).
+    Used by Sections B, C, D, E.
     """
     job, specs = get_job_and_specs(db, job_id)
-    
     if specs.torque_20 is None:
         raise ValueError("20% Torque value is missing in Manufacturer Specifications")
-    
     return float(specs.torque_20), specs
-
 
 # ==================================================================================
 #                           SECTION A: REPEATABILITY
 # ==================================================================================
 
-def get_set_values(specs: HTWManufacturerSpec, step_percent: float):
+def get_set_values_safe(specs: HTWManufacturerSpec, step_percent: float):
     """
-    Auto-populates Set Pressure (Ps) and Set Torque (Ts) for 20, 60, 100 steps.
+    Helper to fetch specs. 
+    Returns (Pressure, Torque) for 20/60/100.
+    Returns (None, None) for other steps (40, 80, etc.) instead of raising error.
     """
     percent = int(step_percent)
-    
     if percent == 20:
         return specs.pressure_20, specs.torque_20
     elif percent == 60:
         return specs.pressure_60, specs.torque_60
     elif percent == 100:
         return specs.pressure_100, specs.torque_100
-    else:
-        raise ValueError(f"Step {percent}% is not supported. Only 20, 60, and 100 are allowed.")
+    return None, None
 
 def calculate_interpolation(db: Session, mean_xr: float) -> float:
     """
-    FR-15: Calculates Interpolated Error using htw_standard_uncertainty_reference.
+    Calculates Interpolated Error using htw_standard_uncertainty_reference.
     """
     val = float(mean_xr)
 
-    # 1. Find Lower Neighbor (x1)
+    # 1. Find Lower Neighbor
     lower_ref = db.query(HTWStandardUncertaintyReference).filter(
-        and_(
-            HTWStandardUncertaintyReference.indicated_torque <= val,
-            HTWStandardUncertaintyReference.is_active == True
-        )
+        and_(HTWStandardUncertaintyReference.indicated_torque <= val, HTWStandardUncertaintyReference.is_active == True)
     ).order_by(desc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
-    # 2. Find Higher Neighbor (x2)
+    # 2. Find Higher Neighbor
     upper_ref = db.query(HTWStandardUncertaintyReference).filter(
-        and_(
-            HTWStandardUncertaintyReference.indicated_torque >= val,
-            HTWStandardUncertaintyReference.is_active == True
-        )
+        and_(HTWStandardUncertaintyReference.indicated_torque >= val, HTWStandardUncertaintyReference.is_active == True)
     ).order_by(asc(HTWStandardUncertaintyReference.indicated_torque)).first()
 
-    # --- Scenario Handling ---
-    if not lower_ref and not upper_ref:
-        return 0.0
+    # Scenarios
+    if not lower_ref and not upper_ref: return 0.0
+    if not lower_ref and upper_ref: return abs(float(upper_ref.error_value))
+    if lower_ref and not upper_ref: return abs(float(lower_ref.error_value))
+    if lower_ref.id == upper_ref.id: return abs(float(lower_ref.error_value))
 
-    if not lower_ref and upper_ref:
-        return abs(float(upper_ref.error_value))
-
-    if lower_ref and not upper_ref:
-        return abs(float(lower_ref.error_value))
-
-    if lower_ref.id == upper_ref.id:
-        return abs(float(lower_ref.error_value))
-
-    x = val
-    x1 = float(lower_ref.indicated_torque)
-    y1 = float(lower_ref.error_value)
+    # Linear Interpolation
+    x, x1, y1, x2, y2 = val, float(lower_ref.indicated_torque), float(lower_ref.error_value), float(upper_ref.indicated_torque), float(upper_ref.error_value)
     
-    x2 = float(upper_ref.indicated_torque)
-    y2 = float(upper_ref.error_value)
-
-    if (x2 - x1) == 0:
+    if (x2 - x1) == 0: 
         raw_y = y1
-    else:
-        # Linear Interpolation Formula
+    else: 
         raw_y = y1 + ((x - x1) * (y2 - y1) / (x2 - x1))
-
-    abs_y = abs(raw_y)
-    return round(abs_y, 2)
+        
+    return round(abs(raw_y), 2)
 
 def process_repeatability_calculation(db: Session, request: RepeatabilityCalculationRequest):
     """
-    Main logic to calculate Mean, Interpolation, Deviation for Repeatability.
+    Main logic: Uses manual input if provided, otherwise falls back to specs.
+    Calculates Mean, Interpolation, and Deviation.
     """
     job, specs = get_job_and_specs(db, request.job_id)
     results_summary = []
 
-    # Get units from specs for response
     p_unit = specs.pressure_unit or ""
     t_unit = specs.torque_unit or ""
 
     for step_data in request.steps:
         
-        # A. Fetch Set Values
-        ps, ts = get_set_values(specs, step_data.step_percent)
+        # --- A. DETERMINE SET PRESSURE & SET TORQUE ---
         
-        if ts is None:
-            raise ValueError(f"Set Torque (Ts) is missing in Manufacturer Specs for {step_data.step_percent}%")
+        # Priority 1: Use values sent from Frontend (Manual Override / Custom Steps)
+        ps = step_data.set_pressure if step_data.set_pressure is not None else 0.0
+        ts = step_data.set_torque if step_data.set_torque is not None else 0.0
+
+        # Priority 2: If Frontend sent 0 (or nothing), try fetching from Manufacturer Specs
+        # This preserves functionality for standard steps (20/60/100) if user sends empty.
+        if ps == 0 or ts == 0:
+            spec_ps, spec_ts = get_set_values_safe(specs, step_data.step_percent)
+            
+            if ps == 0 and spec_ps is not None:
+                ps = float(spec_ps)
+            
+            if ts == 0 and spec_ts is not None:
+                ts = float(spec_ts)
 
         # B. Calculate Mean (Xr)
         readings = step_data.readings
@@ -172,8 +156,8 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         corrected_mean = mean_xr - corrected_standard
 
         # E. Calculate Deviation Percentage
+        # Guard against Divide By Zero if Torque is 0 (e.g., initial 40% row)
         ts_float = float(ts)
-        
         if ts_float != 0:
             raw_deviation = ((corrected_mean - ts_float) * 100) / ts_float
             deviation_percent = round(raw_deviation, 2)
@@ -182,22 +166,21 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
 
         # --- DB OPERATIONS ---
 
-        # F. Delete existing record (to allow re-calculation)
+        # F. Delete existing record for this step
         db.query(HTWRepeatability).filter(
             and_(
                 HTWRepeatability.job_id == request.job_id,
                 HTWRepeatability.step_percent == step_data.step_percent
             )
         ).delete(synchronize_session=False)
-        
         db.flush()
 
         # G. Insert Header
         header = HTWRepeatability(
             job_id=request.job_id,
             step_percent=step_data.step_percent,
-            set_pressure_ps=ps,
-            set_torque_ts=ts,
+            set_pressure_ps=ps,  # Save the resolved Pressure (Manual or Spec)
+            set_torque_ts=ts,    # Save the resolved Torque (Manual or Spec)
             mean_xr=mean_xr,
             corrected_standard=corrected_standard,
             corrected_mean=corrected_mean,
@@ -215,10 +198,8 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
                 reading_order=i,
                 indicated_reading=val
             ))
-        
         db.add_all(reading_rows)
         
-        # I. Add result to response summary
         results_summary.append({
             "step_percent": step_data.step_percent,
             "mean_xr": round(mean_xr, 4),
@@ -240,12 +221,16 @@ def process_repeatability_calculation(db: Session, request: RepeatabilityCalcula
         "results": results_summary
     }
 
+def process_repeatability_draft(db: Session, request: RepeatabilityCalculationRequest):
+    """
+    Service for the Draft Endpoint (Section A).
+    """
+    return process_repeatability_calculation(db, request)
+
 def get_stored_repeatability(db: Session, job_id: int):
     """
-    Fetches existing repeatability data (Headers + Readings) for a job.
-    Includes Pressure/Torque Units from Manufacturer Specs.
+    Fetches existing repeatability data.
     """
-    # 1. Always fetch specs first to get Units
     try:
         job, specs = get_job_and_specs(db, job_id)
         p_unit = specs.pressure_unit or ""
@@ -253,7 +238,6 @@ def get_stored_repeatability(db: Session, job_id: int):
     except ValueError:
         return {"job_id": job_id, "status": "no_specs", "results": []}
 
-    # 2. Fetch existing calculation data
     steps_db = db.query(HTWRepeatability).filter(
         HTWRepeatability.job_id == job_id
     ).order_by(asc(HTWRepeatability.step_percent)).all()
@@ -261,7 +245,7 @@ def get_stored_repeatability(db: Session, job_id: int):
     results_summary = []
 
     if steps_db:
-        # CASE A: Data exists in DB (Previously calculated)
+        # CASE A: Return what is in DB
         for step_row in steps_db:
             readings_db = db.query(HTWRepeatabilityReading).filter(
                 HTWRepeatabilityReading.repeatability_id == step_row.id
@@ -282,11 +266,9 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "torque_unit": t_unit    
             })
     else:
-        # CASE B: No Calculation Data (New Job)
-        # Populate Set Values from specs, leave readings empty
+        # CASE B: No Data in DB yet. Return standard 20/60/100 defaults from specs.
         for step in [20.0, 60.0, 100.0]:
-            ps, ts = get_set_values(specs, step)
-            
+            ps, ts = get_set_values_safe(specs, step)
             results_summary.append({
                 "step_percent": step,
                 "mean_xr": 0.0,
@@ -326,9 +308,10 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
     """
     # 1. Get the Set Torque (20% value) and specs for Unit
     set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
-    torque_unit = specs.torque_unit or ""
+    
+    # Use requested unit if provided, else fallback to spec unit
+    torque_unit = request.torque_unit or specs.torque_unit or ""
 
-    # 2. Process Sequences
     sequence_results = []
     all_means = []
 
@@ -336,8 +319,12 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         raise ValueError("Exactly 4 sequences (I, II, III, IV) are required for Reproducibility.")
 
     for seq in request.sequences:
+        # Calculate mean of readings (zeros included)
         mean_val = sum(seq.readings) / len(seq.readings)
-        all_means.append(mean_val)
+        
+        # Only use valid means for b_rep calculation
+        if mean_val > 0:
+            all_means.append(mean_val)
         
         sequence_results.append({
             "sequence_no": seq.sequence_no,
@@ -346,16 +333,17 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         })
 
     # 3. Calculate Error due to Reproducibility (b_rep)
-    b_rep = max(all_means) - min(all_means)
+    if len(all_means) >= 2:
+        b_rep = max(all_means) - min(all_means)
+    else:
+        b_rep = 0.0
+        
     b_rep_rounded = round(b_rep, 4)
 
     # --- DB OPERATIONS ---
-
-    # 4. Clear existing Reproducibility data
     db.query(HTWReproducibility).filter(HTWReproducibility.job_id == request.job_id).delete(synchronize_session=False)
     db.flush()
 
-    # 5. Insert New Data
     for seq_item in sequence_results:
         repro_entry = HTWReproducibility(
             job_id=request.job_id,
@@ -387,6 +375,12 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         "torque_unit": torque_unit,
         "sequences": sequence_results
     }
+
+def process_reproducibility_draft(db: Session, request: ReproducibilityCalculationRequest):
+    """
+    Draft service wrapper for Section B.
+    """
+    return process_reproducibility_calculation(db, request)
 
 def get_stored_reproducibility(db: Session, job_id: int):
     try:
@@ -439,7 +433,6 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
     position_results = []
     means = []
 
-    # 1. Calculate Means
     for pos in request.positions:
         mean_val = sum(pos.readings) / len(pos.readings)
         means.append(mean_val)
@@ -449,7 +442,6 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
             "mean_value": mean_val
         })
 
-    # 2. Calculate b_out = Max(Means) - Min(Means)
     if not means:
         b_out = 0.0
     else:
@@ -457,7 +449,6 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
     
     b_out_rounded = round(b_out, 4)
 
-    # 3. DB Transaction
     db.query(HTWOutputDriveVariation).filter(HTWOutputDriveVariation.job_id == request.job_id).delete(synchronize_session=False)
     db.flush()
 
@@ -492,9 +483,14 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
         "positions": position_results
     }
 
+def process_output_drive_draft(db: Session, request: GeometricCalculationRequest):
+    """
+    Draft service wrapper for Section C.
+    """
+    return process_output_drive_calculation(db, request)
+
 def get_stored_output_drive(db: Session, job_id: int):
     try:
-        # UPDATED: Use 20% torque instead of 100%
         set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
@@ -555,7 +551,6 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
             "mean_value": mean_val
         })
 
-    # Calculate b_int = Max(Means) - Min(Means)
     if not means:
         b_int = 0.0
     else:
@@ -563,7 +558,6 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
     
     b_int_rounded = round(b_int, 4)
 
-    # DB Transaction
     db.query(HTWDriveInterfaceVariation).filter(HTWDriveInterfaceVariation.job_id == request.job_id).delete(synchronize_session=False)
     db.flush()
 
@@ -598,9 +592,14 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
         "positions": position_results
     }
 
+def process_drive_interface_draft(db: Session, request: GeometricCalculationRequest):
+    """
+    Draft service wrapper for Section D.
+    """
+    return process_drive_interface_calculation(db, request)
+
 def get_stored_drive_interface(db: Session, job_id: int):
     try:
-        # UPDATED: Use 20% torque instead of 100%
         set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
@@ -662,7 +661,6 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
             "mean_value": mean_val
         })
 
-    # Calculate b_l = Abs(Mean(-10) - Mean(+10)) - STRICT ABSOLUTE VALUE
     if -10 in mean_dict and 10 in mean_dict:
         b_l = abs(mean_dict[-10] - mean_dict[10])
     else:
@@ -670,7 +668,6 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
 
     b_l_rounded = round(b_l, 4)
 
-    # DB Transaction
     db.query(HTWLoadingPointVariation).filter(HTWLoadingPointVariation.job_id == request.job_id).delete(synchronize_session=False)
     db.flush()
 
@@ -705,9 +702,14 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
         "positions": position_results
     }
 
+def process_loading_point_draft(db: Session, request: LoadingPointRequest):
+    """
+    Draft service wrapper for Section E.
+    """
+    return process_loading_point_calculation(db, request)
+
 def get_stored_loading_point(db: Session, job_id: int):
     try:
-        # UPDATED: Use 20% torque instead of 100%
         set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
@@ -736,7 +738,6 @@ def get_stored_loading_point(db: Session, job_id: int):
             "mean_value": mean_val
         })
 
-    # Calculate b_l = Abs(Mean(-10) - Mean(+10)) - STRICT ABSOLUTE VALUE
     if -10 in mean_dict and 10 in mean_dict:
         b_l = abs(mean_dict[-10] - mean_dict[10])
     else:
