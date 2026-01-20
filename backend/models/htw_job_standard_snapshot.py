@@ -16,6 +16,7 @@ class HTWJobStandardSnapshot(Base):
     manufacturer = Column(String)
     model_serial_no = Column(String)
     certificate_no = Column(String)
+    traceable_to_lab = Column(String)
     calibration_valid_upto = Column(Date)
 
     uncertainty = Column(Numeric(18, 8))

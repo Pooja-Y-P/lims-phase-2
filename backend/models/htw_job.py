@@ -66,3 +66,10 @@ class HTWJob(Base):
         back_populates="job", 
         cascade="all, delete-orphan"
     )
+
+
+    un_resolutions = relationship(
+    "HTWUnResolution",
+    back_populates="job",
+    cascade="all, delete-orphan"
+    )

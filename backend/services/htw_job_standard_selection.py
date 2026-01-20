@@ -201,6 +201,7 @@ def auto_select_standards_for_job(
             standard_order=order,
             nomenclature=std.nomenclature,
             manufacturer=std.manufacturer,
+            traceable_to_lab=std.traceable_to_lab,
             model_serial_no=std.model_serial_no,
             certificate_no=std.certificate_no,
             calibration_valid_upto=std.calibration_valid_upto,

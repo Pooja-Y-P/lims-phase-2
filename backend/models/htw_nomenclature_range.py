@@ -15,7 +15,7 @@ class HTWNomenclatureRange(Base):
         Integer,
         ForeignKey("htw_master_standard.id", ondelete="RESTRICT"),
         nullable=False,
-        unique=True
+    
     )
  
     range_min = Column(Numeric(14, 4), nullable=False)

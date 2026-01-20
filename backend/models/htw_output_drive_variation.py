@@ -20,6 +20,7 @@ class HTWOutputDriveVariation(Base):
     set_torque_ts = Column(Numeric(14, 4), nullable=False)
     position_deg = Column(Integer, nullable=False)
     mean_value = Column(Numeric(18, 8))
+    error_due_output_drive_bout = Column(Numeric(18, 8))
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

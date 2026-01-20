@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.db import get_db
 
-# Adjust these imports to match your actual filenames
+# Ensure these imports match your project structure
 from backend.schemas import htw_repeatability_schemas
 from backend.services import htw_repeatability_services as services
 
@@ -15,25 +15,19 @@ router = APIRouter(
 #                            A. REPEATABILITY ROUTES
 # ==============================================================================
 
-# --- NEW DRAFT ENDPOINT ---
 @router.post("/repeatability/draft", response_model=htw_repeatability_schemas.RepeatabilityResponse)
 def save_repeatability_draft(
     request: htw_repeatability_schemas.RepeatabilityCalculationRequest, 
     db: Session = Depends(get_db)
 ):
     """
-    Draft Endpoint:
-    - Saves current table state immediately.
-    - Does not enforce strict spec compliance.
-    - Calculates interim results (Mean, Deviation) where data exists.
+    Draft Endpoint: Saves state immediately without strict validation.
     """
     try:
         return services.process_repeatability_draft(db, request)
     except Exception as e:
-        # Log the error internally but return a 500
         print(f"Draft Save Error: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Draft Error: {str(e)}")
-
 
 @router.post("/repeatability/calculate", response_model=htw_repeatability_schemas.RepeatabilityResponse)
 def calculate_repeatability(
@@ -42,7 +36,6 @@ def calculate_repeatability(
 ):
     """
     Calculates Repeatability (Section A).
-    Auto-fetches manufacturer specs, calculates Mean, Interpolation, and Deviation.
     """
     try:
         return services.process_repeatability_calculation(db, request)
@@ -59,7 +52,6 @@ def get_references(db: Session = Depends(get_db)):
     try:
         return services.get_uncertainty_references(db)
     except Exception as e:
-        print(f"SERVER ERROR: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Fetch References Error: {str(e)}"
@@ -67,9 +59,6 @@ def get_references(db: Session = Depends(get_db)):
 
 @router.get("/repeatability/{job_id}", response_model=htw_repeatability_schemas.RepeatabilityResponse)
 def get_repeatability(job_id: int, db: Session = Depends(get_db)):
-    """
-    Fetches stored repeatability data or specs for a new job.
-    """
     try:
         return services.get_stored_repeatability(db, job_id)
     except Exception as e:
@@ -87,15 +76,9 @@ def save_reproducibility_draft(
     request: htw_repeatability_schemas.ReproducibilityCalculationRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Draft Endpoint for Reproducibility:
-    - Saves sequences immediately.
-    - Calculates b_rep if data is sufficient, otherwise sets it to 0.
-    """
     try:
         return services.process_reproducibility_draft(db, request)
     except Exception as e:
-        print(f"Draft Save Error: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Draft Error: {str(e)}")
 
 @router.post("/reproducibility/calculate", response_model=htw_repeatability_schemas.ReproducibilityResponse)
@@ -103,9 +86,6 @@ def calculate_reproducibility(
     request: htw_repeatability_schemas.ReproducibilityCalculationRequest,
     db: Session = Depends(get_db)
 ):
-    """
-    Standard Calculation Endpoint.
-    """
     try:
         return services.process_reproducibility_calculation(db, request)
     except ValueError as e:

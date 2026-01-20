@@ -458,6 +458,7 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
             set_torque_ts=set_torque_val,
             position_deg=item['position_deg'],
             mean_value=item['mean_value'],
+            error_due_output_drive_bout=b_out_rounded, 
             created_at=datetime.now()
         )
         db.add(var_entry)
@@ -567,6 +568,7 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
             set_torque_ts=set_torque_val,
             position_deg=item['position_deg'],
             mean_value=item['mean_value'],
+            error_due_drive_interface_bint=b_int_rounded,
             created_at=datetime.now()
         )
         db.add(var_entry)
@@ -677,6 +679,7 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
             set_torque_ts=set_torque_val,
             loading_position_mm=item['loading_position_mm'],
             mean_value=item['mean_value'],
+            error_due_loading_point_bl=b_l_rounded,
             created_at=datetime.now()
         )
         db.add(var_entry)

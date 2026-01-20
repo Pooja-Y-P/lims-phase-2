@@ -25,8 +25,15 @@ from backend.routes.htw_pressure_gauge_res_router import router as htw_pressure_
 from backend.routes.htw_nomenclature_range_router import router as htw_nomenclature_range_router
 from backend.routes.htw_job_standard import router as htw_job_standard_router
 from backend.routes.htw_job import router as htw_job
+from backend.routes.htw_standard_uncertanity_reference_router import router as htw_standard_uncertanity_reference_router
 from backend.routes.htw_job_environment_router  import router as htw_job_environment_router
 from backend.routes.htw_repeatability_router import router as htw_repeatability_router
+from backend.routes.htw_const_coverage_factor_router import router as htw_const_coverage_factor_router
+from backend.routes.htw_t_distribution_router import router as htw_t_distribution_router
+from backend.routes.htw_un_pg_master_router import router as htw_un_pg_master_router
+from backend.routes.htw_cmc_reference_router import router as htw_cmc_reference_router
+from backend.routes.htw_tool_type_router import router as htw_tool_type_router
+from backend.routes.htw_max_val_measure_err_router import router as htw_max_val_measure_err_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +97,14 @@ app.include_router(htw_job_standard_router, prefix="/api")
 app.include_router(htw_job, prefix="/api")
 app.include_router(htw_repeatability_router, prefix="/api")
 app.include_router(htw_job_environment_router, prefix="/api")
+app.include_router(htw_const_coverage_factor_router, prefix="/api")
+app.include_router(htw_t_distribution_router, prefix="/api")
+app.include_router(htw_un_pg_master_router, prefix="/api")
+app.include_router(htw_cmc_reference_router, prefix="/api")
+app.include_router(htw_tool_type_router, prefix="/api")
+app.include_router(htw_max_val_measure_err_router, prefix="/api")
+app.include_router(htw_standard_uncertanity_reference_router, prefix="/api")
+
 @app.get("/")
 def root():
     return {"message": "LIMS backend running successfully"}

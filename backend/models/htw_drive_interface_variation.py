@@ -20,6 +20,7 @@ class HTWDriveInterfaceVariation(Base):
     set_torque_ts = Column(Numeric(14, 4), nullable=False)
     position_deg = Column(Integer, nullable=False)
     mean_value = Column(Numeric(18, 8))
+    error_due_drive_interface_bint = Column(Numeric(18, 8))
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -20,6 +20,7 @@ class HTWLoadingPointVariation(Base):
     set_torque_ts = Column(Numeric(14, 4), nullable=False)
     loading_position_mm = Column(Integer, nullable=False)
     mean_value = Column(Numeric(18, 8))
+    error_due_loading_point_bl = Column(Numeric(18, 8))
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -31,5 +31,6 @@ from .htw_loading_point_variation_reading import HTWLoadingPointVariationReading
 from .htw_output_drive_variation import HTWOutputDriveVariation
 from .htw_output_drive_variation_reading import HTWOutputDriveVariationReading
 from .htw_job_environment import HTWJobEnvironment
+from .htw_un_resolution import HTWUnResolution
 
 from backend.db import Base

@@ -36,6 +36,7 @@ class HTWMasterStandard(Base):
     nomenclature_range = relationship(
         "HTWNomenclatureRange",
         back_populates="master_standard",
-        uselist=False
+        cascade="all,  delete-orphan",
+        passive_deletes= True
     )
  

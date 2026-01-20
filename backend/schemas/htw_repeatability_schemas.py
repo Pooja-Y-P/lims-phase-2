@@ -53,7 +53,7 @@ class ReproducibilitySequenceInput(BaseModel):
 
 class ReproducibilityCalculationRequest(BaseModel):
     job_id: int
-    torque_unit: Optional[str] = None  # Added to allow saving unit preference if needed
+    torque_unit: Optional[str] = None
     sequences: List[ReproducibilitySequenceInput]
 
 class SequenceResultResponse(BaseModel):
@@ -101,7 +101,14 @@ class GeometricVariationResponse(BaseModel):
     job_id: int
     status: str
     set_torque: float
-    error_value: float  # b_out or b_int
+    
+    # Generic error field (used for display logic)
+    error_value: float
+    
+    # Specific DB columns (Added for clarity/storage verification)
+    error_due_output_drive_bout: Optional[float] = None
+    error_due_drive_interface_bint: Optional[float] = None
+    
     torque_unit: Optional[str] = None
     positions: List[GeometricPositionResult]
 
@@ -137,6 +144,12 @@ class LoadingPointResponse(BaseModel):
     job_id: int
     status: str
     set_torque: float
-    error_due_to_loading_point: float  # b_l
+    
+    # Generic error field
+    error_due_to_loading_point: float
+    
+    # Specific DB column (Added for clarity/storage verification)
+    error_due_loading_point_bl: Optional[float] = None
+    
     torque_unit: Optional[str] = None
     positions: List[LoadingPointResult]
