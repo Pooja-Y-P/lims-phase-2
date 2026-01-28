@@ -5,6 +5,9 @@ from typing import List, Optional
 #                            A. REPEATABILITY SCHEMAS
 # ==============================================================================
 
+class DeleteStepRequest(BaseModel):
+    job_id: int
+    step_percent: float = Field(..., description="The step percentage to delete (e.g. 40, 80)")
 class RepeatabilityStepInput(BaseModel):
     # Removed rigid validator to allow 40%, 80%, etc.
     step_percent: float = Field(..., description="Step percentage (e.g., 20, 40, 60, 80, 100)")
@@ -22,6 +25,16 @@ class RepeatabilityCalculationRequest(BaseModel):
     job_id: int
     steps: List[RepeatabilityStepInput]
 
+class UnResolutionData(BaseModel):
+    """
+    Schema for detailed Uncertainty Resolution calculations calculated alongside Repeatability.
+    """
+    measurement_error: List[float]
+    relative_measurement_error: List[float]
+    deviation: List[float]
+    a_s: float
+    variation_due_to_repeatability: float
+
 class CalculationResultResponse(BaseModel):
     step_percent: float
     mean_xr: float
@@ -33,6 +46,9 @@ class CalculationResultResponse(BaseModel):
     pressure_unit: str 
     torque_unit: str
     stored_readings: Optional[List[float]] = None 
+    
+    # Added field for Uncertainty Resolution data
+    un_resolution: Optional[UnResolutionData] = None
 
 class RepeatabilityResponse(BaseModel):
     job_id: int

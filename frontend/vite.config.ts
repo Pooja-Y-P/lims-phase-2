@@ -10,11 +10,11 @@ export default defineConfig({
       usePolling: true, // Required for file watching in Docker on Windows/Mac
     },
     proxy: {
-      // This key '/api' now perfectly matches your backend prefix
       '/api': {
-        target: process.env.VITE_API_BASE_URL || 'http://localhost:8000',
+        target: process.env.VITE_API_BASE_URL ||'http://localhost:8000',
         changeOrigin: true,
       },
-    },
+    }
+    
   },
 })

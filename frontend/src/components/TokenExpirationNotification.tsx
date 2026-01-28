@@ -46,7 +46,7 @@ const TokenExpirationNotification: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 max-w-md animate-in slide-in-from-top-5">
+    <div className="fixed top-4 right-4 z-[1000] max-w-md animate-in slide-in-from-top-5">
       <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg shadow-lg">
         <div className="flex items-start">
           <div className="flex-shrink-0">

@@ -32,5 +32,10 @@ from .htw_output_drive_variation import HTWOutputDriveVariation
 from .htw_output_drive_variation_reading import HTWOutputDriveVariationReading
 from .htw_job_environment import HTWJobEnvironment
 from .htw_un_resolution import HTWUnResolution
+from .htw_uncertainty_budget import HTWUncertaintyBudget
+from .htw_un_pg_master import HTWUnPGMaster
+from .htw_t_distribution import HTWTDistribution
+from .htw_max_val_measure_err import HTWMaxValMeasureErr
+from .htw_cmc_reference import HTWCMCReference
 
 from backend.db import Base

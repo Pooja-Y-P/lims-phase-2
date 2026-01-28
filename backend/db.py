@@ -3,6 +3,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+
 # # Example connection (update with your DB)
 #DATABASE_URL="postgresql://postgres:Aimlsn%40321@localhost:5432/limsp1"
 # DATABASE_URL="postgresql://postgres:postgres@postgres:5432/limsdbp1"

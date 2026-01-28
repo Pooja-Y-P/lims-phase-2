@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from backend.db import get_db
 
@@ -22,6 +22,7 @@ def save_repeatability_draft(
 ):
     """
     Draft Endpoint: Saves state immediately without strict validation.
+    Calculates basic Repeatability + Uncertainty Resolution if data is available.
     """
     try:
         return services.process_repeatability_draft(db, request)
@@ -35,7 +36,12 @@ def calculate_repeatability(
     db: Session = Depends(get_db)
 ):
     """
-    Calculates Repeatability (Section A).
+    Calculates Repeatability (Section A) AND Uncertainty Resolution.
+    Returns:
+      - Mean, Deviation, Corrected Standard
+      - Measurement Error, Relative Measurement Error, Deviation Lists
+      - Average Relative Error (a_s)
+      - Variation due to Repeatability (Standard Deviation)
     """
     try:
         return services.process_repeatability_calculation(db, request)
@@ -59,6 +65,9 @@ def get_references(db: Session = Depends(get_db)):
 
 @router.get("/repeatability/{job_id}", response_model=htw_repeatability_schemas.RepeatabilityResponse)
 def get_repeatability(job_id: int, db: Session = Depends(get_db)):
+    """
+    Fetches stored Repeatability and Uncertainty Resolution data for a Job.
+    """
     try:
         return services.get_stored_repeatability(db, job_id)
     except Exception as e:
@@ -66,7 +75,26 @@ def get_repeatability(job_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Fetch Error: {str(e)}"
         )
+    
 
+# ... existing imports ...
+
+@router.delete("/repeatability/step")
+def delete_repeatability_step(
+    payload: htw_repeatability_schemas.DeleteStepRequest, # <--- Use the Schema here
+    db: Session = Depends(get_db)
+):
+    """
+    Deletes a specific step row from the database.
+    Expects JSON Body: { "job_id": 123, "step_percent": 40 }
+    """
+    try:
+        # Access data via payload.job_id and payload.step_percent
+        return services.delete_repeatability_step(db, payload.job_id, payload.step_percent)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+# ... rest of your existing code ...
 # ==============================================================================
 #                           B. REPRODUCIBILITY ROUTES
 # ==============================================================================
@@ -121,8 +149,6 @@ def calculate_output_drive(
 ):
     """
     Calculates Output Drive Variation (b_out).
-    Positions: 0, 90, 180, 270.
-    10 readings per position.
     Result = Max(Means) - Min(Means).
     """
     try:
@@ -160,8 +186,6 @@ def calculate_drive_interface(
 ):
     """
     Calculates Drive Interface Variation (b_int).
-    Positions: 0, 90, 180, 270.
-    10 readings per position.
     Result = Max(Means) - Min(Means).
     """
     try:
@@ -199,8 +223,6 @@ def calculate_loading_point(
 ):
     """
     Calculates Loading Point Variation (b_l).
-    Positions: -10mm, 10mm.
-    10 readings per position.
     Result = | Mean(-10) - Mean(+10) |.
     """
     try:

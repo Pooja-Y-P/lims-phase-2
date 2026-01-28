@@ -8,9 +8,9 @@ import {
   FileText,
   Calendar,
   User,
-  Hash,
   AlertCircle,
-  Play
+  Play,
+  Calculator
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -49,11 +49,14 @@ interface InwardDetailResponse {
 
 const JobsManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // Hook to access the state passed from CalibrationPage
+  const location = useLocation();
 
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Track which specific button is loading
+  const [verifyingId, setVerifyingId] = useState<number | null>(null);
 
   const [jobs, setJobs] = useState<InwardJob[]>([]);
   const [selectedJob, setSelectedJob] = useState<InwardDetailResponse | null>(null);
@@ -62,13 +65,10 @@ const JobsManagementPage: React.FC = () => {
     fetchJobs();
   }, []);
 
-  // --- NEW: Effect to restore Job Details View when returning from Calibration ---
   useEffect(() => {
     const state = location.state as { viewJobId?: number } | null;
     if (state?.viewJobId) {
         handleViewJob(state.viewJobId);
-        // Optional: Clear state to prevent reopening on refresh if desired
-        // window.history.replaceState({}, document.title);
     }
   }, [location]);
 
@@ -89,7 +89,6 @@ const JobsManagementPage: React.FC = () => {
 
   const handleViewJob = async (id: number | undefined) => {
     if (!id) {
-        // Only alert if manually clicked, not on auto-load
         if (viewMode === "list") alert("Error: Invalid Job ID");
         return;
     }
@@ -123,6 +122,32 @@ const JobsManagementPage: React.FC = () => {
     navigate(`/engineer/calibration/${inwardId}/${equipmentId}`);
   };
 
+  // --- UPDATED HANDLER: Fetch & Verify Budget Before Navigation ---
+  const handleViewUncertaintyBudget = async (inwardId: number, equipmentId: number) => {
+    try {
+      setVerifyingId(equipmentId); // Start loading spinner on button
+      
+      // 1. Call the API to check if budget exists
+      await api.get(`/uncertainty/budget`, {
+          params: { inward_eqp_id: equipmentId }
+      });
+      
+      // 2. If successful (200 OK), navigate to the page
+      navigate(`/engineer/uncertainty-budget/${inwardId}/${equipmentId}`);
+
+    } catch (error: any) {
+      // 3. Handle errors
+      if (error.response && error.response.status === 404) {
+          alert("Uncertainty Budget has not been calculated yet.\n\nPlease go to 'Start Calibration' -> 'Finish / Exit' to generate the budget.");
+      } else {
+          console.error("Error checking budget:", error);
+          alert("Failed to retrieve budget details. Please try again.");
+      }
+    } finally {
+      setVerifyingId(null); // Stop loading spinner
+    }
+  };
+
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return "-";
     return new Date(dateString).toLocaleDateString("en-GB", {
@@ -154,22 +179,25 @@ const JobsManagementPage: React.FC = () => {
   if (viewMode === "detail" && selectedJob) {
     return (
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 space-y-6">
-        <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
-          <button
-            onClick={handleBackToList}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors group"
-          >
-            <ArrowLeft className="h-6 w-6 text-gray-600 group-hover:text-blue-600" />
-          </button>
+        {/* HEADER SECTION */}
+        <div className="flex items-center justify-between border-b border-gray-100 pb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Job Details</h1>
             <div className="flex items-center gap-2 text-gray-500 text-sm mt-1">
-              <Hash className="h-4 w-4" />
               <span className="font-mono">SRF: {selectedJob.srf_no}</span>
             </div>
           </div>
+
+          <button
+            onClick={handleBackToList}
+            className="flex items-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back to List</span>
+          </button>
         </div>
 
+        {/* INFO CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
             <div className="flex items-start gap-3">
@@ -209,6 +237,7 @@ const JobsManagementPage: React.FC = () => {
           </div>
         </div>
 
+        {/* EQUIPMENT TABLE */}
         <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -226,46 +255,60 @@ const JobsManagementPage: React.FC = () => {
                 <tr className="bg-gray-50/50 text-gray-600 text-xs uppercase tracking-wider border-b border-gray-200">
                   <th className="px-6 py-3 font-semibold">NEPL ID</th>
                   <th className="px-6 py-3 font-semibold">Description</th>
-                  <th className="px-6 py-3 font-semibold">Make</th>
-                  <th className="px-6 py-3 font-semibold">Model</th>
+                  <th className="px-6 py-3 font-semibold">Make/Model</th>
                   <th className="px-6 py-3 font-semibold">Serial No</th>
                   <th className="px-6 py-3 font-semibold">Accessories</th>
                   <th className="px-6 py-3 font-semibold">Remarks</th>
-                  <th className="px-6 py-3 font-semibold text-center">Action</th>
+                  <th className="px-6 py-3 font-semibold text-center w-48">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-sm">
                 {selectedJob.equipments && selectedJob.equipments.map((item) => (
                   <tr key={item.inward_eqp_id} className="hover:bg-blue-50/30 transition-colors">
-                    <td className="px-6 py-4 font-medium text-blue-600">
+                    <td className="px-6 py-4 font-medium text-blue-600 align-top">
                       {item.nepl_id}
                     </td>
-                    <td className="px-6 py-4 text-gray-800">
+                    <td className="px-6 py-4 text-gray-800 align-top">
                       {item.material_description}
                     </td>
-                    <td className="px-6 py-4 text-gray-800">
-                      {item.make}
+                    <td className="px-6 py-4 text-gray-800 align-top">
+                      <div className="font-medium">{item.make}</div>
+                      <div className="text-gray-500 text-xs">{item.model}</div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {item.model}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 font-mono">
+                    <td className="px-6 py-4 text-gray-600 font-mono align-top">
                       {item.serial_no}
                     </td>
-                    <td className="px-6 py-4 text-gray-500">
+                    <td className="px-6 py-4 text-gray-500 align-top">
                       {item.accessories_included || "-"}
                     </td>
-                    <td className="px-6 py-4 text-gray-500 italic">
+                    <td className="px-6 py-4 text-gray-500 italic align-top">
                       {item.visual_inspection_notes || "-"}
                     </td>
-                    <td className="px-6 py-4 text-center">
-                        <button
-                            onClick={() => handleStartCalibration(selectedJob.inward_id, item.inward_eqp_id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap"
-                        >
-                            <Play className="h-3.5 w-3.5" />
-                            Start Calibration
-                        </button>
+                    <td className="px-6 py-4 text-center align-middle">
+                        <div className="flex flex-col gap-2 w-full">
+                            {/* Start Calibration Button */}
+                            <button
+                                onClick={() => handleStartCalibration(selectedJob.inward_id, item.inward_eqp_id)}
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-sm w-full"
+                            >
+                                <Play className="h-3.5 w-3.5" />
+                                Start Calibration
+                            </button>
+
+                            {/* Uncertainty Budget Button */}
+                            <button
+                                onClick={() => handleViewUncertaintyBudget(selectedJob.inward_id, item.inward_eqp_id)}
+                                disabled={verifyingId === item.inward_eqp_id}
+                                className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white text-blue-600 text-xs font-semibold rounded-lg hover:bg-blue-50 border border-blue-200 transition-colors shadow-sm w-full ${verifyingId === item.inward_eqp_id ? 'opacity-70 cursor-wait' : ''}`}
+                            >
+                                {verifyingId === item.inward_eqp_id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Calculator className="h-3.5 w-3.5" />
+                                )}
+                                Uncertainty Budget
+                            </button>
+                        </div>
                     </td>
                   </tr>
                 ))}
@@ -366,4 +409,3 @@ const JobsManagementPage: React.FC = () => {
 };
 
 export default JobsManagementPage;
-

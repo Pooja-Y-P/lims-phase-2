@@ -6,7 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from backend.db import Base, engine
 from backend import models  # Ensure models are registered before create_all
 import time
-import logging
+import logging 
+
 
 # Import routers
 # These imports are likely being aliased in backend/routes/__init__.py
@@ -34,6 +35,7 @@ from backend.routes.htw_un_pg_master_router import router as htw_un_pg_master_ro
 from backend.routes.htw_cmc_reference_router import router as htw_cmc_reference_router
 from backend.routes.htw_tool_type_router import router as htw_tool_type_router
 from backend.routes.htw_max_val_measure_err_router import router as htw_max_val_measure_err_router
+from backend.routes.htw_uncertanity_budget_router import router as htw_uncertanity_budget_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -63,14 +65,15 @@ app = FastAPI(title="LIMS Backend", version="1.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174"
-    ],
+    # allow_origins=[
+    #     "http://localhost:3000",
+    #     "http://127.0.0.1:3000",
+    #     "http://localhost:5173",
+    #     "http://127.0.0.1:5173",
+    #     "http://localhost:5174",
+    #     "http://127.0.0.1:5174"
+    # ],
+    allow_origins = ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,6 +107,7 @@ app.include_router(htw_cmc_reference_router, prefix="/api")
 app.include_router(htw_tool_type_router, prefix="/api")
 app.include_router(htw_max_val_measure_err_router, prefix="/api")
 app.include_router(htw_standard_uncertanity_reference_router, prefix="/api")
+app.include_router(htw_uncertanity_budget_router, prefix="/api")
 
 @app.get("/")
 def root():

@@ -19,7 +19,10 @@ const Header: React.FC<HeaderProps> = ({
   const logoUrl = "/images/logo.png";
 
   return (
-    <header className="bg-gradient-to-r from-blue-500 to-blue-700 shadow-lg border-b-2 border-blue-600">
+    <header className="relative z-[100] overflow-visible
+                  bg-gradient-to-r from-blue-500 to-blue-700
+                  shadow-lg border-b-2 border-blue-600">
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Left: Logo */}
@@ -60,7 +63,10 @@ const Header: React.FC<HeaderProps> = ({
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-md shadow-lg py-1 z-50 border border-gray-200">
+                <div className="absolute right-0 top-full mt-2
+                w-52 bg-white rounded-md shadow-xl
+                py-1 z-[9999] border border-gray-200">
+
                   {onLogout && (
                     <button
                       onClick={() => {

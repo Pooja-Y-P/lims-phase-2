@@ -11,7 +11,7 @@ import {
   Settings, ChevronLeft, Ruler, AlertCircle, X, Search,
   LayoutDashboard, Menu,  Filter, Briefcase, Wrench, 
   Building2, Grid, AlignJustify,  Lock, CheckCircle2, 
-  XCircle, ChevronDown
+  XCircle, ChevronDown, Activity, UserCog
 } from 'lucide-react';
 
 // --- Extended Types for UI ---
@@ -39,6 +39,45 @@ interface InvitationResponse {
   message: string;
 }
 
+// --- SHARED UI COMPONENTS ---
+
+const StatCard: React.FC<{ 
+    icon: React.ReactNode; 
+    label: string; 
+    value: number; 
+    description: string; 
+    gradient: string; 
+    bgGradient: string; 
+}> = ({ icon, label, value, description, gradient, bgGradient }) => ( 
+    <div className={`relative bg-white rounded-2xl p-8 shadow-lg border border-gray-100 hover:shadow-xl group transition-all duration-300`}> 
+        <div className={`absolute inset-0 bg-gradient-to-r ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl`} /> 
+        <div className="relative z-10"> 
+            <div className="flex items-start justify-between mb-6"> 
+                <div className={`p-4 bg-gradient-to-r ${gradient} rounded-xl text-white shadow-lg`}>{icon}</div> 
+                <div className="text-4xl font-bold text-gray-900 group-hover:text-gray-800 transition-colors">{value}</div> 
+            </div> 
+            <div> 
+                <h3 className="text-xl font-semibold text-gray-900">{label}</h3> 
+                <p className="text-gray-500 group-hover:text-gray-700 text-sm font-medium mt-1">{description}</p> 
+            </div> 
+        </div> 
+    </div> 
+);
+
+const ActionButton: React.FC<{ 
+    color: string; 
+    label: string; 
+    description: string; 
+    icon: React.ReactNode; 
+    onClick: () => void; 
+}> = ({ color, label, description, icon, onClick }) => ( 
+    <button onClick={onClick} className="relative group bg-white border border-gray-100 rounded-xl p-6 hover:shadow-lg text-left transition-all duration-300 hover:-translate-y-1"> 
+        <div className={`inline-flex p-3 bg-gradient-to-r ${color} rounded-xl text-white mb-4 shadow-md`}>{icon}</div> 
+        <h3 className="font-semibold text-lg text-gray-800">{label}</h3> 
+        <p className="text-sm text-gray-500 mt-2">{description}</p> 
+    </button> 
+);
+
 // --- INTERNAL COMPONENTS ---
 
 // 1. New Company Modal
@@ -62,7 +101,7 @@ const CompanyEntryModal: React.FC<CompanyEntryModalProps> = ({ isOpen, onClose, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 transform transition-all scale-100">
         <div className="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
           <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -187,7 +226,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, activeSection, set
     <>
       <aside 
         className={`
-          relative bg-white border-r border-gray-200 flex flex-col z-20 h-[calc(100vh-4rem)]
+          relative bg-white border-r border-gray-200 flex flex-col h-[calc(100vh-4rem)]
           transition-all duration-300 ease-in-out
           ${isOpen ? 'w-64' : 'w-[4.5rem]'}
         `}
@@ -235,7 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, activeSection, set
 
       {!isOpen && hoveredItem && (
         <div 
-          className="fixed z-50 px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-xl whitespace-nowrap pointer-events-none animate-fadeIn"
+          className="fixed z-[150] px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-xl whitespace-nowrap pointer-events-none animate-fadeIn"
           style={{ 
             left: '5.2rem', 
             top: hoveredItem.top,
@@ -642,9 +681,8 @@ const UserManagementSystem: React.FC<{
   );
 };
 
-// 6. Invite Users Section (UNCHANGED logic, skipped for brevity in rendering to save space, assuming it's same as previous)
+// 6. Invite Users Section 
 const InviteUsersSection: React.FC<{ existingCustomers: Customer[] }> = ({ existingCustomers }) => {
-    // ... [Same implementation as previous step]
     const [email, setEmail] = useState('');
     const [role, setRole] = useState<UserRole>('customer');
     const [invitedName, setInvitedName] = useState('');
@@ -728,7 +766,7 @@ const InviteUsersSection: React.FC<{ existingCustomers: Customer[] }> = ({ exist
       };
 
     return (
-        <div className="max-w-2xl mx-auto p-8 bg-white border border-gray-100 rounded-2xl shadow-lg">
+        <div className="max-w-3xl mx-auto p-8 bg-white border border-gray-100 rounded-2xl shadow-lg">
           <CompanyEntryModal isOpen={isCompanyModalOpen} onClose={() => setCompanyModalOpen(false)} onConfirm={handleNewCompanyConfirm} />
           <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-6">
             <div className="p-2 bg-blue-100 rounded-lg mr-3"><UserPlus className="w-6 h-6 text-blue-600" /></div>
@@ -798,6 +836,89 @@ const InviteUsersSection: React.FC<{ existingCustomers: Customer[] }> = ({ exist
           </form>
         </div>
       );
+};
+
+// --- NEW DASHBOARD HOME VIEW ---
+
+const AdminDashboardHome: React.FC<{ users: User[], onNavigate: (section: string) => void }> = ({ users, onNavigate }) => {
+    const totalUsers = users.length;
+    const activeUsers = users.filter(u => u.is_active).length;
+    const inactiveUsers = totalUsers - activeUsers;
+    const adminCount = users.filter(u => u.role === 'admin').length;
+
+    return (
+        <div className="space-y-8 animate-fadeIn">
+            {/* Header Area */}
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-4xl font-extrabold text-gray-900 flex items-center gap-3">
+                        <Shield className="w-10 h-10 text-blue-600" />
+                        Admin Portal
+                    </h1>
+                    <p className="text-lg text-gray-500 mt-2">System overview and management controls.</p>
+                </div>
+            </div>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <StatCard 
+                    icon={<Users className="w-10 h-10" />} 
+                    label="Total Users" 
+                    value={totalUsers} 
+                    description={`${adminCount} Administrator(s)`}
+                    gradient="from-blue-500 to-indigo-600"
+                    bgGradient="from-blue-50 to-indigo-50"
+                />
+                 <StatCard 
+                    icon={<Activity className="w-10 h-10" />} 
+                    label="Active Accounts" 
+                    value={activeUsers} 
+                    description="Currently enabled"
+                    gradient="from-emerald-500 to-green-600"
+                    bgGradient="from-emerald-50 to-green-50"
+                />
+                 <StatCard 
+                    icon={<PowerOff className="w-10 h-10" />} 
+                    label="Inactive Accounts" 
+                    value={inactiveUsers} 
+                    description="Disabled or suspended"
+                    gradient="from-orange-500 to-red-600"
+                    bgGradient="from-orange-50 to-red-50"
+                />
+            </div>
+
+            {/* Quick Actions Panel */}
+            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                <div className="px-8 py-6 bg-gradient-to-r from-gray-900 to-gray-800">
+                    <h2 className="text-2xl font-bold text-white">Administrative Actions</h2>
+                    <p className="text-gray-400 mt-1">Common tasks and configurations</p>
+                </div>
+                <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <ActionButton 
+                        color="from-blue-500 to-cyan-500" 
+                        label="Invite New User" 
+                        description="Send email invitations to staff or customers." 
+                        icon={<UserPlus className="h-8 w-8" />} 
+                        onClick={() => onNavigate('invite-users')} 
+                    />
+                    <ActionButton 
+                        color="from-purple-500 to-violet-500" 
+                        label="Manage Users" 
+                        description="View directory, toggle access, or update roles." 
+                        icon={<UserCog className="h-8 w-8" />} 
+                        onClick={() => onNavigate('users')} 
+                    />
+                     <ActionButton 
+                        color="from-pink-500 to-rose-500" 
+                        label="Master Standards" 
+                        description="Configure calibration standards and references." 
+                        icon={<Ruler className="h-8 w-8" />} 
+                        onClick={() => onNavigate('master-standard')} 
+                    />
+                </div>
+            </div>
+        </div>
+    );
 };
 
 // --- MAIN DASHBOARD COMPONENT ---
@@ -875,21 +996,28 @@ const AdminDashboard: React.FC = () => {
     );
   }
 
-  // --- REVISED LAYOUT STRUCTURE: Full Page Scroll, Sticky Sidebar ---
   return (
     <div className="flex flex-col min-h-screen bg-[#f8f9fc] font-sans text-gray-900">
       
-      {/* 1. Sticky Header */}
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+      {/* 
+         HEADER CONTAINER
+         z-index set to 100 to ensure the dropdown menu (Logout) 
+         renders ON TOP of the sidebar and main content.
+      */}
+      <div className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 shadow-sm">
          <Header username={userName} role={userRole} onLogout={handleLogout} />
       </div>
 
-      {/* 2. Main Flex Container (Sidebar + Content) */}
-      <div className="flex flex-1 w-full">
+      {/* 
+         MAIN LAYOUT
+         Sidebar and Content sit below the header.
+         The z-index of the sidebar is lower than the header (40 < 100).
+      */}
+      <div className="flex flex-1 w-full relative z-0">
         
-        {/* Sticky Sidebar (Left) */}
-        <div className="flex-shrink-0 relative">
-             <div className="sticky top-16 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+        {/* SIDEBAR CONTAINER */}
+        <div className="flex-shrink-0 relative z-40 h-[calc(100vh-4rem)]">
+             <div className="sticky top-0 h-full bg-white border-r border-gray-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
                 <Sidebar 
                     isOpen={isSidebarOpen} 
                     setIsOpen={setSidebarOpen} 
@@ -899,22 +1027,14 @@ const AdminDashboard: React.FC = () => {
              </div>
         </div>
 
-        {/* Content Area (Right) */}
-        <main className="flex-1 flex flex-col min-w-0">
+        {/* CONTENT AREA */}
+        <main className="flex-1 flex flex-col min-w-0 z-0 bg-gradient-to-br from-gray-50 via-white to-blue-50">
             <div className="flex-1 p-6 md:p-8 max-w-7xl mx-auto w-full">
               {error && (<div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center text-red-700 animate-fadeIn"><AlertCircle className="w-5 h-5 mr-2" /><span>{error}</span></div>)}
 
-              {/* --- Dashboard Section --- */}
+              {/* --- Dashboard Home Section --- */}
               {activeSection === 'dashboard' && (
-                <div className="space-y-8 animate-fadeIn">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                      <h1 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2"><Shield className="w-8 h-8 text-blue-600" />Admin Control Panel</h1>
-                      <p className="text-gray-500 mt-1">System Overview</p>
-                    </div>
-                  </div>
-                  <OverviewSection users={users} />
-                </div>
+                <AdminDashboardHome users={users} onNavigate={setActiveSection} />
               )}
 
               {/* --- Invite Users Section --- */}
@@ -928,8 +1048,8 @@ const AdminDashboard: React.FC = () => {
               {activeSection === 'users' && (
                 <div className="animate-fadeIn h-full flex flex-col">
                   <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-                    <p className="text-gray-500">View and manage all registered system users.</p>
+                    <h2 className="text-3xl font-bold text-gray-900">User Management</h2>
+                    <p className="text-gray-500 mt-1">View and manage all registered system users.</p>
                   </div>
                   <div className="flex-1 min-h-0">
                     {statusMessage && (
@@ -949,7 +1069,6 @@ const AdminDashboard: React.FC = () => {
 
               {activeSection === 'master-standard' && <div className="animate-slideUp"><MasterStandardModule /></div>}
 
-             
               {activeSection === 'settings' && (
                 <div className="flex flex-col items-center justify-center h-[50vh] text-gray-400 animate-fadeIn">
                   <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-6"><Settings size={40} className="text-gray-400" /></div>
@@ -968,33 +1087,5 @@ const AdminDashboard: React.FC = () => {
     </div>
   );
 };
-
-
-const OverviewSection: React.FC<{ users: User[] }> = ({ users }) => {
-  const totalUsers = users.length;
-  const activeUsers = users.filter(u => u.is_active).length;
-  const inactiveUsers = totalUsers - activeUsers;
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <StatsCard icon={<Users className="w-8 h-8 text-blue-600" />} title="Total Users" value={totalUsers} color="bg-white border-blue-100" />
-      <StatsCard icon={<Power className="w-8 h-8 text-emerald-500" />} title="Active Users" value={activeUsers} color="bg-white border-emerald-100" />
-      <StatsCard icon={<PowerOff className="w-8 h-8 text-red-500" />} title="Inactive Users" value={inactiveUsers} color="bg-white border-red-100" />
-      <div className="md:col-span-3">
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4 shadow-sm">
-          <div className="bg-white p-2 rounded-full shadow-sm"><Info className="w-6 h-6 text-blue-600" /></div>
-          <div><h4 className="font-semibold text-blue-900 mb-1">System Status</h4><p className="text-blue-800/80 text-sm leading-relaxed">This dashboard provides core administrative controls. You can invite new staff or customers, toggle user access, and configure master standards.</p></div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const StatsCard: React.FC<{ icon: React.ReactNode; title: string; value: number; color: string }> = ({ icon, title, value, color }) => (
-  <div className={`p-6 rounded-2xl border shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1 duration-300 ${color}`}>
-    <div className="p-4 rounded-xl bg-gray-50 shadow-inner">{icon}</div>
-    <div><p className="text-sm font-medium text-gray-500 uppercase tracking-wide">{title}</p><p className="text-3xl font-extrabold text-gray-800 mt-1">{value}</p></div>
-  </div>
-);
 
 export default AdminDashboard;

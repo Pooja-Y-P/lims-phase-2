@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { api, ENDPOINTS } from "../api/config";
-import { Loader2, AlertCircle, CheckCircle2, Cloud, Trash2 } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Cloud, Trash2 } from "lucide-react";
 import useDebounce from "../hooks/useDebounce"; 
 
 interface ReproducibilitySectionProps {
@@ -8,17 +8,17 @@ interface ReproducibilitySectionProps {
   torqueUnit?: string; 
 }
 
-interface SequenceData {
+interface SequenceRowData {
   sequence_no: number;
-  readings: string[];
+  readings: string[]; // 5 readings per row
   mean_xr: number | null;
 }
 
-interface BackendReproducibilityResponse {
+interface ReproducibilityResponse {
   job_id: number;
   status: string;
   set_torque_20: number;
-  error_due_to_reproducibility: number;
+  error_due_to_reproducibility: number; // b_rep
   torque_unit?: string; 
   unit?: string;
   pressure_unit?: string;
@@ -34,121 +34,139 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
   const [loading, setLoading] = useState(false); 
   const [dataLoaded, setDataLoaded] = useState(false);
   
-  // Auto-Save Status State
+  // Auto-Save Status
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const lastSavedPayload = useRef<string | null>(null);
 
-  // Data State
-  const [setTorque, setSetTorque] = useState<number | null>(null);
-  const [bRep, setBRep] = useState<number | null>(null);
-  const [fetchedUnit, setFetchedUnit] = useState<string | null>(null); 
-  
-  const [sequences, setSequences] = useState<SequenceData[]>([
-    { sequence_no: 1, readings: ["", "", "", "", ""], mean_xr: null },
-    { sequence_no: 2, readings: ["", "", "", "", ""], mean_xr: null },
-    { sequence_no: 3, readings: ["", "", "", "", ""], mean_xr: null },
-    { sequence_no: 4, readings: ["", "", "", "", ""], mean_xr: null },
+  // Table Data
+  const [tableData, setTableData] = useState<SequenceRowData[]>([
+    { sequence_no: 1, readings: Array(5).fill(""), mean_xr: null },
+    { sequence_no: 2, readings: Array(5).fill(""), mean_xr: null },
+    { sequence_no: 3, readings: Array(5).fill(""), mean_xr: null },
+    { sequence_no: 4, readings: Array(5).fill(""), mean_xr: null },
   ]);
+
+  const [meta, setMeta] = useState({ 
+    set_torque: 0, 
+    b_rep: 0, 
+    unit: torqueUnit || "Nm" 
+  });
 
   const sequenceLabels = ["I", "II", "III", "IV"];
 
   // --- DEBOUNCE SETUP ---
-  const debouncedSequences = useDebounce(sequences, 1000);
+  const debouncedTableData = useDebounce(tableData, 1000);
   const hasUserEdited = useRef(false);
   
-  // --- UNIT LOGIC ---
-  const displayUnit = useMemo(() => {
-    if (fetchedUnit && fetchedUnit.trim() !== "") return fetchedUnit;
-    if (torqueUnit && torqueUnit.trim() !== "") return torqueUnit;
-    return "Nm";
-  }, [fetchedUnit, torqueUnit]);
-
   // --- 1. INITIAL FETCH ---
   useEffect(() => {
-    if (!jobId) return;
-    setLoading(true);
+    const init = async () => {
+      if (!jobId) return;
+      setLoading(true);
 
-    api.get<BackendReproducibilityResponse>(ENDPOINTS.HTW_REPRODUCIBILITY.GET(jobId))
-      .then(res => {
+      try {
+        const res = await api.get<ReproducibilityResponse>(ENDPOINTS.HTW_REPRODUCIBILITY.GET(jobId));
+        
+        // Prepare default structure
+        let currentData = [
+          { sequence_no: 1, readings: Array(5).fill(""), mean_xr: null },
+          { sequence_no: 2, readings: Array(5).fill(""), mean_xr: null },
+          { sequence_no: 3, readings: Array(5).fill(""), mean_xr: null },
+          { sequence_no: 4, readings: Array(5).fill(""), mean_xr: null },
+        ] as SequenceRowData[];
+
+        // Extract Unit
+        const backendUnit = res.data.torque_unit || res.data.unit || res.data.pressure_unit || torqueUnit || "Nm";
+
         if (res.data.status === "success" || res.data.status === "no_data") {
-          setSetTorque(res.data.set_torque_20);
-          setBRep(res.data.error_due_to_reproducibility);
-          
-          const backendUnit = res.data.torque_unit || res.data.unit || res.data.pressure_unit;
-          if (backendUnit) setFetchedUnit(backendUnit);
+            // Map sequences
+            if (res.data.sequences && res.data.sequences.length > 0) {
+                currentData = currentData.map(def => {
+                    const found = res.data.sequences.find(s => s.sequence_no === def.sequence_no);
+                    return found ? {
+                        sequence_no: found.sequence_no,
+                        readings: found.readings.map(String),
+                        mean_xr: found.mean_xr
+                    } : def;
+                });
+            }
 
-          if (res.data.sequences && res.data.sequences.length > 0) {
-            const newSeqs = sequences.map(defaultSeq => {
-              const found = res.data.sequences.find(s => s.sequence_no === defaultSeq.sequence_no);
-              if (found) {
-                return {
-                  sequence_no: found.sequence_no,
-                  readings: found.readings.map(String),
-                  mean_xr: found.mean_xr
-                };
-              }
-              return defaultSeq;
+            setMeta({
+                set_torque: res.data.set_torque_20,
+                b_rep: res.data.error_due_to_reproducibility,
+                unit: backendUnit
             });
-            setSequences(newSeqs);
-          }
-          setDataLoaded(true);
-          hasUserEdited.current = false;
         }
-      })
-      .catch(err => console.error("Failed to fetch reproducibility", err))
-      .finally(() => setLoading(false));
-  }, [jobId]);
 
-  // --- 2. AUTO-SAVE EFFECT (DRAFT MODE) ---
+        setTableData(currentData);
+
+        // Sync Reference to prevent immediate auto-save
+        const initialPayload = JSON.stringify({
+          job_id: jobId,
+          torque_unit: backendUnit,
+          sequences: currentData.map(s => ({
+            sequence_no: s.sequence_no,
+            readings: s.readings.map(r => (r === "" || isNaN(Number(r))) ? 0 : Number(r))
+          }))
+        });
+        lastSavedPayload.current = initialPayload;
+
+        setDataLoaded(true);
+        hasUserEdited.current = false;
+
+      } catch (err) {
+        console.error("Failed to fetch reproducibility", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+  }, [jobId, torqueUnit]);
+
+  // --- 2. AUTO-SAVE EFFECT ---
   useEffect(() => {
     if (!dataLoaded) return;
     if (!hasUserEdited.current) return;
 
-    // Check if there is literally any data to save
-    const hasAnyValue = debouncedSequences.some(seq =>
-      seq.readings.some(r => r !== "")
-    );
-    
-    // If empty and not explicitly cleared by user action, skip
-    // (Note: handleClear sets hasUserEdited=true, so clearing *will* trigger save below)
+    // Check if empty
+    const hasAnyValue = debouncedTableData.some(seq => seq.readings.some(r => r !== ""));
     if (!hasAnyValue && !hasUserEdited.current) return;
 
     const performAutoSave = async () => {
       setSaveStatus("saving");
 
+      const payload = {
+        job_id: jobId,
+        torque_unit: meta.unit,
+        sequences: debouncedTableData.map(s => ({
+          sequence_no: s.sequence_no,
+          readings: s.readings.map(r => (r === "" || isNaN(Number(r)) ? 0 : Number(r)))
+        }))
+      };
+
+      const payloadString = JSON.stringify(payload);
+      if (payloadString === lastSavedPayload.current) {
+        setSaveStatus("saved");
+        return;
+      }
+
+      lastSavedPayload.current = payloadString;
+
       try {
-        const payload = {
-          job_id: jobId,
-          torque_unit: displayUnit,
-          sequences: debouncedSequences.map(s => ({
-            sequence_no: s.sequence_no,
-            // Convert empty/invalid inputs to 0 for draft saving
-            readings: s.readings.map(r =>
-              r === "" || isNaN(Number(r)) ? 0 : Number(r)
-            )
-          }))
-        };
-        const payloadString = JSON.stringify(payload);
-
-        if (payloadString === lastSavedPayload.current) {
-          setSaveStatus("saved");
-          return;
-        }
-
-        lastSavedPayload.current = payloadString;
-
-        // --- UPDATED ENDPOINT FOR DRAFT SAVING ---
-        const res = await api.post<BackendReproducibilityResponse>(
+        const res = await api.post<ReproducibilityResponse>(
           "/htw-calculations/reproducibility/draft", 
           payload
         );
 
-        setSetTorque(res.data.set_torque_20);
-        setBRep(res.data.error_due_to_reproducibility);
+        const backendUnit = res.data.torque_unit || res.data.unit || meta.unit;
 
-        const confirmedUnit = res.data.torque_unit || res.data.unit;
-        if (confirmedUnit) setFetchedUnit(confirmedUnit);
+        setMeta({
+            set_torque: res.data.set_torque_20,
+            b_rep: res.data.error_due_to_reproducibility,
+            unit: backendUnit
+        });
 
         setSaveStatus("saved");
         setLastSaved(new Date());
@@ -159,39 +177,42 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
     };
 
     performAutoSave();
-  }, [debouncedSequences, jobId]);
+  }, [debouncedTableData, jobId]);
 
-  // --- 3. INPUT HANDLING ---
-  const handleReadingChange = (seqIndex: number, readingIndex: number, value: string) => {
+  // --- 3. HANDLERS ---
+  const handleReadingChange = (rowIdx: number, readIdx: number, value: string) => {
     if (!/^\d*\.?\d*$/.test(value)) return;
 
     hasUserEdited.current = true;
     setSaveStatus("idle");
 
-    setSequences(prev => {
-      const newSeqs = [...prev];
-      const currentSeq = { ...newSeqs[seqIndex] };
-      const newReadings = [...currentSeq.readings];
+    setTableData(prev => {
+      const newData = [...prev];
+      const row = { ...newData[rowIdx] };
+      row.readings = [...row.readings];
+      row.readings[readIdx] = value;
 
-      newReadings[readingIndex] = value;
-      currentSeq.readings = newReadings;
-
-      const validNums = newReadings.filter(v => v !== "").map(Number);
-      // Calculate local mean immediately for UI feedback
-      currentSeq.mean_xr =
-        validNums.length === 5
+      // Local Mean Calculation
+      const validNums = row.readings.filter(v => v !== "" && !isNaN(Number(v))).map(Number);
+      
+      // Calculate mean if we have valid numbers (usually requires 5, but partial calc allows UI feedback)
+      row.mean_xr = validNums.length === 5
           ? validNums.reduce((a, b) => a + b, 0) / 5
           : null;
 
-      newSeqs[seqIndex] = currentSeq;
+      newData[rowIdx] = row;
 
-      // Calculate local b_rep immediately for UI feedback
-      const allMeans = newSeqs.map(s => s.mean_xr).filter(m => m !== null) as number[];
-      if (allMeans.length === 4) {
-        setBRep(Math.max(...allMeans) - Math.min(...allMeans));
+      // Local b_rep Calculation (Max Mean - Min Mean)
+      const allMeans = newData.map(s => s.mean_xr).filter((m): m is number => m !== null);
+      if (allMeans.length >= 2) {
+        const minMean = Math.min(...allMeans);
+        const maxMean = Math.max(...allMeans);
+        setMeta(m => ({ ...m, b_rep: maxMean - minMean }));
+      } else {
+        setMeta(m => ({ ...m, b_rep: 0 }));
       }
 
-      return newSeqs;
+      return newData;
     });
   };
 
@@ -200,16 +221,21 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       hasUserEdited.current = true;
       setSaveStatus("idle");
 
-      setSequences(prev =>
-        prev.map(s => ({
+      setTableData(prev => prev.map(s => ({
           ...s,
-          readings: ["", "", "", "", ""],
+          readings: Array(5).fill(""),
           mean_xr: null
         }))
       );
-      setBRep(null);
+      setMeta(m => ({ ...m, b_rep: 0 }));
     }
   };
+
+  // --- STYLES (Matching DriveInterfaceSection) ---
+  const thBase = "border border-gray-300 px-2 py-2 font-bold text-center align-middle bg-gray-100 text-gray-700 text-xs";
+  const thUnit = "border border-gray-300 px-1 py-1 font-bold text-center align-middle bg-blue-50 text-blue-800 text-[10px]";
+  const tdBase = "border border-gray-300 px-2 py-2 text-center align-middle text-gray-800 font-medium text-sm";
+  const inputCell = "border border-gray-300 p-0 h-9 w-[80px] md:w-auto relative";
 
   // --- RENDER ---
   if (loading && !dataLoaded) {
@@ -220,11 +246,6 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
         </div>
     );
   }
-
-  const thBase = "border border-gray-300 px-2 py-2 font-bold text-center align-middle bg-gray-100 text-gray-700 text-xs";
-  const thUnit = "border border-gray-300 px-1 py-1 font-bold text-center align-middle bg-blue-50 text-blue-800 text-[10px]";
-  const tdBase = "border border-gray-300 px-2 py-2 text-center align-middle text-gray-800 font-medium text-sm";
-  const inputCell = "border border-gray-300 p-0 h-9 w-[100px] relative";
 
   return (
     <>
@@ -266,61 +287,75 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
       {/* TABLE */}
       <div className="overflow-x-auto rounded-lg border border-gray-300">
-        <table className="w-full min-w-[600px] border-collapse">
+        <table className="w-full min-w-[700px] border-collapse">
           <thead>
             <tr>
-              <th rowSpan={2} className={`${thBase} w-[120px]`}>Set Torque<br/></th>
-              <th colSpan={4} className={thBase}>Sequence</th>
+              <th rowSpan={2} className={`${thBase} w-[100px]`}>Set Torque</th>
+              <th rowSpan={2} className={`${thBase} w-[50px]`}>Seq</th>
+              <th colSpan={5} className={thBase}>Indicated Readings</th>
+              <th rowSpan={2} className={`${thBase} w-[100px]`}>Mean X̄r</th>
             </tr>
             <tr>
-              {sequenceLabels.map(label => (
-                <th key={label} className={thBase}>{label}</th>
-              ))}
+               {/* Reading Headers 1-5 */}
+               {[1, 2, 3, 4, 5].map(num => (
+                 <th key={num} className={thBase}>{num}</th>
+               ))}
             </tr>
+            {/* Unit Row */}
             <tr className="border-b border-gray-300">
-              <th className={thUnit}>{displayUnit}</th>
-              {sequenceLabels.map(label => (
-                <th key={label} className={thUnit}>{displayUnit}</th>
-              ))}
+              <th className={thUnit}>{meta.unit}</th>
+              <th className={thUnit}>-</th>
+              {[1, 2, 3, 4, 5].map(num => (
+                 <th key={num} className={thUnit}>{meta.unit}</th>
+               ))}
+              <th className={thUnit}>{meta.unit}</th>
             </tr>
           </thead>
           <tbody>
-            {[0, 1, 2, 3, 4].map((readingIndex) => (
-              <tr key={readingIndex} className="hover:bg-gray-50 transition-colors">
-                {readingIndex === 0 && (
-                  <td rowSpan={5} className={`${tdBase} bg-gray-50 font-bold text-lg text-gray-700 border-b border-gray-300`}>
-                    {setTorque || "-"}
+            {tableData.map((row, rowIdx) => (
+              <tr key={row.sequence_no} className="hover:bg-gray-50 transition-colors">
+                
+                {/* SET TORQUE (Merged Cell for all 4 rows) */}
+                {rowIdx === 0 && (
+                  <td rowSpan={4} className={`${tdBase} bg-gray-50 font-bold text-lg text-gray-700 border-r border-gray-300`}>
+                    {meta.set_torque || "-"}
                   </td>
                 )}
-                {sequences.map((seq, seqIndex) => (
-                  <td key={seq.sequence_no} className={inputCell}>
-                    <input
-                      type="text"
-                      value={seq.readings[readingIndex]}
-                      onChange={(e) => handleReadingChange(seqIndex, readingIndex, e.target.value)}
-                      className="w-full h-full text-center text-sm font-medium focus:outline-none bg-white text-black hover:bg-gray-50 focus:bg-blue-50 focus:text-blue-900 placeholder-gray-200"
-                      placeholder="-"
-                    />
-                  </td>
+
+                {/* SEQUENCE LABEL */}
+                <td className={`${tdBase} bg-gray-100 font-bold text-xs`}>
+                    {sequenceLabels[rowIdx]}
+                </td>
+
+                {/* READINGS INPUTS */}
+                {row.readings.map((reading, readIdx) => (
+                    <td key={readIdx} className={inputCell}>
+                        <input
+                            type="text"
+                            value={reading}
+                            onChange={(e) => handleReadingChange(rowIdx, readIdx, e.target.value)}
+                            className="w-full h-full text-center text-xs font-medium focus:outline-none bg-white text-black hover:bg-gray-50 focus:bg-blue-50 focus:text-blue-900 placeholder-gray-200"
+                            placeholder="-"
+                        />
+                    </td>
                 ))}
+
+                {/* ROW MEAN */}
+                <td className={`${tdBase} font-bold bg-gray-50`}>
+                  {row.mean_xr !== null ? row.mean_xr.toFixed(2) : "-"}
+                </td>
               </tr>
             ))}
 
-            <tr className="border-t-2 border-gray-300">
-              <td className={`${tdBase} bg-gray-100 font-bold text-xs uppercase tracking-wider`}>Mean X̄r</td>
-              {sequences.map((seq) => (
-                <td key={seq.sequence_no} className={`${tdBase} font-bold bg-gray-50`}>
-                  {seq.mean_xr !== null ? seq.mean_xr.toFixed(2) : "-"}
-                </td>
-              ))}
-            </tr>
-
-            <tr>
-              <td colSpan={3} className="border border-gray-300 px-4 py-3 text-right font-bold text-gray-600 text-xs uppercase tracking-wide bg-gray-50">
-                Error due to Reproducibility (b<sub>rep</sub>)
-              </td>
-              <td colSpan={2} className="border border-gray-300 px-4 py-3 text-center font-bold text-lg bg-white text-blue-700">
-                {bRep !== null ? `${bRep.toFixed(2)} ${displayUnit}` : "-"}
+            
+            <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+              <td colSpan={2} className="sticky left-0 bg-indigo-50 z-10"></td>
+              <td colSpan={11} className="p-4 text-center">
+                <div className="flex items-center justify-center gap-4 text-indigo-900">
+                  <span className="text-sm font-bold uppercase tracking-wide">Error due to Reproducibility (b<sub>rep</sub>):</span>
+                  <span className="text-2xl font-mono font-bold bg-white px-4 py-1 rounded border border-indigo-200 shadow-sm">{meta.b_rep.toFixed(2)}</span>
+                  <span className="text-xs font-bold opacity-70">{meta.unit}</span>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -330,7 +365,7 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       {/* FOOTER ACTIONS */}
       <div className="flex justify-between items-center mt-3 h-8">
          <div>
-            {sequences.some(s => s.readings.some(r => r !== "")) && (
+            {tableData.some(s => s.readings.some(r => r !== "")) && (
                  <button 
                     onClick={handleClear}
                     className="flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded-md transition-colors"

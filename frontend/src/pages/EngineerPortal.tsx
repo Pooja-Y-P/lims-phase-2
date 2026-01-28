@@ -20,7 +20,7 @@ import ExportInwardPage from "../components/ExportInwardPage";
 import SrfListPage from "../components/SrfListPage";
 import JobsManagementPage from "../components/JobsManagementPage";
 import CalibrationPage from "../components/CalibrationPage";
-// import { ReviewedFirsPage } from "../components/ReviewedFirsPage";
+import UncertaintyBudgetPage from '../components/UncertaintyBudgetPage'; // ✅ Imported
 
 const CertificatesPage = () => (
   <div className="p-8 bg-white rounded-2xl shadow-lg">Certificates Page Content</div>
@@ -56,8 +56,6 @@ interface FailedNotificationsResponse {
   failed_notifications: FailedNotification[];
   stats: { total: number; pending: number; success: number; failed: number; };
 }
-
-// NOTE: The wrapper interface 'PendingEmailResponse' has been removed.
 
 const ActionButton: React.FC<{
   label: string;
@@ -108,14 +106,12 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
         draftsRes,
         reviewedFirsRes
       ] = await Promise.allSettled([
-        // FIX: Expect a direct array of DelayedTask objects
         api.get<DelayedTask[]>(`${ENDPOINTS.STAFF.INWARDS}/delayed-emails/pending`),
         api.get<FailedNotificationsResponse>(`${ENDPOINTS.STAFF.INWARDS}/notifications/failed`),
-        api.get<AvailableDraft[]>(`${ENDPOINTS.STAFF.INWARDS}/drafts`), // Corrected endpoint for drafts
+        api.get<AvailableDraft[]>(`${ENDPOINTS.STAFF.INWARDS}/drafts`), 
         api.get<ReviewedFir[]>(`${ENDPOINTS.STAFF.INWARDS}/reviewed-firs`)
       ]);
 
-      // FIX: Use .data.length directly on the response
       if (pendingEmailsRes.status === 'fulfilled') {
         setPendingEmailCount(pendingEmailsRes.value.data.length);
       }
@@ -292,9 +288,15 @@ const EngineerPortal: React.FC<EngineerPortalProps> = ({ user, onLogout }) => {
           <Route path="export-inward" element={<ExportInwardPage />} />
           <Route path="srfs" element={<SrfListPage />} />
           <Route path="srfs/:srfId" element={<SrfDetailPage />} />
+          
+          {/* Jobs Management */}
           <Route path="jobs" element={<JobsManagementPage />} />
+          
+          {/* Calibration Page */}
           <Route path="calibration/:inwardId/:equipmentId" element={<CalibrationPage />} />
-          {/* <Route path="reviewed-firs" element={<ReviewedFirsPage />} /> */}
+          
+          {/* ✅ ADDED: Uncertainty Budget Route */}
+          <Route path="uncertainty-budget/:inwardId/:equipmentId" element={<UncertaintyBudgetPage />} />
           
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="deviations" element={<DeviationPage />} />

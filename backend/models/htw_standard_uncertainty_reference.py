@@ -9,7 +9,7 @@ class HTWStandardUncertaintyReference(Base):
     valid_from = Column(Date, nullable=False)
     valid_upto = Column(Date, nullable=False)
     
-    # Torque band info
+    # Torque band infouncertainty_percent
     torque_nm = Column(Integer, nullable=False) 
     
     # Reference values

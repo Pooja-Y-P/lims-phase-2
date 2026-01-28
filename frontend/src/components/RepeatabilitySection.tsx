@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, CheckCircle2, Cloud, AlertCircle, Settings2 } from "lucide-react";
-
+ 
 // --- IMPORT YOUR HOOK ---
-import useDebounce from "../hooks/useDebounce"; 
-
+import useDebounce from "../hooks/useDebounce";
+ 
 interface RepeatabilitySectionProps {
   jobId: number;
 }
-
+ 
 interface RepeatabilityRowData {
   step_percent: number;
   set_pressure: number;
   set_torque: number;
-  readings: string[]; 
+  readings: string[];
   mean_xr: number | null;
   corrected_standard: number | null;
   corrected_mean: number | null;
@@ -21,12 +21,12 @@ interface RepeatabilityRowData {
   pressure_unit: string;
   torque_unit: string;
 }
-
+ 
 interface UncertaintyReference {
   indicated_torque: number;
   error_value: number;
 }
-
+ 
 interface BackendResult {
   step_percent: number;
   mean_xr: number;
@@ -39,26 +39,26 @@ interface BackendResult {
   pressure_unit: string;
   torque_unit: string;
 }
-
+ 
 interface RepeatabilityResponse {
   job_id: number;
   status: string;
   results: BackendResult[];
 }
-
+ 
 const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  
+ 
   const [tableData, setTableData] = useState<RepeatabilityRowData[]>([]);
   const [references, setReferences] = useState<UncertaintyReference[]>([]);
-
+ 
   // --- DERIVED STATE ---
   const has40 = tableData.some(r => r.step_percent === 40);
   const has80 = tableData.some(r => r.step_percent === 80);
-
+ 
   // --- DEBOUNCE SETUP ---
   const debouncedData = useDebounce(
     tableData.map(r => ({
@@ -69,13 +69,13 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
     })),
     1000
   );
-
+ 
   const isFirstRender = useRef(true);
-
+ 
   // Extract units for display
   const pressureUnit = tableData.length > 0 ? tableData[0].pressure_unit : "-";
   const torqueUnit = tableData.length > 0 ? tableData[0].torque_unit : "-";
-
+ 
   // --- 1. INITIAL DATA FETCH ---
   useEffect(() => {
     const init = async () => {
@@ -84,18 +84,18 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         try {
             const [jobRes, refRes] = await Promise.all([
                 api.get<RepeatabilityResponse>(ENDPOINTS.HTW_REPEATABILITY.GET(jobId)),
-                api.get<UncertaintyReference[]>(ENDPOINTS.HTW_REPEATABILITY.REFERENCES) 
+                api.get<UncertaintyReference[]>(ENDPOINTS.HTW_REPEATABILITY.REFERENCES)
             ]);
-
+ 
             setReferences(refRes.data);
-
+ 
             if (jobRes.data.status === "success" && jobRes.data.results.length > 0) {
                 const formattedData: RepeatabilityRowData[] = jobRes.data.results.map(item => ({
                     step_percent: item.step_percent,
                     set_pressure: item.set_pressure,
                     set_torque: item.set_torque,
-                    readings: item.stored_readings && item.stored_readings.length === 5 
-                        ? item.stored_readings.map(String) 
+                    readings: item.stored_readings && item.stored_readings.length === 5
+                        ? item.stored_readings.map(String)
                         : ["", "", "", "", ""],
                     mean_xr: item.mean_xr || null,
                     corrected_standard: item.corrected_standard || null,
@@ -115,39 +115,33 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
     };
     init();
   }, [jobId]);
-
+ 
   // --- 2. AUTO-SAVE EFFECT (DRAFT MODE) ---
+  // This handles Adding new rows and Updating existing rows
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       return;
     }
-
-    // If data is empty (unlikely after load), don't save
-    if (!debouncedData || debouncedData.length === 0) return;
-
-    // DRAFT STRATEGY:
-    // We save the ENTIRE table state. 
-    // - This ensures that if you check "40%", the row (even if empty) is saved.
-    // - If you type 1 reading, it is saved.
-    // - We send 0 for empty strings, and the backend handles the rest.
-
+ 
+    // Note: We deliberately allow saving empty arrays here if needed,
+    // but the delete logic is primarily handled in toggleStep now.
+    if (!debouncedData) return;
+ 
     const autoSave = async () => {
       try {
         setSaveStatus("saving");
-        
-        // NOTE: Make sure this path matches your new backend route
+       
         await api.post("/htw-calculations/repeatability/draft", {
           job_id: jobId,
           steps: debouncedData.map(r => ({
             step_percent: r.step_percent,
-            set_pressure: r.set_pressure, 
-            set_torque: r.set_torque,     
-            // Convert empty inputs to 0 for the Draft endpoint
+            set_pressure: r.set_pressure,
+            set_torque: r.set_torque,    
             readings: r.readings.map(v => v === "" || isNaN(Number(v)) ? 0 : Number(v))
           }))
         });
-
+ 
         setSaveStatus("saved");
         setLastSaved(new Date());
       } catch (err) {
@@ -155,23 +149,23 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         setSaveStatus("error");
       }
     };
-
+ 
     autoSave();
   }, [debouncedData, jobId]);
-
-  // --- 3. MATH HELPERS (Frontend Interpolation for Immediate Feedback) ---
+ 
+  // --- 3. MATH HELPERS ---
   const calculateInterpolation = (val: number): number => {
       if (references.length === 0) return 0;
       const lowerCandidates = references.filter(r => r.indicated_torque <= val);
       const upperCandidates = references.filter(r => r.indicated_torque >= val);
       const lowerRef = lowerCandidates.length > 0 ? lowerCandidates[lowerCandidates.length - 1] : null;
       const upperRef = upperCandidates.length > 0 ? upperCandidates[0] : null;
-
+ 
       if (!lowerRef && !upperRef) return 0;
       if (!lowerRef && upperRef) return Math.abs(upperRef.error_value);
       if (lowerRef && !upperRef) return Math.abs(lowerRef.error_value);
       if (lowerRef && upperRef && lowerRef.indicated_torque === upperRef.indicated_torque) return Math.abs(lowerRef.error_value);
-
+ 
       if (lowerRef && upperRef) {
           const x = val;
           const x1 = lowerRef.indicated_torque;
@@ -183,22 +177,21 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
       }
       return 0;
   };
-
-  // Helper to recalculate a row's stats based on current readings and set_torque
+ 
   const recalculateRow = (row: RepeatabilityRowData): RepeatabilityRowData => {
       const validReadings = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
-      
+     
       if (validReadings.length === 5) {
             const sum = validReadings.reduce((a, b) => a + b, 0);
             const mean = sum / 5;
             const corrStd = calculateInterpolation(mean);
             const corrMean = mean - corrStd;
-            
+           
             let dev = null;
             if (row.set_torque && row.set_torque !== 0) {
                 dev = ((corrMean - row.set_torque) * 100) / row.set_torque;
             }
-
+ 
             return {
                 ...row,
                 mean_xr: mean,
@@ -216,23 +209,52 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
             };
       }
   };
-
-  // --- 4. TOGGLE STEP HANDLER ---
-  const handleToggleStep = (targetPercent: number) => {
-    setTableData(prev => {
-        const exists = prev.find(r => r.step_percent === targetPercent);
-
-        if (exists) {
-            return prev.filter(r => r.step_percent !== targetPercent);
-        } else {
-            // Get units from existing data if possible
+ 
+  // --- 4. TOGGLE STEP HANDLER (UPDATED FOR DELETION) ---
+  const handleToggleStep = async (targetPercent: number) => {
+    // Check if the step currently exists
+    const exists = tableData.find(r => r.step_percent === targetPercent);
+ 
+    if (exists) {
+        // --- CASE: UNCHECKING (DELETE) ---
+       
+        // 1. Optimistically remove from UI immediately
+        setTableData(prev => prev.filter(r => r.step_percent !== targetPercent));
+ 
+        // 2. Fire immediate API call to delete from Database
+        try {
+            setSaveStatus("saving");
+           
+            // NOTE: Ensure your backend has a DELETE route.
+            // If your backend expects query params: /url?job_id=X&step_percent=Y
+            // If your backend expects a JSON body, Axios requires the 'data' key for DELETE requests:
+            await api.delete("/htw-calculations/repeatability/step", {
+                data: {
+                    job_id: jobId,
+                    step_percent: targetPercent
+                }
+            });
+ 
+            setSaveStatus("saved");
+            // Reset status after a moment so user knows it's done
+            setTimeout(() => setSaveStatus("idle"), 2000);
+        } catch (err) {
+            console.error("Failed to delete step", err);
+            setSaveStatus("error");
+            // Optional: Revert UI change if delete fails hard (add row back)
+        }
+ 
+    } else {
+        // --- CASE: CHECKING (ADD) ---
+       
+        setTableData(prev => {
             const baseRow = prev.length > 0 ? prev[0] : null;
             const pUnit = baseRow ? baseRow.pressure_unit : "";
             const tUnit = baseRow ? baseRow.torque_unit : "";
-
+ 
             const newRow: RepeatabilityRowData = {
                 step_percent: targetPercent,
-                set_pressure: 0, 
+                set_pressure: 0,
                 set_torque: 0,
                 readings: ["", "", "", "", ""],
                 mean_xr: null,
@@ -242,17 +264,20 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                 pressure_unit: pUnit,
                 torque_unit: tUnit
             };
-
+ 
             const newData = [...prev, newRow];
             return newData.sort((a, b) => a.step_percent - b.step_percent);
-        }
-    });
+        });
+       
+        // No manual API call needed here; the useEffect auto-save will pick up
+        // the new row after the debounce delay and save it.
+    }
   };
-
+ 
   // --- 5. INPUT HANDLERS ---
   const handleSetValChange = (rowIndex: number, field: 'set_pressure' | 'set_torque', value: string) => {
     if (!/^\d*\.?\d*$/.test(value)) return;
-
+ 
     setTableData(prev => {
         const newData = [...prev];
         const row = { ...newData[rowIndex] };
@@ -262,10 +287,10 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         return newData;
     });
   };
-
+ 
   const handleReadingChange = (rowIndex: number, readingIndex: number, value: string) => {
     if (!/^\d*\.?\d*$/.test(value)) return;
-
+ 
     setTableData(prevData => {
         const newData = [...prevData];
         const row = { ...newData[rowIndex] };
@@ -277,7 +302,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         return newData;
     });
   };
-
+ 
   if (loading) {
       return (
           <div className="h-48 flex flex-col items-center justify-center text-gray-400 border border-gray-200 rounded-xl bg-gray-50">
@@ -286,16 +311,16 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
           </div>
       );
   }
-
+ 
   return (
     <div className="flex flex-col w-full animate-in fade-in duration-500 bg-white border border-gray-200 rounded-xl shadow-sm p-4">
-        
+       
         {/* HEADER */}
         <div className="mb-4 flex flex-wrap justify-between items-center gap-4">
             <h2 className="text-sm font-bold text-black uppercase tracking-tight border-l-4 border-orange-500 pl-2">
                 A. Repeatability (ISO 6789-1)
             </h2>
-
+ 
             <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded-md border border-gray-200">
                     <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
@@ -311,9 +336,9 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                         <span className="text-xs text-gray-700">80%</span>
                     </label>
                 </div>
-
+ 
                 <div className="h-4 w-px bg-gray-200 hidden sm:block"></div>
-
+ 
                 <div className="flex items-center gap-2 text-xs font-medium min-w-[100px] justify-end">
                     {saveStatus === "saving" && <span className="text-blue-600 flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Saving...</span>}
                     {saveStatus === "saved" && <span className="text-green-600 flex items-center gap-1 transition-opacity duration-1000"><CheckCircle2 className="h-3 w-3" /> Saved</span>}
@@ -322,7 +347,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                 </div>
             </div>
         </div>
-
+ 
         {/* TABLE */}
         <div className="overflow-x-auto rounded-lg border border-gray-300">
             <table className="w-full min-w-[850px] border-collapse">
@@ -338,25 +363,25 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                         <th rowSpan={2} className="border border-gray-300 p-2 w-[70px]">Dev %</th>
                         <th rowSpan={2} className="border border-gray-300 p-2 w-[60px]">Tol</th>
                     </tr>
-                    
+                   
                     <tr className="bg-gray-50 text-[9px] font-bold text-gray-600 text-center">
                         <th className="border border-gray-300 p-1">Ps</th>
                         <th className="border border-gray-300 p-1">Ts</th>
                         {[1, 2, 3, 4, 5].map(i => <th key={i} className="border border-gray-300 p-1 bg-green-50 w-[70px]">S{i}</th>)}
                     </tr>
-
+ 
                     <tr className="bg-gray-50 text-[9px] font-bold text-blue-700 text-center">
                         <th className="border border-gray-300 p-1">{pressureUnit}</th>
                         <th className="border border-gray-300 p-1">{torqueUnit}</th>
                         {[1, 2, 3, 4, 5].map(i => <th key={i} className="border border-gray-300 p-1 bg-green-50">{torqueUnit}</th>)}
-                        <th className="border border-gray-300 p-1">{torqueUnit}</th> 
-                        <th className="border border-gray-300 p-1">{torqueUnit}</th> 
-                        <th className="border border-gray-300 p-1">{torqueUnit}</th> 
+                        <th className="border border-gray-300 p-1">{torqueUnit}</th>
+                        <th className="border border-gray-300 p-1">{torqueUnit}</th>
+                        <th className="border border-gray-300 p-1">{torqueUnit}</th>
                         <th className="border border-gray-300 p-1">%</th>
                         <th className="border border-gray-300 p-1">±4%</th>
                     </tr>
                 </thead>
-
+ 
                 <tbody>
                     {tableData.length === 0 ? (
                         <tr><td colSpan={14} className="p-6 text-center text-gray-400 italic border border-gray-300">No specification data available.</td></tr>
@@ -366,7 +391,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                 <td className="p-2 border border-gray-300 font-bold text-center text-gray-700 bg-gray-50 sticky left-0 group-hover:bg-gray-100">
                                     {row.step_percent}
                                 </td>
-                                
+                               
                                 {/* EDITABLE SET PRESSURE */}
                                 <td className="p-0 border border-gray-300 relative">
                                     <input
@@ -377,7 +402,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                         placeholder="-"
                                     />
                                 </td>
-
+ 
                                 {/* EDITABLE SET TORQUE */}
                                 <td className="p-0 border border-gray-300 relative">
                                     <input
@@ -388,7 +413,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                         placeholder="-"
                                     />
                                 </td>
-
+ 
                                 {/* READING INPUTS */}
                                 {row.readings.map((reading, rIndex) => (
                                     <td key={rIndex} className="p-0 border border-gray-300 relative">
@@ -401,7 +426,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                         />
                                     </td>
                                 ))}
-
+ 
                                 <td className="p-2 border border-gray-300 text-center font-bold text-gray-800 bg-gray-50">
                                     {row.mean_xr !== null ? row.mean_xr.toFixed(2) : "-"}
                                 </td>
@@ -411,7 +436,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                                 <td className="p-2 border border-gray-300 text-center text-gray-600 text-sm">
                                     {row.corrected_mean !== null ? row.corrected_mean.toFixed(2) : "-"}
                                 </td>
-                                
+                               
                                 {(() => {
                                     const dev = row.deviation_percent;
                                     const isFail = dev !== null && Math.abs(dev) > 4;
@@ -431,12 +456,13 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
                 </tbody>
             </table>
         </div>
-        
+       
         <div className="mt-2 text-[10px] text-gray-400 italic text-right">
              Changes save automatically
         </div>
     </div>
   );
 };
-
+ 
 export default RepeatabilitySection;
+ 

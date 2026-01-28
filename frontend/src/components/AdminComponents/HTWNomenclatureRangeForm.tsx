@@ -298,6 +298,21 @@ const AddRangePage: React.FC<AddPageProps> = ({ onCancel, onSave, masterStandard
     }));
   };
 
+  // Specific handler to sync ID and Nomenclature string
+  const handleNomenclatureChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value;
+    
+    // Find the standard object to get the text name
+    const selectedStandard = masterStandards.find(s => s.id.toString() === selectedId);
+
+    setFormData(prev => ({
+      ...prev,
+      master_standard_id: selectedId,
+      // Automatically set the nomenclature string based on selection
+      nomenclature: selectedStandard ? selectedStandard.nomenclature : ''
+    }));
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -307,7 +322,7 @@ const AddRangePage: React.FC<AddPageProps> = ({ onCancel, onSave, masterStandard
       return;
     }
     if (!formData.master_standard_id) {
-      setError("Please select a Master Standard.");
+      setError("Please select a Nomenclature.");
       return;
     }
 
@@ -353,40 +368,26 @@ const AddRangePage: React.FC<AddPageProps> = ({ onCancel, onSave, masterStandard
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Master Standard */}
+            {/* Nomenclature (Dropdown replacement) */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Linked Master Standard</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature</label>
               <div className="relative">
                 <select
                   name="master_standard_id"
                   value={formData.master_standard_id}
-                  onChange={handleChange}
+                  onChange={handleNomenclatureChange}
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none outline-none"
                 >
-                  <option value="">Select a Master Standard...</option>
+                  <option value="">Select Nomenclature...</option>
                   {masterStandards.map(std => (
                     <option key={std.id} value={std.id}>
-                      {std.nomenclature} ({std.manufacturer})
+                      {std.nomenclature}
                     </option>
                   ))}
                 </select>
                 <ShieldCheck className="absolute left-3 top-2.5 text-gray-400" size={18} />
               </div>
-            </div>
-
-            {/* Nomenclature */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature Name</label>
-              <input 
-                type="text" 
-                name="nomenclature" 
-                value={formData.nomenclature} 
-                onChange={handleChange} 
-                required 
-                placeholder="e.g. DIGITAL PRESSURE GAUGE" 
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
-              />
             </div>
 
             {/* Range Min */}
@@ -477,6 +478,18 @@ const EditRangeModal: React.FC<EditModalProps> = ({ item, masterStandards, onCan
     }));
   };
 
+  // Specific handler to sync ID and Nomenclature string
+  const handleNomenclatureChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedId = e.target.value;
+    const selectedStandard = masterStandards.find(s => s.id.toString() === selectedId);
+
+    setFormData(prev => ({
+      ...prev,
+      master_standard_id: selectedId,
+      nomenclature: selectedStandard ? selectedStandard.nomenclature : ''
+    }));
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -486,7 +499,7 @@ const EditRangeModal: React.FC<EditModalProps> = ({ item, masterStandards, onCan
       return;
     }
     if (!formData.master_standard_id) {
-      setError("Please select a Master Standard.");
+      setError("Please select a Nomenclature.");
       return;
     }
 
@@ -528,39 +541,26 @@ const EditRangeModal: React.FC<EditModalProps> = ({ item, masterStandards, onCan
         <form onSubmit={handleSubmit} className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Master Standard */}
+            {/* Nomenclature (Dropdown replacement) */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Linked Master Standard</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature</label>
               <div className="relative">
                 <select
                   name="master_standard_id"
                   value={formData.master_standard_id}
-                  onChange={handleChange}
+                  onChange={handleNomenclatureChange}
                   required
                   className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none outline-none"
                 >
-                  <option value="">Select a Master Standard...</option>
+                  <option value="">Select Nomenclature...</option>
                   {masterStandards.map(std => (
                     <option key={std.id} value={std.id}>
-                      {std.nomenclature} ({std.manufacturer})
+                      {std.nomenclature}
                     </option>
                   ))}
                 </select>
                 <ShieldCheck className="absolute left-3 top-2.5 text-gray-400" size={18} />
               </div>
-            </div>
-
-            {/* Nomenclature */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nomenclature Name</label>
-              <input 
-                type="text" 
-                name="nomenclature" 
-                value={formData.nomenclature} 
-                onChange={handleChange} 
-                required 
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
-              />
             </div>
 
             {/* Range Min */}

@@ -73,3 +73,9 @@ class HTWJob(Base):
     back_populates="job",
     cascade="all, delete-orphan"
     )
+
+    uncertainty_budget = relationship(
+    "HTWUncertaintyBudget",
+    back_populates="job",
+    cascade="all, delete-orphan"
+    )

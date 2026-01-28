@@ -9,20 +9,25 @@ import LoadingPointSection from "../components/LoadingPointSection";
 
 import {
   ArrowLeft,
+  ArrowRight,
   Save,
   Loader2,
   AlertCircle,
   CheckCircle,
   Lock,
   Calendar,
-  ChevronRight,
   Check,
   Thermometer,
   Droplets,
-  AlertTriangle
+  AlertTriangle,
+  PlayCircle,
+  Gauge,
+  Activity,
+  Zap,
+  Anchor
 } from "lucide-react";
 
-// --- Custom CSS for Animations ---
+// --- Custom CSS ---
 const customStyles = `
   @keyframes fadeInSlideUp {
     from { opacity: 0; transform: translateY(10px); }
@@ -30,6 +35,33 @@ const customStyles = `
   }
   .animate-step {
     animation: fadeInSlideUp 0.4s ease-out forwards;
+  }
+  .ribbon-step {
+    position: relative;
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%, 14px 50%);
+    transition: all 0.3s ease-in-out;
+  }
+  .ribbon-step:first-child {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 50%, calc(100% - 14px) 100%, 0 100%);
+    border-top-left-radius: 0.5rem;
+    border-bottom-left-radius: 0.5rem;
+  }
+  .ribbon-step:last-child {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 14px 50%);
+    border-top-right-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+  }
+  .ribbon-container {
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.05));
+  }
+  @keyframes softPulse {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.1); }
+    100% { filter: brightness(1); }
+  }
+  .active-ribbon {
+    animation: softPulse 2s infinite;
+    z-index: 10;
   }
 `;
 
@@ -49,6 +81,28 @@ interface HTWJobResponse {
   classification?: string;
   resolution_pressure_gauge?: string | number;
   resolution_unit?: string;
+}
+
+interface HTWJobStandardSnapshot {
+    snapshot_id: number;
+    job_id: number;
+    master_standard_id: number;
+    standard_order: number;
+    nomenclature: string;
+    manufacturer: string;
+    model_serial_no: string;
+    certificate_no: string;
+    calibration_valid_upto: string;
+    traceable_to_lab: string;
+    uncertainty: number;
+    uncertainty_unit: string;
+    resolution?: number;
+    resolution_unit?: string;
+}
+
+interface BackendStandardsResponse {
+    exists: boolean;
+    standards: HTWJobStandardSnapshot[];
 }
 
 interface InwardEquipment {
@@ -126,35 +180,32 @@ interface EnvironmentRecord {
     validation: EnvironmentValidation;
 }
 
-// --- STEPPER DEFINITION ---
 const STEPS = [
-    { id: 'PRE', label: 'Pre-Check' },
-    { id: 'A', label: 'Repeatability' },
-    { id: 'B', label: 'Reproducibility' },
-    { id: 'C', label: 'Output Drive' },
-    { id: 'D', label: 'Drive Interface' },
-    { id: 'E', label: 'Loading Point' },
-    { id: 'POST', label: 'Post-Check' }
+    { id: 'PRE', label: 'Pre-Check', icon: Thermometer },
+    { id: 'A', label: 'Repeatability', icon: Activity },
+    { id: 'B', label: 'Reproducibility', icon: Gauge },
+    { id: 'C', label: 'Output Drive', icon: Zap },
+    { id: 'D', label: 'Drive Interface', icon: Anchor },
+    { id: 'E', label: 'Loading Point', icon: PlayCircle },
+    { id: 'POST', label: 'Post-Check', icon: Droplets }
 ] as const;
 
 type StepId = typeof STEPS[number]['id'];
 
 // --------------------------------------------------------------------------------
-// SUB-COMPONENT: Professional Environment Check UI
+// SUB-COMPONENT: Environment Check UI
 // --------------------------------------------------------------------------------
 const EnvironmentCheckSection: React.FC<{
     jobId: number;
     stage: "PRE" | "POST";
     onValidationChange: (isValid: boolean) => void;
-    onSuccess?: () => void;
-}> = ({ jobId, stage, onValidationChange, onSuccess }) => {
+}> = ({ jobId, stage, onValidationChange }) => {
     const [temp, setTemp] = useState<string>("");
     const [humidity, setHumidity] = useState<string>("");
     const [record, setRecord] = useState<EnvironmentRecord | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Helpers for local validation visuals
     const isTempValid = temp !== "" && parseFloat(temp) >= 22.0 && parseFloat(temp) <= 24.0;
     const isHumValid = humidity !== "" && parseFloat(humidity) >= 50.0 && parseFloat(humidity) <= 70.0;
     const isReadyToSubmit = temp !== "" && humidity !== "";
@@ -182,7 +233,6 @@ const EnvironmentCheckSection: React.FC<{
     const handleSave = async () => {
         setError(null);
         setLoading(true);
-
         const payload = {
             condition_stage: stage,
             ambient_temperature: parseFloat(temp),
@@ -190,15 +240,10 @@ const EnvironmentCheckSection: React.FC<{
             relative_humidity: parseFloat(humidity),
             humidity_unit: "%"
         };
-
         try {
             const res = await api.post<EnvironmentRecord>(`/staff/jobs/${jobId}/environment`, payload);
             setRecord(res.data);
             onValidationChange(res.data.validation.is_valid);
-            if(res.data.validation.is_valid && onSuccess) {
-                // Short delay to show success animation before moving
-                setTimeout(() => onSuccess(), 600);
-            }
         } catch (err: any) {
             console.error(err);
             if (err.response && err.response.status === 422) {
@@ -220,118 +265,36 @@ const EnvironmentCheckSection: React.FC<{
     };
 
     const isReadOnly = !!record && record.validation.is_valid;
-    
-    // --- Render Logic ---
     return (
         <div className="flex flex-col items-center justify-center py-6 animate-step">
             <div className={`w-full max-w-3xl bg-white rounded-2xl shadow-xl border overflow-hidden transition-all duration-300 ${error ? 'border-red-200 shadow-red-100' : isReadOnly ? 'border-green-200 shadow-green-100' : 'border-gray-100'}`}>
-                
-                {/* Header Banner */}
                 <div className={`px-8 py-6 border-b flex items-start gap-4 ${isReadOnly ? 'bg-gradient-to-r from-green-50 to-white' : stage === 'PRE' ? 'bg-gradient-to-r from-blue-50 to-white' : 'bg-gradient-to-r from-indigo-50 to-white'}`}>
                     <div className={`p-3 rounded-xl shadow-sm ${isReadOnly ? 'bg-green-100 text-green-700' : stage === 'PRE' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}`}>
                         {isReadOnly ? <CheckCircle className="h-8 w-8" /> : stage === 'PRE' ? <Thermometer className="h-8 w-8" /> : <Droplets className="h-8 w-8" />}
                     </div>
                     <div className="flex-1">
-                        <h3 className="text-xl font-bold text-gray-900">
-                            {stage === "PRE" ? "Pre-Calibration Environment" : "Post-Calibration Environment"}
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-1">
-                            {stage === 'PRE' 
-                                ? "Ensure conditions are stable before starting calibration." 
-                                : "Verify conditions remained stable after calibration."}
-                        </p>
+                        <h3 className="text-xl font-bold text-gray-900">{stage === "PRE" ? "Pre-Calibration Environment" : "Post-Calibration Environment"}</h3>
+                        <p className="text-sm text-gray-500 mt-1">{stage === 'PRE' ? "Ensure conditions are stable before starting calibration." : "Verify conditions remained stable after calibration."}</p>
                     </div>
                 </div>
-
-                {/* Input Area */}
                 <div className="p-8">
-                    {error && (
-                        <div className="mb-6 flex items-center gap-3 p-4 bg-red-50 text-red-700 rounded-lg border border-red-100 animate-pulse">
-                            <AlertTriangle className="h-5 w-5" />
-                            <span className="text-sm font-medium">{error}</span>
-                        </div>
-                    )}
-
+                    {error && (<div className="mb-6 flex items-center gap-3 p-4 bg-red-50 text-red-700 rounded-lg border border-red-100 animate-pulse"><AlertTriangle className="h-5 w-5" /><span className="text-sm font-medium">{error}</span></div>)}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        {/* Temperature Input */}
-                        <div className={`group relative p-4 rounded-xl border-2 transition-all duration-200 
-                            ${isReadOnly ? 'border-transparent bg-gray-50' : isTempValid ? 'border-green-100 bg-green-50/30' : temp && !isTempValid ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white focus-within:border-blue-300 focus-within:shadow-md'}`}>
-                            
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Temperature</label>
-                                <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Range: 22.0 - 24.0 °C</span>
-                            </div>
-                            
-                            <div className="flex items-center gap-3">
-                                <Thermometer className={`h-6 w-6 ${isTempValid ? 'text-green-500' : 'text-gray-400'}`} />
-                                <input
-                                    type="number" step="0.1"
-                                    value={temp}
-                                    onChange={(e) => setTemp(e.target.value)}
-                                    disabled={isReadOnly || loading}
-                                    className="w-full text-2xl font-bold bg-transparent outline-none text-gray-800 placeholder-gray-300"
-                                    placeholder="--"
-                                />
-                                <span className="text-sm font-medium text-gray-400">°C</span>
-                            </div>
-                            {!isReadOnly && temp && !isTempValid && <p className="text-[10px] text-red-500 font-bold mt-2 absolute bottom-1 right-3">Out of range</p>}
+                        <div className={`group relative p-4 rounded-xl border-2 transition-all duration-200 ${isReadOnly ? 'border-transparent bg-gray-50' : isTempValid ? 'border-green-100 bg-green-50/30' : temp && !isTempValid ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white focus-within:border-blue-300 focus-within:shadow-md'}`}>
+                            <div className="flex justify-between items-center mb-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Temperature</label><span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">22.0 - 24.0 °C</span></div>
+                            <div className="flex items-center gap-3"><Thermometer className={`h-6 w-6 ${isTempValid ? 'text-green-500' : 'text-gray-400'}`} /><input type="number" step="0.1" value={temp} onChange={(e) => setTemp(e.target.value)} disabled={isReadOnly || loading} className="w-full text-2xl font-bold bg-transparent outline-none text-gray-800 placeholder-gray-300" placeholder="--" /><span className="text-sm font-medium text-gray-400">°C</span></div>
                         </div>
-
-                        {/* Humidity Input */}
-                        <div className={`group relative p-4 rounded-xl border-2 transition-all duration-200 
-                            ${isReadOnly ? 'border-transparent bg-gray-50' : isHumValid ? 'border-green-100 bg-green-50/30' : humidity && !isHumValid ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white focus-within:border-blue-300 focus-within:shadow-md'}`}>
-                            
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Humidity</label>
-                                <span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">Range: 50.0 - 70.0 %</span>
-                            </div>
-                            
-                            <div className="flex items-center gap-3">
-                                <Droplets className={`h-6 w-6 ${isHumValid ? 'text-green-500' : 'text-gray-400'}`} />
-                                <input
-                                    type="number" step="0.1"
-                                    value={humidity}
-                                    onChange={(e) => setHumidity(e.target.value)}
-                                    disabled={isReadOnly || loading}
-                                    className="w-full text-2xl font-bold bg-transparent outline-none text-gray-800 placeholder-gray-300"
-                                    placeholder="--"
-                                />
-                                <span className="text-sm font-medium text-gray-400">%</span>
-                            </div>
-                            {!isReadOnly && humidity && !isHumValid && <p className="text-[10px] text-red-500 font-bold mt-2 absolute bottom-1 right-3">Out of range</p>}
+                        <div className={`group relative p-4 rounded-xl border-2 transition-all duration-200 ${isReadOnly ? 'border-transparent bg-gray-50' : isHumValid ? 'border-green-100 bg-green-50/30' : humidity && !isHumValid ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white focus-within:border-blue-300 focus-within:shadow-md'}`}>
+                            <div className="flex justify-between items-center mb-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Humidity</label><span className="text-[10px] font-bold bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">50.0 - 70.0 %</span></div>
+                            <div className="flex items-center gap-3"><Droplets className={`h-6 w-6 ${isHumValid ? 'text-green-500' : 'text-gray-400'}`} /><input type="number" step="0.1" value={humidity} onChange={(e) => setHumidity(e.target.value)} disabled={isReadOnly || loading} className="w-full text-2xl font-bold bg-transparent outline-none text-gray-800 placeholder-gray-300" placeholder="--" /><span className="text-sm font-medium text-gray-400">%</span></div>
                         </div>
                     </div>
-
-                    {/* Action Footer */}
-                    <div className="mt-8 flex justify-center">
-                        {!isReadOnly ? (
-                            <button
-                                onClick={handleSave}
-                                disabled={loading || !isReadyToSubmit}
-                                className={`
-                                    relative px-8 py-3 rounded-lg font-bold text-sm shadow-md transition-all duration-300 flex items-center gap-2
-                                    ${isReadyToSubmit ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
-                                `}
-                            >
-                                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                                {loading ? "Verifying..." : "Validate & Save Conditions"}
-                            </button>
-                        ) : (
-                            <div className="flex flex-col items-center animate-bounce-short">
-                                <div className="flex items-center gap-2 text-green-700 font-bold bg-green-100 px-6 py-2 rounded-full border border-green-200 shadow-sm">
-                                    <CheckCircle className="h-5 w-5" /> 
-                                    <span>Verified Successfully</span>
-                                </div>
-                                {stage === 'PRE' && <p className="text-xs text-gray-400 mt-2">Proceeding to calculations...</p>}
-                            </div>
-                        )}
-                    </div>
+                    <div className="mt-8 flex justify-center">{!isReadOnly ? (<button onClick={handleSave} disabled={loading || !isReadyToSubmit} className={`relative px-8 py-3 rounded-lg font-bold text-sm shadow-md transition-all duration-300 flex items-center gap-2 ${isReadyToSubmit ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>{loading && <Loader2 className="h-4 w-4 animate-spin" />}{loading ? "Verifying..." : "Validate & Save Conditions"}</button>) : (<div className="flex flex-col items-center animate-bounce-short"><div className="flex items-center gap-2 text-green-700 font-bold bg-green-100 px-6 py-2 rounded-full border border-green-200 shadow-sm"><CheckCircle className="h-5 w-5" /> <span>Verified Successfully</span></div></div>)}</div>
                 </div>
             </div>
         </div>
     );
 };
-
 
 // --------------------------------------------------------------------------------
 // MAIN PAGE
@@ -349,15 +312,12 @@ const CalibrationPage: React.FC = () => {
   const [isValidated, setIsValidated] = useState(false);
   const [validating, setValidating] = useState(false);
   const [isWorksheetSaved, setIsWorksheetSaved] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   
-  // Environment Status
   const [preEnvValid, setPreEnvValid] = useState(false);
   const [postEnvValid, setPostEnvValid] = useState(false);
-
-  // Tab State - Default to PRE
   const [activeTab, setActiveTab] = useState<StepId>('PRE');
 
-  // Master Standards & Details
   const [masterStandards, setMasterStandards] = useState<HTWMasterStandard[]>([]);
   const [manufacturerSpec, setManufacturerSpec] = useState<HTWManufacturerSpec | null>(null);
   const [allResolutions, setAllResolutions] = useState<HTWPressureGaugeResolution[]>([]);
@@ -384,7 +344,55 @@ const CalibrationPage: React.FC = () => {
     resolutionOfPressureGauge: ""
   });
 
-  // --- Initialization ---
+  // --- 1. Helper: Fetch Saved Standards from Backend ---
+  const fetchSavedStandards = async (currentJobId: number) => {
+    try {
+        const response = await api.get<BackendStandardsResponse>(`/jobs/${currentJobId}/auto-selected-standards`);
+        const { exists, standards } = response.data;
+        
+        if (exists && standards.length > 0) {
+            const s1 = standards.find(s => s.standard_order === 1);
+            const s2 = standards.find(s => s.standard_order === 2);
+            const s3 = standards.find(s => s.standard_order === 3);
+
+            // Update UI IDs
+            setSelectedStandardIds({
+                standard1: s1?.master_standard_id || null,
+                standard2: s2?.master_standard_id || null,
+                standard3: s3?.master_standard_id || null,
+            });
+
+            // Helper to map snapshot to UI inputs
+            const mapSnapshotToInput = (snap: HTWJobStandardSnapshot | undefined): Partial<HTWMasterStandard> => {
+                if (!snap) return {}; 
+                return {
+                    id: snap.master_standard_id,
+                    nomenclature: snap.nomenclature,
+                    manufacturer: snap.manufacturer,
+                    model_serial_no: snap.model_serial_no,
+                    certificate_no: snap.certificate_no,
+                    calibration_valid_upto: snap.calibration_valid_upto,
+                    traceable_to_lab: snap.traceable_to_lab,
+                    uncertainty: snap.uncertainty,
+                    uncertainty_unit: snap.uncertainty_unit,
+                    resolution: snap.resolution,
+                    resolution_unit: snap.resolution_unit
+                };
+            };
+
+            setMasterStandardInputs({
+                standard1: mapSnapshotToInput(s1),
+                standard2: mapSnapshotToInput(s2),
+                standard3: mapSnapshotToInput(s3)
+            });
+            setIsWorksheetSaved(true);
+        }
+    } catch (e) {
+        console.warn("Could not fetch saved standards", e);
+    }
+  };
+
+  // --- 2. Initial Data Load ---
   useEffect(() => {
     const initData = async () => {
       if (!inwardId || !equipmentId) return;
@@ -408,7 +416,7 @@ const CalibrationPage: React.FC = () => {
         if (!foundEquipment) { setError("Equipment not found."); setLoading(false); return; }
         setEquipment(foundEquipment);
 
-        // Check Job
+        // Check for Existing Job
         let existingJob: HTWJobResponse | null = null;
         try {
             const jobRes = await api.get<any>(`/htw-jobs/?inward_eqp_id=${equipmentId}`);
@@ -422,12 +430,14 @@ const CalibrationPage: React.FC = () => {
             setIsValidated(true);
             setIsWorksheetSaved(true);
 
-            // Check PRE Status to auto-advance tab if needed
+            // Fetch Saved Standards
+            await fetchSavedStandards(existingJob.job_id);
+
+            // Check PRE/POST Status
             try {
                 const preRes = await api.get(`/staff/jobs/${existingJob.job_id}/environment/pre-status`);
                 if(preRes.data.pre_is_valid) {
                     setPreEnvValid(true);
-                    // If PRE is done, check if POST is done, else go to A
                     const postRes = await api.get(`/staff/jobs/${existingJob.job_id}/environment/post-status`);
                     if (postRes.data.post_is_valid) {
                          setPostEnvValid(true);
@@ -445,7 +455,7 @@ const CalibrationPage: React.FC = () => {
                 model: existingJob.model || foundEquipment.model || "",
                 serialNo: existingJob.serial_no || foundEquipment.serial_no || "",
                 range: existingJob.range_value || foundEquipment.range || "", 
-                rangeUnit: existingJob.range_unit || foundEquipment.range_unit || "",
+                rangeUnit: existingJob.range_unit || "", // Will trigger auto-correct if empty
                 calibrationMode: existingJob.calibration_mode || "Clockwise",
                 type: existingJob.device_type || "Indicating",
                 classification: existingJob.classification || "Type I Class C",
@@ -453,11 +463,20 @@ const CalibrationPage: React.FC = () => {
                 resolutionOfPressureGaugeUnit: existingJob.resolution_unit || defaultResUnit
             });
         } else {
-             // ... Defaults logic
+            // New Job - Set Defaults
             let extractedRangeUnit = foundEquipment.range_unit || "";
+            // FIX: Improved Regex to handle spaces like "Nm" or " Nm"
             if (!extractedRangeUnit && foundEquipment.range) {
                 const match = foundEquipment.range.trim().match(/([a-zA-Z°]+)$/); 
                 if (match) extractedRangeUnit = match[1];
+                else {
+                    // Try splitting by space
+                    const parts = foundEquipment.range.trim().split(' ');
+                    if (parts.length > 1) {
+                         const lastPart = parts[parts.length - 1];
+                         if (isNaN(Number(lastPart))) extractedRangeUnit = lastPart;
+                    }
+                }
             }
             setDeviceDetails(prev => ({
                 ...prev,
@@ -476,7 +495,7 @@ const CalibrationPage: React.FC = () => {
     initData();
   }, [inwardId, equipmentId]);
 
-  // ... (Manufacturer Spec & Auto Select Standards Logic - same as before) ...
+  // --- Manufacturer Spec logic ---
   useEffect(() => {
     const fetchManufacturerSpec = async () => {
       if (loading || !deviceDetails.make || !deviceDetails.model) {
@@ -496,18 +515,32 @@ const CalibrationPage: React.FC = () => {
     fetchManufacturerSpec();
   }, [deviceDetails.make, deviceDetails.model, loading]);
 
+  // FIX: Unit Auto-correction
+  // Removed `isValidated` from the blocking condition so existing jobs with missing units get fixed
   useEffect(() => {
-    if (loading || isValidated || !manufacturerSpec) return; 
+    if (loading || !manufacturerSpec) return; 
     setDeviceDetails((prev) => {
         const newState = { ...prev };
         let hasChanges = false;
-        const isHydraulicTorqueWrench = prev.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
+        
+        // Only try to auto-fill if current unit is empty
         if (!prev.rangeUnit || prev.rangeUnit.trim() === "") {
+            const isHydraulicTorqueWrench = prev.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
             let unitToUse: string | undefined;
-            if (isHydraulicTorqueWrench && manufacturerSpec.torque_unit) unitToUse = manufacturerSpec.torque_unit;
-            else if (manufacturerSpec.pressure_unit) unitToUse = manufacturerSpec.pressure_unit;
-            if (unitToUse) { newState.rangeUnit = unitToUse; hasChanges = true; }
+            
+            if (isHydraulicTorqueWrench && manufacturerSpec.torque_unit) {
+                unitToUse = manufacturerSpec.torque_unit;
+            } else if (manufacturerSpec.pressure_unit) {
+                unitToUse = manufacturerSpec.pressure_unit;
+            }
+            
+            if (unitToUse) { 
+                newState.rangeUnit = unitToUse; 
+                hasChanges = true; 
+            }
         }
+        
+        // Update Resolution Unit based on spec if available
         if (manufacturerSpec.pressure_unit) {
             const specPressureUnit = manufacturerSpec.pressure_unit;
             if (prev.resolutionOfPressureGaugeUnit !== specPressureUnit) {
@@ -521,82 +554,10 @@ const CalibrationPage: React.FC = () => {
         }
         return hasChanges ? newState : prev;
     });
-  }, [manufacturerSpec, deviceDetails.materialNomenclature, allResolutions, loading, isValidated]);
-
-  useEffect(() => {
-    if (loading || !masterStandards.length || !deviceDetails.materialNomenclature) return;
-    if (selectedStandardIds.standard1) return;
-    const isHydraulicTorqueWrench = deviceDetails.materialNomenclature.toUpperCase().includes("HYDRAULIC TORQUE WRENCH");
-    if (!isHydraulicTorqueWrench) return;
-    let minTorque: number | null = null;
-    let maxTorque: number | null = null;
-    if (manufacturerSpec?.torque_20 != null && manufacturerSpec?.torque_100 != null) {
-      minTorque = Number(manufacturerSpec.torque_20); maxTorque = Number(manufacturerSpec.torque_100);
-    } else if (deviceDetails.range) {
-       const rangeWithoutUnit = deviceDetails.range.replace(/\s*(Nm|bar|kg|g|lb|oz)\s*/gi, '').trim();
-       const match = rangeWithoutUnit.match(/(\d+(?:\.\d+)?)\s*[-–—to]\s*(\d+(?:\.\d+)?)/i);
-       if (match) { minTorque = parseFloat(match[1]); maxTorque = parseFloat(match[2]); }
-    }
-    if (minTorque === null || maxTorque === null || minTorque > maxTorque) return;
-
-    const populateStandardData = (standard: HTWMasterStandard | undefined) => {
-        if (!standard) return {};
-        return {
-          id: standard.id,
-          nomenclature: standard.nomenclature || "",
-          manufacturer: standard.manufacturer || "",
-          model_serial_no: standard.model_serial_no || "",
-          uncertainty: standard.uncertainty || undefined,
-          uncertainty_unit: standard.uncertainty_unit || "",
-          certificate_no: standard.certificate_no || "",
-          calibration_valid_upto: standard.calibration_valid_upto || "",
-          resolution: standard.resolution || undefined,
-          resolution_unit: standard.resolution_unit || "",
-          traceable_to_lab: standard.traceable_to_lab || ""
-        };
-      };
-
-    const matchRangesAndSelectStandards = async () => {
-      try {
-        const matchResponse = await api.post<{ matched_nomenclatures: string[] }>(
-          ENDPOINTS.HTW_NOMENCLATURE_RANGES.MATCH, { min_value: minTorque!, max_value: maxTorque! }
-        );
-        const { matched_nomenclatures } = matchResponse.data;
-        const matchedStandards: HTWMasterStandard[] = [];
-        if (matched_nomenclatures.length > 0) {
-          const uniqueNomenclatures = [...new Set(matched_nomenclatures)];
-          uniqueNomenclatures.forEach(nom => {
-            const standard = masterStandards.find(s => s.nomenclature === nom && s.is_active);
-            if (standard && !matchedStandards.find(s => s.id === standard.id)) matchedStandards.push(standard);
-          });
-        }
-        const digitalPressureGauge = masterStandards.find(s => {
-          const nom = s.nomenclature.toUpperCase();
-          return nom.includes("DIGITAL PRESSURE GAUGE") && nom.includes("1000") && s.is_active;
-        });
-        const allCandidates: HTWMasterStandard[] = [...matchedStandards];
-        if (digitalPressureGauge && !allCandidates.find(s => s.id === digitalPressureGauge.id)) allCandidates.push(digitalPressureGauge);
-        allCandidates.sort((a, b) => {
-            const nameA = a.nomenclature.toUpperCase(); const nameB = b.nomenclature.toUpperCase();
-            const isTorqueA = nameA.includes("TORQUE TRANSDUCER"); const isTorqueB = nameB.includes("TORQUE TRANSDUCER");
-            if (isTorqueA && !isTorqueB) return -1; if (!isTorqueA && isTorqueB) return 1; return 0;
-        });
-        const selectedStandards = allCandidates;
-        if (selectedStandardIds.standard1 === null) {
-            setSelectedStandardIds({ standard1: selectedStandards[0]?.id || null, standard2: selectedStandards[1]?.id || null, standard3: selectedStandards[2]?.id || null });
-            setMasterStandardInputs({
-              standard1: populateStandardData(selectedStandards[0] || undefined),
-              standard2: populateStandardData(selectedStandards[1] || undefined),
-              standard3: populateStandardData(selectedStandards[2] || undefined)
-            });
-        }
-      } catch (err) { console.error("Auto-select error", err); }
-    };
-    matchRangesAndSelectStandards();
-  }, [deviceDetails.range, manufacturerSpec, masterStandards, deviceDetails.materialNomenclature, loading]);
+  }, [manufacturerSpec, deviceDetails.materialNomenclature, allResolutions, loading]);
 
 
-  // --- Event Handlers (Detail, Standards, Create) ---
+  // --- Event Handlers ---
   const handleDeviceDetailChange = (field: keyof typeof deviceDetails, value: string) => { setDeviceDetails(prev => ({ ...prev, [field]: value })); };
   const handleResolutionUnitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedUnit = e.target.value;
@@ -613,13 +574,31 @@ const CalibrationPage: React.FC = () => {
   };
   const handleMasterStandardInputChange = (standard: 'standard1' | 'standard2' | 'standard3', field: keyof HTWMasterStandard, value: string | number) => { setMasterStandardInputs(prev => ({ ...prev, [standard]: { ...prev[standard], [field]: value } })); };
 
+  // --- 3. Validate & Create Job ---
   const handleValidateAndCreate = async () => {
     if (!deviceDetails.materialNomenclature || !deviceDetails.range || !deviceDetails.make || !deviceDetails.calibrationDate) { alert("Missing Required Fields"); return; }
     try {
       setValidating(true);
       const payload = { inward_id: Number(inwardId), inward_eqp_id: Number(equipmentId), srf_id: equipment?.srf_id || null, srf_eqp_id: equipment?.srf_eqp_id || null, calibration_date: deviceDetails.calibrationDate, nepl_id: equipment?.nepl_id || null, material_nomenclature: deviceDetails.materialNomenclature, make: deviceDetails.make, model: deviceDetails.model, serial_no: deviceDetails.serialNo, range_value: deviceDetails.range, range_unit: deviceDetails.rangeUnit, calibration_mode: deviceDetails.calibrationMode, device_type: deviceDetails.type, classification: deviceDetails.classification, resolution_pressure_gauge: deviceDetails.resolutionOfPressureGauge, resolution_unit: deviceDetails.resolutionOfPressureGaugeUnit };
+      
+      // 1. Create Job
       const res = await api.post<HTWJobResponse>(ENDPOINTS.HTW_JOBS.CREATE, payload);
-      setJobId(res.data.job_id); setIsValidated(true);
+      const newJobId = res.data.job_id;
+      setJobId(newJobId);
+      
+      // 2. Auto Select Standards
+      const autoSelectUrl = `/jobs/${newJobId}/auto-select-standards`;
+      await api.post(autoSelectUrl, null, { 
+          params: { 
+              inward_eqp_id: Number(equipmentId), 
+              job_date: deviceDetails.calibrationDate 
+          } 
+      });
+
+      // 3. Fetch Result
+      await fetchSavedStandards(newJobId);
+
+      setIsValidated(true);
     } catch (err: any) { alert(`Error: ${err.message}`); } finally { setValidating(false); }
   };
 
@@ -627,38 +606,66 @@ const CalibrationPage: React.FC = () => {
     if (!jobId) return;
     try {
       setLoading(true);
-      const url = `${ENDPOINTS.HTW_JOBS.AUTO_SELECT_BASE}/${jobId}/auto-select-standards`;
-      const response = await api.post(url, null, { params: { inward_eqp_id: Number(equipmentId), job_date: deviceDetails.calibrationDate } });
-      if (response.status === 200 || response.data.status === "success") { setIsWorksheetSaved(true); } 
+      const url = `/jobs/${jobId}/auto-select-standards`;
+      const response = await api.put(url, null, { 
+          params: { 
+              inward_eqp_id: Number(equipmentId), 
+              job_date: deviceDetails.calibrationDate 
+          } 
+      });
+      
+      if (response.status === 200 || response.data.status === "recomputed") { 
+          await fetchSavedStandards(jobId);
+          setIsWorksheetSaved(true); 
+      } 
       else { alert("Saved, but unexpected response from server."); }
     } catch (err: any) { alert("Failed to save master standards."); } finally { setLoading(false); }
   };
 
   const handleBack = () => { navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } }); };
 
-  // --- RENDERING HELPERS ---
-  const handleTabChange = (stepId: StepId) => {
-      // PRE is always accessible
-      if (stepId === 'PRE') {
-          setActiveTab(stepId);
+  // --- Handle Finish and Exit with Uncertainty Calculation ---
+  const handleFinishAndExit = async () => {
+    if (!inwardId || !equipmentId) return;
+    
+    setFinishing(true);
+    try {
+        // Trigger Uncertainty Calculation
+        await api.post("/uncertainty/uncertainity-calculation", {
+            inward_id: Number(inwardId),
+            inward_eqp_id: Number(equipmentId)
+        });
+
+        // Navigate back on success
+        navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
+    } catch (err: any) {
+        console.error("Uncertainty calculation failed:", err);
+        const errorMsg = err.response?.data?.detail || "Failed to calculate uncertainty budget.";
+        alert(`Error: ${errorMsg}`);
+    } finally {
+        setFinishing(false);
+    }
+  };
+
+  const goToNextStep = () => {
+      const currentIndex = STEPS.findIndex(s => s.id === activeTab);
+      if (activeTab === 'PRE' && !preEnvValid) {
+          alert("Please validate the Pre-Check environment conditions before proceeding.");
           return;
       }
-      
-      // Calculations (A-E) require PRE valid
-      if (['A','B','C','D','E'].includes(stepId)) {
-          if (!preEnvValid) return; // Block
-          setActiveTab(stepId);
-      }
-
-      // POST requires PRE valid (and technically calculations done, but for nav simply PRE valid is min requirement)
-      if (stepId === 'POST') {
-          if (!preEnvValid) return; // Block
-          setActiveTab(stepId);
+      if (currentIndex < STEPS.length - 1) {
+          setActiveTab(STEPS[currentIndex + 1].id);
       }
   };
 
+  const goToPrevStep = () => {
+      const currentIndex = STEPS.findIndex(s => s.id === activeTab);
+      if (currentIndex > 0) {
+          setActiveTab(STEPS[currentIndex - 1].id);
+      }
+  };
 
-  // --- STYLES ---
+  // --- UI RENDERING ---
   const labelClass = "text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-0.5 ml-0.5";
   const wrapperClass = "flex flex-col";
   const inputBase = "w-full p-2 text-sm border rounded-lg focus:outline-none shadow-sm transition-all";
@@ -676,7 +683,7 @@ const CalibrationPage: React.FC = () => {
     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 h-screen flex flex-col overflow-hidden">
       <style>{customStyles}</style>
 
-      {/* --- Header --- */}
+      {/* Header */}
       <div className="flex-none px-8 py-5 border-b border-gray-100 bg-white">
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
@@ -688,14 +695,12 @@ const CalibrationPage: React.FC = () => {
                 {isValidated && (<span className="ml-3 flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-100"><CheckCircle className="h-3 w-3" /> JOB CREATED</span>)}
             </div>
           </div>
-          <button onClick={handleBack} className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm font-semibold text-gray-700 transition-colors"><ArrowLeft size={18} /> Back</button>
+          <button onClick={handleBack} className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm font-semibold text-gray-700 transition-colors"><ArrowLeft size={18} /> Exit Job</button>
         </div>
       </div>
 
-      {/* --- Body --- */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto px-8 py-6 bg-white">
-        
-        {/* Device Info */}
         <div className="mb-6"><h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 border-l-4 border-blue-500 pl-2">Device Under Calibration</h2></div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-12 gap-y-5 pb-8 border-b border-gray-100">
              <div className={wrapperClass}><label className={labelClass}><span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Calibration Date</span></label><input type="date" value={deviceDetails.calibrationDate} onChange={(e) => handleDeviceDetailChange('calibrationDate', e.target.value)} className={editableInput} /></div>
@@ -714,11 +719,9 @@ const CalibrationPage: React.FC = () => {
             <div className="flex justify-end pt-6 pb-6"><button onClick={handleValidateAndCreate} disabled={validating} className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-70 flex items-center gap-2">{validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />} Validate & Create Job</button></div>
         )}
 
-        {/* --- VALIDATED VIEW --- */}
         {isValidated && jobId && (
             <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                
-                {/* 1. MASTER STANDARDS TABLE */}
+                {/* Standard Details Table */}
                 <div>
                     <div className="mb-4"><h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 border-l-4 border-purple-500 pl-2">Master Standard Details</h2></div>
                     <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -764,84 +767,63 @@ const CalibrationPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 2. MAIN PROCESS FLOW (Stepper + Content) */}
+                {/* Workflow Steps */}
                 <div>
                     {isWorksheetSaved ? (
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-6">
-                            
-                            {/* UNIFIED STEPPER */}
-                            <div className="flex flex-col items-center justify-center w-full max-w-5xl mx-auto mb-10">
-                                <div className="relative flex items-center justify-between w-full">
-                                    <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-200 -z-0 transform -translate-y-1/2 rounded-full"></div>
-                                    <div 
-                                        className="absolute left-0 top-1/2 h-1 bg-sky-400 -z-0 transform -translate-y-1/2 rounded-full transition-all duration-500 ease-in-out" 
-                                        style={{ width: `${(STEPS.findIndex(s => s.id === activeTab) / (STEPS.length - 1)) * 100}%` }}
-                                    ></div>
-                                    {STEPS.map((step, index) => {
-                                        const currentIndex = STEPS.findIndex(s => s.id === activeTab);
-                                        const isActive = step.id === activeTab;
-                                        const isCompleted = index < currentIndex;
-                                        const isLocked = !preEnvValid && step.id !== 'PRE';
+                            <div className="ribbon-container flex w-full mb-8">
+                                {STEPS.map((step, index) => {
+                                    const currentIndex = STEPS.findIndex(s => s.id === activeTab);
+                                    const isActive = step.id === activeTab;
+                                    const isCompleted = index < currentIndex;
+                                    let bgClass = "bg-white border-b-2 border-gray-200 text-gray-400";
+                                    if (isCompleted) bgClass = "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-inner";
+                                    if (isActive) bgClass = "active-ribbon bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg";
 
-                                        return (
-                                            <button 
-                                                key={step.id}
-                                                onClick={() => !isLocked && handleTabChange(step.id)}
-                                                disabled={isLocked}
-                                                className={`relative group focus:outline-none z-10 ${isLocked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                                            >
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300 
-                                                    ${isCompleted 
-                                                        ? "bg-green-400 border-purple-400 text-white" 
-                                                        : isActive 
-                                                            ? "bg-blue-500 border-purple-500 text-white scale-110 shadow-lg ring-2 ring-purple-200" 
-                                                            : "bg-white border-purple-200 text-gray-400 hover:border-purple-300"
-                                                    }
-                                                `}>
-                                                    {isCompleted ? <Check className="h-5 w-5" /> : (
-                                                        step.id === 'PRE' ? <Thermometer className="h-4 w-4" /> :
-                                                        step.id === 'POST' ? <Droplets className="h-4 w-4" /> :
-                                                        <span className="text-sm font-bold">{step.id}</span>
-                                                    )}
-                                                </div>
-                                                <span className={`absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors duration-300 ${isActive ? "text-purple-600" : "text-gray-400"}`}>
-                                                    {step.label}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
+                                    return (
+                                        <div key={step.id} className={`ribbon-step flex items-center justify-center flex-1 h-12 text-[10px] md:text-xs font-bold uppercase tracking-wider select-none ${bgClass} ${index !== 0 ? '-ml-3' : ''} z-${30 - index}`}>
+                                            <div className="flex items-center gap-2 transform -skew-x-0">
+                                                {isCompleted ? <Check size={14} strokeWidth={3} /> : <step.icon size={14} />}
+                                                <span className="hidden sm:inline">{step.label}</span>
+                                                <span className="sm:hidden">{step.id}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            {/* FIX: Use display logic (hidden/block) instead of conditional rendering (&&) 
+                                This prevents components like DriveInterface/LoadingPoint from unmounting
+                                and losing their state when switching tabs before saving. */}
+                            <div className="mt-8 min-h-[400px]">
+                                <div className={activeTab === 'PRE' ? 'block animate-step' : 'hidden'}>
+                                    <EnvironmentCheckSection jobId={jobId} stage="PRE" onValidationChange={(valid) => { setPreEnvValid(valid); if (valid) setIsWorksheetSaved(true); }} />
+                                </div>
+                                
+                                <div className={activeTab === 'A' ? 'block animate-step' : 'hidden'}>
+                                    <RepeatabilitySection jobId={jobId} />
+                                </div>
+                                
+                                <div className={activeTab === 'B' ? 'block animate-step' : 'hidden'}>
+                                    <ReproducibilitySection jobId={jobId} torqueUnit={deviceDetails.rangeUnit} />
+                                </div>
+                                
+                                <div className={activeTab === 'C' ? 'block animate-step' : 'hidden'}>
+                                    <OutputDriveSection jobId={jobId} />
+                                </div>
+                                
+                                <div className={activeTab === 'D' ? 'block animate-step' : 'hidden'}>
+                                    <DriveInterfaceSection jobId={jobId} />
+                                </div>
+                                
+                                <div className={activeTab === 'E' ? 'block animate-step' : 'hidden'}>
+                                    <LoadingPointSection jobId={jobId} />
+                                </div>
+                                
+                                <div className={activeTab === 'POST' ? 'block animate-step' : 'hidden'}>
+                                    <EnvironmentCheckSection jobId={jobId} stage="POST" onValidationChange={setPostEnvValid} />
                                 </div>
                             </div>
-
-                            {/* DYNAMIC CONTENT AREA (Animated) */}
-                            <div className="mt-8 min-h-[400px]">
-                                {activeTab === 'PRE' && (
-                                    <EnvironmentCheckSection 
-                                        jobId={jobId} 
-                                        stage="PRE" 
-                                        onValidationChange={(valid) => {
-                                            setPreEnvValid(valid);
-                                            if (valid) setIsWorksheetSaved(true); 
-                                        }}
-                                        onSuccess={() => setActiveTab('A')}
-                                    />
-                                )}
-
-                                {activeTab === 'A' && <div className="animate-step"><RepeatabilitySection jobId={jobId} /></div>}
-                                {activeTab === 'B' && <div className="animate-step"><ReproducibilitySection jobId={jobId} torqueUnit={deviceDetails.rangeUnit} /></div>}
-                                {activeTab === 'C' && <div className="animate-step"><OutputDriveSection jobId={jobId} /></div>}
-                                {activeTab === 'D' && <div className="animate-step"><DriveInterfaceSection jobId={jobId} /></div>}
-                                {activeTab === 'E' && <div className="animate-step"><LoadingPointSection jobId={jobId} /></div>}
-
-                                {activeTab === 'POST' && (
-                                    <EnvironmentCheckSection 
-                                        jobId={jobId} 
-                                        stage="POST" 
-                                        onValidationChange={setPostEnvValid}
-                                    />
-                                )}
-                            </div>
-
                         </div>
                     ) : (
                         <div className="border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-col items-center justify-center text-center p-12 transition-all">
@@ -851,33 +833,37 @@ const CalibrationPage: React.FC = () => {
                         </div>
                     )}
                 </div>
-
             </div>
         )}
       </div>
 
-      {/* --- Footer --- */}
+      {/* Footer */}
       <div className="flex-none px-8 py-5 border-t border-gray-100 flex justify-end gap-4 bg-gray-50">
-        <button onClick={handleBack} className="px-5 py-2 text-sm text-gray-700 font-medium hover:bg-gray-200 rounded-lg transition-colors border border-gray-300 bg-white">Cancel</button>
-        {isValidated ? (
-             !isWorksheetSaved ? (
-                 <button onClick={handleSaveWorksheet} className="px-5 py-2 text-sm bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2">
-                     <Save className="h-4 w-4" /> Save Master Standards
-                 </button>
-             ) : (
-                 <button 
-                    onClick={handleBack} 
-                    disabled={!postEnvValid}
-                    className="px-5 py-2 text-sm bg-gray-800 text-white font-medium rounded-lg hover:bg-gray-900 transition-colors shadow-sm flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                 >
-                     Finish / Exit <ChevronRight className="h-4 w-4" />
-                 </button>
-             )
+        {isValidated && isWorksheetSaved ? (
+            <div className="flex w-full justify-between">
+                <button onClick={goToPrevStep} disabled={activeTab === 'PRE'} className="px-5 py-2 text-sm bg-white text-gray-700 font-medium rounded-lg hover:bg-gray-100 border border-gray-300 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"><ArrowLeft className="h-4 w-4" /> Previous</button>
+                {activeTab === 'POST' ? (
+                     <button 
+                         onClick={handleFinishAndExit} 
+                         disabled={finishing || !postEnvValid} 
+                         className="px-6 py-2 text-sm bg-gray-900 text-white font-bold rounded-lg hover:bg-black transition-colors shadow-md flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                     >
+                         {finishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                         {finishing ? "Calculating & Saving..." : "Finish / Exit"}
+                     </button>
+                ) : (
+                    <button onClick={goToNextStep} className="px-6 py-2 text-sm bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-md flex items-center gap-2">Next Step <ArrowRight className="h-4 w-4" /></button>
+                )}
+            </div>
+        ) : isValidated ? (
+             <div className="flex w-full justify-end gap-2">
+                 <button onClick={handleBack} className="px-5 py-2 text-sm text-gray-700 font-medium hover:bg-gray-200 rounded-lg transition-colors border border-gray-300 bg-white">Cancel</button>
+                 <button onClick={handleSaveWorksheet} className="px-5 py-2 text-sm bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm flex items-center gap-2"><Save className="h-4 w-4" /> Save Master Standards</button>
+             </div>
         ) : (
-             <button className="px-5 py-2 text-sm bg-gray-300 text-white font-medium rounded-lg cursor-not-allowed flex items-center gap-2" disabled><Lock className="h-4 w-4" /> Save Worksheet</button>
+            <button className="px-5 py-2 text-sm bg-gray-300 text-white font-medium rounded-lg cursor-not-allowed flex items-center gap-2" disabled><Lock className="h-4 w-4" /> Save Worksheet</button>
         )}
       </div>
-
     </div>
   );
 };
