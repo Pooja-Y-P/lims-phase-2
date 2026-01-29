@@ -360,16 +360,22 @@ def get_stored_repeatability(db: Session, job_id: int):
     except ValueError:
         return {"job_id": job_id, "status": "no_specs", "results": []}
 
+    # 1. Fetch all existing steps from Database
     steps_db = db.query(HTWRepeatability).filter(
         HTWRepeatability.job_id == job_id
     ).order_by(asc(HTWRepeatability.step_percent)).all()
 
     results_summary = []
+    
+    # Track which percentages we actually found in the DB
+    found_percentages = set()
 
-    # Map stored data to dictionary for easy access
-    stored_steps_map = {}
+    # 2. Process Existing DB Rows
     if steps_db:
         for step_row in steps_db:
+            step_val = float(step_row.step_percent)
+            found_percentages.add(step_val)
+
             readings_db = db.query(HTWRepeatabilityReading).filter(
                 HTWRepeatabilityReading.repeatability_id == step_row.id
             ).order_by(HTWRepeatabilityReading.reading_order).all()
@@ -390,8 +396,8 @@ def get_stored_repeatability(db: Session, job_id: int):
                     "variation_due_to_repeatability": float(un_res_row.variation_due_to_repeatability or 0)
                 }
 
-            stored_steps_map[float(step_row.step_percent)] = {
-                "step_percent": float(step_row.step_percent),
+            results_summary.append({
+                "step_percent": step_val,
                 "mean_xr": float(step_row.mean_xr) if step_row.mean_xr is not None else 0.0,
                 "set_pressure": float(step_row.set_pressure_ps) if step_row.set_pressure_ps is not None else 0.0,
                 "set_torque": float(step_row.set_torque_ts) if step_row.set_torque_ts is not None else 0.0,
@@ -402,25 +408,18 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "pressure_unit": p_unit, 
                 "torque_unit": t_unit,
                 "un_resolution": un_res_data
-            }
+            })
 
-    # Iterate over standard percentages (20, 40, 60, 80, 100).
-    # If in DB, use DB. If not, use Specs.
-    standard_percentages = [20.0, 40.0, 60.0, 80.0, 100.0]
-    
-    # Also include any custom percentages stored in DB that are not in standard list
-    all_percentages = sorted(list(set(standard_percentages) | set(stored_steps_map.keys())))
+    # 3. Handle Defaults
+    # Only force these steps if they are missing. 
+    # WE DO NOT FORCE 40.0 or 80.0 here. If they aren't in the DB, they won't be in the response.
+    mandatory_defaults = [20.0, 60.0, 100.0]
 
-    for step in all_percentages:
-        if step in stored_steps_map:
-            results_summary.append(stored_steps_map[step])
-        else:
-            # Not in DB, fetch defaults from Spec
+    for step in mandatory_defaults:
+        if step not in found_percentages:
+            # Fetch defaults from Spec
             ps, ts = get_set_values_safe(specs, step)
-            # Only include if we have specs for it, OR if it is 20/60/100 which are mandatory usually.
-            # But here we show all standard if specs exist.
             
-            # If specs return None (e.g. for 40% if column is empty), defaulting to 0.0
             results_summary.append({
                 "step_percent": step,
                 "mean_xr": 0.0,
@@ -434,6 +433,9 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "torque_unit": t_unit,
                 "un_resolution": None
             })
+
+    # 4. Sort results by percentage to ensure 20, 40, 60... order
+    results_summary.sort(key=lambda x: x["step_percent"])
 
     return {
         "job_id": job_id,
