@@ -10,6 +10,11 @@ from sqlalchemy.orm import sessionmaker
 # DATABASE_URL="postgresql://postgres:RAGHUhr1@localhost:5432/limslab2"
 DATABASE_URL="postgresql://postgres:root@localhost:5432/lims_phase_2"
 
+# Changes added to see in git commits
+#1
+#2
+#3
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
