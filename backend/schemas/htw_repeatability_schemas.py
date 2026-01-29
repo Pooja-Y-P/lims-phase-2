@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, conlist, field_validator
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 # ==============================================================================
 #                            A. REPEATABILITY SCHEMAS
@@ -35,6 +35,10 @@ class UnResolutionData(BaseModel):
     a_s: float
     variation_due_to_repeatability: float
 
+class SpecDefaultValues(BaseModel):
+    set_pressure: float
+    set_torque: float
+
 class CalculationResultResponse(BaseModel):
     step_percent: float
     mean_xr: float
@@ -54,7 +58,7 @@ class RepeatabilityResponse(BaseModel):
     job_id: int
     status: str
     results: List[CalculationResultResponse]
-
+    defaults: Optional[Dict[str, SpecDefaultValues]] = None
 
 # ==============================================================================
 #                           B. REPRODUCIBILITY SCHEMAS
