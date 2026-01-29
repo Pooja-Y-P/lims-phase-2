@@ -358,7 +358,7 @@ def get_stored_repeatability(db: Session, job_id: int):
         p_unit = specs.pressure_unit or ""
         t_unit = specs.torque_unit or ""
     except ValueError:
-        return {"job_id": job_id, "status": "no_specs", "results": []}
+        return {"job_id": job_id, "status": "no_specs", "results": [], "defaults": {}}
 
     # 1. Fetch all existing steps from Database
     steps_db = db.query(HTWRepeatability).filter(
@@ -366,8 +366,6 @@ def get_stored_repeatability(db: Session, job_id: int):
     ).order_by(asc(HTWRepeatability.step_percent)).all()
 
     results_summary = []
-    
-    # Track which percentages we actually found in the DB
     found_percentages = set()
 
     # 2. Process Existing DB Rows
@@ -410,16 +408,12 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "un_resolution": un_res_data
             })
 
-    # 3. Handle Defaults
-    # Only force these steps if they are missing. 
-    # WE DO NOT FORCE 40.0 or 80.0 here. If they aren't in the DB, they won't be in the response.
+    # 3. Handle Mandatory Defaults (20, 60, 100)
+    # These must appear in the grid even if not in DB.
     mandatory_defaults = [20.0, 60.0, 100.0]
-
     for step in mandatory_defaults:
         if step not in found_percentages:
-            # Fetch defaults from Spec
             ps, ts = get_set_values_safe(specs, step)
-            
             results_summary.append({
                 "step_percent": step,
                 "mean_xr": 0.0,
@@ -434,13 +428,27 @@ def get_stored_repeatability(db: Session, job_id: int):
                 "un_resolution": None
             })
 
-    # 4. Sort results by percentage to ensure 20, 40, 60... order
     results_summary.sort(key=lambda x: x["step_percent"])
 
+    # 4. Generate "defaults" map for frontend (CRITICAL STEP)
+    # This prepares the data for 40 and 80 so the frontend has it ready when toggled.
+    all_defaults = {}
+    standard_steps = [20.0, 40.0, 60.0, 80.0, 100.0]
+    for step in standard_steps:
+        ps, ts = get_set_values_safe(specs, step)
+        key = str(int(step)) # Keys will be "20", "40", "60", "80", "100"
+        
+        all_defaults[key] = {
+            "set_pressure": float(ps) if ps is not None else 0.0,
+            "set_torque": float(ts) if ts is not None else 0.0
+        }
+
+    # 5. Return everything including defaults
     return {
         "job_id": job_id,
         "status": "success",
-        "results": results_summary
+        "results": results_summary,
+        "defaults": all_defaults  # <--- THIS MUST BE HERE
     }
 
 def get_uncertainty_references(db: Session):
