@@ -155,9 +155,9 @@ const UncertaintyBudgetPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 text-blue-600 mb-1">
               <Calculator className="h-5 w-5" />
-              <span className="text-sm font-bold uppercase tracking-wider">Metrology Report</span>
+              <span className="text-2xl font-bold text-blue-900"><h1>Uncertainty Budget Report</h1></span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Uncertainty Budget Analysis</h1>
+            {/* <h1 className="text-2xl font-bold text-gray-900">Uncertainty Budget Analysis</h1> */}
             <p className="text-gray-500 text-sm mt-1">
               <span className="font-semibold">Inward ID:</span> {inwardId} <span className="mx-2 text-gray-300">|</span> 
               <span className="font-semibold">Equipment ID:</span> {equipmentId}
@@ -270,12 +270,12 @@ const UncertaintyBudgetPage: React.FC = () => {
 
                     <tbody className="divide-y divide-gray-200">
                         {budgets.map((row) => {
-                            const isMax = maxUncertaintyBudget?.id === row.id;
-                            const rowBg = isMax ? 'bg-blue-50' : 'hover:bg-gray-50';
+                            
                             const cmcAbs = Math.abs(row.cmc);
                             
                             return (
-                                <tr key={row.step_percent} className={rowBg}>
+                                
+                                <tr>
                                     {/* 1. Set Torque (Ts) */}
                                     <td className={`${bodyCellClass} font-bold text-gray-900 bg-gray-50`}>
                                         {fmt(row.set_torque_ts, 2)}
