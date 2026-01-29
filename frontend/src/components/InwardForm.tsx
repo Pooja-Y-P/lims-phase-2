@@ -1086,8 +1086,183 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   // ... [Render Helpers] ...
   const renderAddMaterialModal = () => { if (!showAddMaterialModal) return null; return ( <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-60 p-4"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-y-auto relative"> <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl"> <div className="flex items-center gap-2"> <PackagePlus className="text-blue-600" size={20} /> <h2 className="text-lg font-bold text-gray-800">Add New Material</h2> </div> <button onClick={() => setShowAddMaterialModal(false)} className="text-gray-400 hover:text-red-500 transition-colors"> <X size={20} /> </button> </div> <form onSubmit={handleAddCustomMaterial} className="p-6 space-y-4"> <div> <label className="block text-sm font-semibold text-gray-700 mb-2">Material Name</label> <input type="text" autoFocus value={newMaterialInput} onChange={(e) => setNewMaterialInput(e.target.value)} placeholder="e.g. Digital Multimeter" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> <p className="text-xs text-gray-500 mt-2">This will be added to the history list after you submit the form.</p> </div> <div className="flex gap-2 pt-2"> <button type="button" onClick={() => setShowAddMaterialModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700">Cancel</button> <button type="submit" disabled={!newMaterialInput.trim()} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300">Add Item</button> </div> </form> </div> </div> ); };
   const renderAddCustomerModal = () => { if (!showAddCustomerModal) return null; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative"> <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl"> <div className="flex items-center gap-3"> <UserPlus className="text-blue-600" size={24} /> <h2 className="text-xl font-bold text-gray-800">Register New Company</h2> </div> <button onClick={() => setShowAddCustomerModal(false)} className="text-gray-400 hover:text-red-500 transition-colors"> <X size={24} /> </button> </div> <form onSubmit={handleCreateCustomer} className="p-6 space-y-5"> <div className="space-y-4"> <div> <label className="block text-sm font-semibold text-gray-700 mb-1">Company Name *</label> <input name="company_name" required value={newCustomerData.company_name} onChange={handleNewCustomerChange} placeholder="e.g., ACME Industries Pvt Ltd" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> </div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div><label className="block text-sm font-semibold text-gray-700 mb-1">Contact Person *</label><input name="contact_person" required value={newCustomerData.contact_person} onChange={handleNewCustomerChange} placeholder="Full Name" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /></div> <div><label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number *</label><input name="phone" required value={newCustomerData.phone} onChange={handleNewCustomerChange} placeholder="Mobile/Landline" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /></div> </div> <div> <label className="block text-sm font-semibold text-gray-700 mb-1">Email (for Invitation) *</label> <input type="email" name="email" required value={newCustomerData.email} onChange={handleNewCustomerChange} placeholder="admin@company.com" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> <p className="text-xs text-gray-500 mt-1">An invitation to access the portal will be sent here.</p> </div> <div className="pt-2 border-t"> <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2"><MapPin size={16} className="text-gray-500"/> Ship To Address *</label> <textarea name="ship_to_address" required value={newCustomerData.ship_to_address} onChange={handleNewCustomerChange} rows={2} placeholder="Shipping location..." className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none" /> </div> <div> <div className="flex items-center justify-between mb-1"> <label className="block text-sm font-semibold text-gray-700">Bill To Address *</label> <label className="flex items-center space-x-2 text-sm text-blue-600 cursor-pointer"> <input type="checkbox" name="same_as_ship" checked={newCustomerData.same_as_ship} onChange={handleNewCustomerChange} className="rounded text-blue-600 focus:ring-blue-500" /> <span>Same as Ship To</span> </label> </div> <textarea name="bill_to_address" required value={newCustomerData.bill_to_address} onChange={handleNewCustomerChange} disabled={newCustomerData.same_as_ship} rows={2} placeholder="Billing location..." className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none ${newCustomerData.same_as_ship ? 'bg-gray-100 text-gray-500' : ''}`} /> </div> </div> <div className="flex gap-3 pt-2"> <button type="button" onClick={() => setShowAddCustomerModal(false)} className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700">Cancel</button> <button type="submit" disabled={isCreatingCustomer} className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-400 flex justify-center items-center gap-2"> {isCreatingCustomer ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />} <span>Register & Invite</span> </button> </div> </form> </div> </div> ); };
-  const renderPreviewModal = () => { if (!showPreviewModal) return null; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4 overflow-y-auto"> <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl my-8 flex flex-col max-h-[90vh]"> <div className="flex justify-between items-center p-6 border-b bg-gray-50 rounded-t-lg"> <div className="flex items-center gap-3"> <FileText className="text-blue-600" size={28} /> <h2 className="text-2xl font-bold text-gray-800">Inward Receipt Preview</h2> </div> <button onClick={() => setShowPreviewModal(false)} className="text-gray-400 hover:text-red-500"> <X size={28} /> </button> </div> <div className="p-8 overflow-y-auto bg-gray-50"> <div className="bg-white p-8 shadow-sm border border-gray-200 mx-auto max-w-[210mm] min-h-[297mm]"> <div className="text-center border-b pb-4 mb-6"><h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wider">NextAge Engineering Pvt Ltd</h1><p className="text-gray-600 text-sm mt-1">Material Inward Receipt</p></div> <div className="flex justify-between text-sm mb-8 gap-8"> <div className="w-1/2 space-y-2"> <div className="flex"><span className="font-semibold w-32">Inward Date:</span> <span>{formData.material_inward_date}</span></div> <div className="flex"><span className="font-semibold w-32">SRF No:</span> <span className="text-blue-600 font-bold">{formData.srf_no} (Provisional)</span></div> <div className="flex"><span className="font-semibold w-32">Received By:</span> <span>{formData.receiver}</span></div> </div> <div className="w-1/2 space-y-2"> <div className="flex"><span className="font-semibold w-32">Customer DC:</span> <span>{formData.customer_dc_no}</span></div> <div className="flex"><span className="font-semibold w-32">DC Date:</span> <span>{formData.customer_dc_date || '-'}</span></div> </div> </div> <div className="mb-8 p-4 bg-gray-50 rounded border border-gray-100"> <h3 className="font-bold text-gray-700 mb-2 text-sm uppercase">Customer Details</h3> <p className="text-gray-800 whitespace-pre-line text-sm">{formData.customer_details}</p> </div> <table className="w-full text-sm border-collapse border border-gray-300 mb-8"> <thead> <tr className="bg-blue-50 text-blue-900"> <th className="border border-gray-300 p-2 w-12 text-center">#</th> <th className="border border-gray-300 p-2 text-left">Description</th> <th className="border border-gray-300 p-2 text-left">Make / Model</th> <th className="border border-gray-300 p-2 text-left">Serial No</th> <th className="border border-gray-300 p-2 text-center w-16">Qty</th> <th className="border border-gray-300 p-2 text-left">Accessories</th> <th className="border border-gray-300 p-2 text-left">Visual</th> {showEngineerRemarksColumn && <th className="border border-gray-300 p-2 text-left">Eng. Remarks</th>} </tr> </thead> <tbody> {equipmentList.map((eq, idx) => ( <tr key={idx} className="hover:bg-gray-50"> <td className="border border-gray-300 p-2 text-center">{idx + 1}</td> <td className="border border-gray-300 p-2">{eq.material_desc}</td> <td className="border border-gray-300 p-2">{eq.make} / {eq.model}</td> <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td> <td className="border border-gray-300 p-2 text-center">{eq.qty}</td> <td className="border border-gray-300 p-2 text-gray-600 italic">{eq.accessories_included || '-'}</td> <td className="border border-gray-300 p-2"><span className={eq.inspe_status === 'Not OK' ? 'text-red-600 font-bold' : 'text-green-600'}>{eq.inspe_status}</span></td> {showEngineerRemarksColumn && <td className="border border-gray-300 p-2 text-gray-600 text-xs">{eq.engineer_remarks || '-'}</td>} </tr> ))} </tbody> </table> <div className="mt-12 pt-4 border-t border-gray-300 flex justify-between items-end"> <div className="text-xs text-gray-400">Generated via NEPL Portal</div> <div className="text-center"><div className="h-12"></div><p className="text-sm font-semibold border-t border-gray-400 px-8 pt-1">Authorized Signature</p></div> </div> </div> </div> <div className="p-6 border-t bg-gray-50 flex justify-end gap-4 rounded-b-lg"> <button onClick={() => setShowPreviewModal(false)} className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium">Cancel / Edit</button> <button onClick={handleFinalSubmit} className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md"> <Download size={20} /> <span>{isEditMode ? 'Update & Download PDF' : 'Submit & Download PDF'}</span> </button> </div> </div> </div> ); };
-  const renderEmailModal = () => !showEmailModal ? null : ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative"> <button onClick={() => navigate('/engineer/create-inward', { replace: true })} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button> <div className="flex items-center space-x-4 mb-4"><Send className="text-green-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">Submission Successful!</h2></div> <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> has been created.<br/>The PDF receipt has been downloaded. You can now email the FIR to the customer.</p> <div className="space-y-6"> <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50"> <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label> <div className="space-y-2"> {reportEmails.map((email, index) => ( <div key={index} className="flex gap-2"> <input type="email" value={email} onChange={(e) => { const newEmails = [...reportEmails]; newEmails[index] = e.target.value; setReportEmails(newEmails); }} required placeholder="Customer email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" /> {reportEmails.length > 1 && (<button type="button" onClick={() => removeEmailField(index)} className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"><X size={16} /></button>)} </div> ))} <div className="flex gap-2"> <button type="button" onClick={addEmailField} className="px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">+ Add Email</button> <button type="submit" className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold"><Send size={18} /><span>Send FIR</span></button> </div> </div> </form> <div className="p-4 border rounded-lg bg-gray-50"> <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Schedule for Later</span></button> </div> </div> </div> </div> );
+const renderPreviewModal = () => {
+  if (!showPreviewModal) return null;
+ 
+  return (
+<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4 overflow-y-auto">
+<div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl my-8 flex flex-col max-h-[90vh]">
+ 
+        {/* Header */}
+<div className="flex justify-between items-center p-6 border-b bg-gray-50 rounded-t-lg">
+<div className="flex items-center gap-3">
+<FileText className="text-blue-600" size={28} />
+<h2 className="text-2xl font-bold text-gray-800">
+              Inward Receipt Preview
+</h2>
+</div>
+<button
+            onClick={() => setShowPreviewModal(false)}
+            className="text-gray-400 hover:text-red-500"
+>
+<X size={28} />
+</button>
+</div>
+ 
+        {/* Body */}
+<div className="p-8 overflow-y-auto bg-gray-50">
+<div className="bg-white p-8 shadow-sm border border-gray-200 mx-auto max-w-[210mm] min-h-[297mm]">
+ 
+            <div className="text-center border-b pb-4 mb-6">
+<h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wider">
+                NextAge Engineering Pvt Ltd
+</h1>
+<p className="text-gray-600 text-sm mt-1">
+                Material Inward Receipt
+</p>
+</div>
+ 
+            <div className="flex justify-between text-sm mb-8 gap-8">
+<div className="w-1/2 space-y-2">
+<div className="flex">
+<span className="font-semibold w-32">Inward Date:</span>
+<span>{formData.material_inward_date}</span>
+</div>
+<div className="flex">
+<span className="font-semibold w-32">SRF No:</span>
+<span className="text-blue-600 font-bold">
+                    {formData.srf_no} (Provisional)
+</span>
+</div>
+<div className="flex">
+<span className="font-semibold w-32">Received By:</span>
+<span>{formData.receiver}</span>
+</div>
+</div>
+ 
+              <div className="w-1/2 space-y-2">
+<div className="flex">
+<span className="font-semibold w-32">Customer DC:</span>
+<span>{formData.customer_dc_no}</span>
+</div>
+<div className="flex">
+<span className="font-semibold w-32">DC Date:</span>
+<span>{formData.customer_dc_date || '-'}</span>
+</div>
+</div>
+</div>
+ 
+            <div className="mb-8 p-4 bg-gray-50 rounded border border-gray-100">
+<h3 className="font-bold text-gray-700 mb-2 text-sm uppercase">
+                Customer Details
+</h3>
+<p className="text-gray-800 whitespace-pre-line text-sm">
+                {formData.customer_details}
+</p>
+</div>
+ 
+            <table className="w-full text-sm border-collapse border border-gray-300 mb-8">
+<thead>
+<tr className="bg-blue-50 text-blue-900">
+<th className="border p-2 w-12 text-center">#</th>
+<th className="border p-2 text-left">Description</th>
+<th className="border p-2 text-left">Make / Model</th>
+<th className="border p-2 text-left">Serial No</th>
+<th className="border p-2 text-center w-16">Qty</th>
+<th className="border p-2 text-left">Accessories</th>
+<th className="border p-2 text-left">Visual</th>
+                  {showEngineerRemarksColumn && (
+<th className="border p-2 text-left">Eng. Remarks</th>
+                  )}
+</tr>
+</thead>
+<tbody>
+                {equipmentList.map((eq, idx) => (
+<tr key={idx} className="hover:bg-gray-50">
+<td className="border p-2 text-center">{idx + 1}</td>
+<td className="border p-2">{eq.material_desc}</td>
+<td className="border p-2">{eq.make} / {eq.model}</td>
+<td className="border p-2">{eq.serial_no || '-'}</td>
+<td className="border p-2 text-center">{eq.qty}</td>
+<td className="border p-2 text-gray-600 italic">
+                      {eq.accessories_included || '-'}
+</td>
+<td className="border p-2">
+<span className={eq.inspe_status === 'Not OK'
+                        ? 'text-red-600 font-bold'
+                        : 'text-green-600'}>
+                        {eq.inspe_status}
+</span>
+</td>
+                    {showEngineerRemarksColumn && (
+<td className="border p-2 text-xs">
+                        {eq.engineer_remarks || '-'}
+</td>
+                    )}
+</tr>
+                ))}
+</tbody>
+</table>
+ 
+            <div className="mt-12 pt-4 border-t border-gray-300 flex justify-between items-end">
+<div className="text-xs text-gray-400">
+                Generated via NEPL Portal
+</div>
+<div className="text-center">
+<div className="h-12"></div>
+<p className="text-sm font-semibold border-t border-gray-400 px-8 pt-1">
+                  Authorized Signature
+</p>
+</div>
+</div>
+ 
+          </div>
+</div>
+ 
+        {/* Footer */}
+<div className="p-6 border-t bg-gray-50 flex justify-end gap-4 rounded-b-lg">
+<button
+            onClick={() => setShowPreviewModal(false)}
+            className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium"
+>
+            Cancel / Edit
+</button>
+ 
+          {/* ✅ FIXED BUTTON */}
+<button
+            onClick={async () => {
+              await handleFinalSubmit();
+ 
+              const formattedList = equipmentList.map((eq, index) => ({
+                ...eq,
+                nepl_id: `${formData.srf_no}-${index + 1}`
+              }));
+ 
+              const pdfFormData = {
+                ...formData,
+                contact_person: selectedCustomerData?.contact_person || '',
+                phone: selectedCustomerData?.phone || '',
+                email: selectedCustomerData?.email || '',
+                ship_to_address: selectedCustomerData?.ship_to_address || '',
+                bill_to_address: selectedCustomerData?.bill_to_address || ''
+              };
+ 
+              generateStandardInwardPDF(pdfFormData, formattedList);
+            }}
+            className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md"
+>
+<Download size={20} />
+<span>
+              {isEditMode ? 'Update & Download PDF' : 'Submit & Download PDF'}
+</span>
+</button>
+</div>
+ 
+      </div>
+</div>
+  );
+};  
+const renderEmailModal = () => !showEmailModal ? null : ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative"> <button onClick={() => navigate('/engineer/create-inward', { replace: true })} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button> <div className="flex items-center space-x-4 mb-4"><Send className="text-green-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">Submission Successful!</h2></div> <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> has been created.<br/>The PDF receipt has been downloaded. You can now email the FIR to the customer.</p> <div className="space-y-6"> <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50"> <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label> <div className="space-y-2"> {reportEmails.map((email, index) => ( <div key={index} className="flex gap-2"> <input type="email" value={email} onChange={(e) => { const newEmails = [...reportEmails]; newEmails[index] = e.target.value; setReportEmails(newEmails); }} required placeholder="Customer email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" /> {reportEmails.length > 1 && (<button type="button" onClick={() => removeEmailField(index)} className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"><X size={16} /></button>)} </div> ))} <div className="flex gap-2"> <button type="button" onClick={addEmailField} className="px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">+ Add Email</button> <button type="submit" className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold"><Send size={18} /><span>Send FIR</span></button> </div> </div> </form> <div className="p-4 border rounded-lg bg-gray-50"> <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Schedule for Later</span></button> </div> </div> </div> </div> );
   const getModalEquipment = (): BaseEquipmentDetail | null => { if (!selectedEquipment) return null; const { inspe_status, inspe_remarks, accessories_included, ...rest } = selectedEquipment; const modalEquipment: BaseEquipmentDetail = { ...rest, calibration_by: selectedEquipment.calibration_by === 'On-Site' ? 'Out Lab' : selectedEquipment.calibration_by, inspe_notes: inspe_status === 'OK' ? 'OK' : (inspe_status === 'Not OK' ? 'Not OK' : inspe_remarks), }; return modalEquipment; }
 
   if (isLoadingData) {
