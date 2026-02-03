@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration Certificate</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 8pt;
+            font-weight: bold;
+            line-height: 1.2;
+            color: #000;
+            background: #f5f5f5;
+            padding: 5px;
+        }
+
+        .page {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            padding: 0 10mm; /* Left and right margins: 1cm each */
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            page-break-after: always;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Prevent any overflow beyond page boundaries */
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+                margin: 0;
+            }
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 0 10mm; /* Left and right margins: 1cm each */
+                width: 210mm;
+                height: 297mm;
+                overflow: hidden;
+            }
+            .header {
+                height: 50mm !important; /* Enforce exactly 5cm in print */
+                max-height: 50mm !important;
+            }
+            .footer {
+                height: 30mm !important; /* Enforce exactly 3cm in print */
+                max-height: 30mm !important;
+            }
+            .content-wrapper {
+                max-height: calc(297mm - 50mm - 30mm) !important; /* Enforce main body boundaries */
+            }
+        }
+
+        .header {
+            height: 50mm; /* Exactly 5cm header area */
+            max-height: 50mm; /* Ensure it doesn't exceed 5cm */
+            padding: 0;
+            flex-shrink: 0;
+            overflow: hidden; /* Prevent content overflow */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex: 1;
+            border-bottom: 2px solid #622819;
+            padding: 3mm 0 0 0; /* Add padding at top to prevent logos touching top edge */
+            margin-bottom: 0;
+            box-sizing: border-box;
+            min-height: 0;
+        }
+
+        .header-bottom {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            padding: 1px 0 0 0;
+            margin-top: 0;
+            box-sizing: border-box;
+            height: auto;
+            min-height: fit-content;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            overflow: hidden;
+            padding: 0;
+            min-height: 0; /* Allow flexbox to shrink if needed */
+            max-height: calc(297mm - 50mm - 30mm); /* Main body: 297mm - 50mm (header) - 30mm (footer) = 217mm */
+            /* Main body area: between 5cm header and 3cm footer */
+            /* Available height: 297mm - 50mm (header) - 30mm (footer) = 217mm */
+            box-sizing: border-box;
+        }
+
+        .logo-left {
+            width: 33.33%;
+            height: auto;
+            min-height: 30mm; /* Increased minimum height for larger logos */
+            max-height: calc(100% - 5mm); /* Account for top padding and bottom margin */
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6pt;
+            color: #999;
+            overflow: hidden;
+            box-sizing: border-box;
+            margin-bottom: 2mm; /* Add margin at bottom to prevent touching horizontal line */
+        }
+
+        .logo-right {
+            width: 33.33%;
+            height: auto;
+            min-height: 30mm; /* Increased minimum height for larger logos */
+            max-height: calc(100% - 5mm); /* Account for top padding and bottom margin */
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6pt;
+            color: #999;
+            overflow: hidden;
+            margin-left: auto;
+            margin-bottom: 2mm; /* Add margin at bottom to prevent touching horizontal line */
+            box-sizing: border-box;
+        }
+
+        .header-center {
+            flex: 1;
+            text-align: center;
+            margin: 0 10px;
+            height: auto;
+            min-height: 30px;
+            max-height: 40mm; /* Limit logo area height */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .header-center h1 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .header-center .cert-number {
+            font-size: 9pt;
+            font-weight: bold;
+        }
+
+        .certificate-title {
+            text-align: center;
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 0;
+            letter-spacing: 1px;
+            line-height: 1.2;
+            padding: 2px 0;
+            /* This will be used in the header-bottom, positioned just below the horizontal line */
+        }
+
+        .page-number {
+            text-align: right;
+            font-size: 7pt;
+            margin-bottom: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+            font-size: 7pt;
+            border: 1px solid #000;
+        }
+
+        table td {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            vertical-align: middle;
+            text-align: center;
+            background-color: white;
+        }
+
+        table th {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        table thead th {
+            background-color: #e8e8e8;
+            border-bottom: 2px solid #000;
+        }
+
+        .label-cell {
+            font-weight: bold;
+            width: 30%;
+            background-color: #f9f9f9;
+            text-align: left;
+        }
+
+        .colon-cell {
+            width: 1%;
+            padding: 3px 1px !important;
+            text-align: center;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .value-cell {
+            width: auto;
+            background-color: white;
+            text-align: left;
+        }
+
+        .value-cell:empty::before {
+            content: "\00a0";
+        }
+
+        .two-col-table td {
+            width: 50%;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 9pt;
+            margin: 8px 0 5px 0;
+            padding: 4px 6px;
+            background-color: #e8e8e8;
+            border: 1px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .footer {
+            margin-top: auto;
+            height: 30mm; /* Exactly 3cm footer area */
+            max-height: 30mm; /* Ensure it doesn't exceed 3cm */
+            padding: 0;
+            border-top: 2px solid #622819;
+            font-size: 8pt;
+            text-align: center;
+            flex-shrink: 0;
+            overflow: hidden; /* Prevent content overflow */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .footer-company {
+            font-weight: bold;
+            font-size: 9pt; /* 1 size bigger than footer default 8pt */
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .footer-address {
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .footer-contact {
+            margin-bottom: 0;
+            line-height: 1.2;
+        }
+
+        .qr-code {
+            width: 40px;
+            height: 40px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5pt;
+            color: #999;
+            position: absolute;
+            bottom: 5mm; /* Position relative to page bottom, within footer area */
+            right: 5mm;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .signature-section {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 200px;
+            height: 60px;
+            border-bottom: 2px solid #000;
+            margin-top: 40px;
+            position: relative;
+        }
+
+        .signature-box::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            border-bottom: 1px solid #000;
+        }
+
+        .notes {
+            font-size: 6pt;
+            margin-top: 8px;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .notes ul {
+            margin-left: 15px;
+            margin-top: 3px;
+        }
+
+        .notes li {
+            margin-bottom: 2px;
+        }
+
+        .math-symbol {
+            font-style: italic;
+        }
+
+        .page-number {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .field-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .colon-separator {
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        /* Form-like styling */
+        .form-field {
+            margin: 8px 0;
+        }
+
+        .form-section {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        /* Ensure proper spacing for form elements */
+        table tr {
+            border: 1px solid #000;
+        }
+
+        /* Better table styling for form appearance */
+        table tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+
+        table tbody tr:hover td {
+            background-color: #f0f0f0;
+        }
+
+        /* Better alignment for form fields */
+        .header-center h1 {
+            letter-spacing: 2px;
+        }
+
+        /* Ensure all borders are visible */
+        table, table td, table th {
+            border: 1px solid #000 !important;
+        }
+
+        /* Better spacing in tables */
+        table td:empty {
+            min-height: 15px;
+        }
+
+        /* Form input-like appearance for value cells */
+        .value-cell {
+            min-height: 16px;
+        }
+
+        /* Improve readability */
+        .notes {
+            border: 1px solid #ddd;
+            padding: 6px;
+            background-color: #f9f9f9;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    {% block content %}{% endblock %}
+</body>
+</html>
+

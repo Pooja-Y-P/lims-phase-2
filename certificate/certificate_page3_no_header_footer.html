@@ -1,0 +1,147 @@
+{% extends "base_template_no_header_footer.html" %}
+
+{% block content %}
+<div class="page">
+    <div class="content-wrapper">
+    <div class="page-number">Page 3 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ certificate_no }}</td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ calibration_date }}</td>
+        </tr>
+    </table>
+
+    <div class="section-title">D. Variation of interface between the tool and the calibration system</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Target Value X<sub>a</sub></th>
+                <th>Series-1 Mean Value</th>
+                <th>Series-2 Mean Value</th>
+                <th>Series-3 Mean Value</th>
+                <th>Series-4 Mean Value</th>
+                <th colspan="2">Error due to Interface b<sub>int</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for interface in interface_data %}
+            <tr>
+                <td>{{ interface.target }}</td>
+                <td>{{ interface.series1 }}</td>
+                <td>{{ interface.series2 }}</td>
+                <td>{{ interface.series3 }}</td>
+                <td>{{ interface.series4 }}</td>
+                <td>{{ interface.error }}</td>
+                <td>{{ interface.error_pct }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">E. Variation due to Loading point</div>
+    <table>
+        <thead>
+            <tr>
+                <th>SET TORQUE</th>
+                <th>POSITION</th>
+                <th>Mean Value</th>
+                <th colspan="2">Error due to Loading point b<sub>l</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th></th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for loading in loading_data %}
+            <tr>
+                <td rowspan="2">{{ loading.torque }}</td>
+                <td>{{ loading.position1 }}</td>
+                <td>{{ loading.mean1 }}</td>
+                <td rowspan="2">{{ loading.error }}</td>
+                <td rowspan="2">{{ loading.error_pct }}</td>
+            </tr>
+            <tr>
+                <td>{{ loading.position2 }}</td>
+                <td>{{ loading.mean2 }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">F. Measurement Uncertainties</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Calibration Value X<sub>a</sub></th>
+                <th>Average Value of X<sub>a</sub></th>
+                <th>Mean Value of the error</th>
+                <th>Relative expanded measurement uncertainty W</th>
+                <th>Max. value of the calibration device measurement error</th>
+                <th>Relative measurement uncertainty interval W'</th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in %</th>
+                <th>in %</th>
+                <th>in %</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for uncertainty in uncertainty_data %}
+            <tr>
+                <td>{{ uncertainty.calibration }}</td>
+                <td>{{ uncertainty.average }}</td>
+                <td>{{ uncertainty.error_pct }}</td>
+                <td>{{ uncertainty.uncertainty_w }}</td>
+                <td>{{ uncertainty.max_error }}</td>
+                <td>{{ uncertainty.uncertainty_w_prime }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 15px; font-size: 8pt; border: 1px solid #000; padding: 8px; background-color: #f9f9f9;">
+        The Estimated Uncertainty of Measurement associated with the results is calculated at a confidence level of 95% approximately with a coverage factor k=2
+    </div>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px; font-weight: bold;">
+        *** END OF CERTIFICATE ***
+    </div>
+</div>
+{% endblock %}

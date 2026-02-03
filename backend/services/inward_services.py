@@ -568,6 +568,7 @@ class InwardService:
                     db_eq.make = eqp_model.make
                     db_eq.model = eqp_model.model
                     db_eq.range = eqp_model.range
+                    db_eq.unit = getattr(eqp_model, 'unit', None)
                     db_eq.serial_no = eqp_model.serial_no
                     db_eq.quantity = eqp_model.qty
                     db_eq.visual_inspection_notes = eqp_model.visual_inspection_notes
@@ -596,6 +597,7 @@ class InwardService:
                         nepl_id=new_nepl_id, 
                         material_description=eqp_model.material_desc,
                         make=eqp_model.make, model=eqp_model.model, range=eqp_model.range,
+                        unit=getattr(eqp_model, 'unit', None),
                         serial_no=eqp_model.serial_no, quantity=eqp_model.qty,
                         visual_inspection_notes=eqp_model.visual_inspection_notes,
                         calibration_by=eqp_model.calibration_by,
@@ -657,6 +659,7 @@ class InwardService:
                 nepl_id=authoritative_nepl_id,
                 material_description=eqp_model.material_desc,
                 make=eqp_model.make, model=eqp_model.model, range=eqp_model.range,
+                unit=getattr(eqp_model, 'unit', None),
                 serial_no=eqp_model.serial_no, quantity=eqp_model.qty,
                 visual_inspection_notes=eqp_model.visual_inspection_notes,
                 calibration_by=eqp_model.calibration_by,
@@ -702,8 +705,8 @@ class InwardService:
         )
         return [r[0] for r in rows if r[0]]
 
-    def get_range_by_make_model(self, make: str, model: str) -> Optional[Dict[str, float]]:
-        """Get range_min and range_max for a given make and model combination."""
+    def get_range_by_make_model(self, make: str, model: str) -> Optional[Dict[str, any]]:
+        """Get range_min, range_max, and unit for a given make and model combination."""
         spec = (
             self.db.query(HTWManufacturerSpec)
             .filter(
@@ -717,9 +720,17 @@ class InwardService:
         if not spec:
             return None
 
+        # Determine unit: prefer torque_unit, fallback to pressure_unit
+        unit = None
+        if spec.torque_unit:
+            unit = spec.torque_unit
+        elif spec.pressure_unit:
+            unit = spec.pressure_unit
+
         return {
             "range_min": float(spec.range_min) if spec.range_min is not None else None,
-            "range_max": float(spec.range_max) if spec.range_max is not None else None
+            "range_max": float(spec.range_max) if spec.range_max is not None else None,
+            "unit": unit
         }
 
     # === Customer Portal Logic ===

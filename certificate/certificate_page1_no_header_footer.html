@@ -1,0 +1,219 @@
+{% extends "base_template_no_header_footer.html" %}
+
+{% block content %}
+<div class="page">
+    <div class="content-wrapper">
+    <div class="page-number">Page 1 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ certificate_no }}</td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ calibration_date }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">NEPL ID</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ nepl_id }}</td>
+            <td class="label-cell" style="border: none;">Recommended Cal Due Date</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ cal_due_date }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">ULR No.</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ ulr_no }}</td>
+            <td class="label-cell" style="border: none;">Date Of Issue:</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">{{ issue_date }}</td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell">Field of Parameter</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ field_of_parameter }}</td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell" style="width: 50%;">Customer Name & Address :</td>
+            <td class="label-cell" colspan="3">Customer Reference:</td>
+        </tr>
+        <tr>
+            <td class="value-cell" rowspan="4">{{ customer_name }}<br>{{ customer_address }}</td>
+            <td class="label-cell">Reference DC No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ reference_dc_no }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Reference No Date</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ reference_no_date }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Date of Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ receipt_date }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Status of item on Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ item_status }}</td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th colspan="6">Device Under Calibration :</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td class="label-cell">Nomenclature</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ device_nomenclature }}</td>
+            <td class="label-cell">Units of measurement</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ units_of_measurement }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Make/Model</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ device_make_model }}</td>
+            <td class="label-cell">Calibration Mode</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ calibration_mode }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Type/Classification</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ device_type }} Type I Class C</td>
+            <td class="label-cell">Place of Calibration</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ place_of_calibration }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">SI No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ si_no }}</td>
+            <td class="label-cell">Resolution of the pressure gauge</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ pressure_gauge_resolution }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Torque Range</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">{{ torque_range }} Nm</td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div style="margin: 5px 0 10px 0; white-space: nowrap; font-size: 7pt; border: 1px solid #000; padding: 5px;">
+        <strong>Calibration Procedure :</strong> Done as per NEPL Ref: CP .No 02 in accordance with ISO/IEC :17025:2017, ISO :6789-1 & 2:2017
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Reference Standard Details</th>
+                <th>Standard 1</th>
+                <th>Standard 2</th>
+                <th>Standard 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="label-cell">Nomenclature</td>
+                <td>{{ standard1_nomenclature }}</td>
+                <td>{{ standard2_nomenclature }}</td>
+                <td>{{ standard3_nomenclature }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Manufacturer</td>
+                <td>{{ standard1_manufacturer }}</td>
+                <td>{{ standard2_manufacturer }}</td>
+                <td>{{ standard3_manufacturer }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Model/serial No</td>
+                <td>{{ standard1_model }}</td>
+                <td>{{ standard2_model }}</td>
+                <td>{{ standard3_model }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Uncertainty</td>
+                <td>{{ standard1_uncertainty }}</td>
+                <td>{{ standard2_uncertainty }}</td>
+                <td>{{ standard3_uncertainty }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Certificate No</td>
+                <td>{{ standard1_cert_no }}</td>
+                <td>{{ standard2_cert_no }}</td>
+                <td>{{ standard3_cert_no }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Calibration Valid Upto</td>
+                <td>{{ standard1_valid_upto }}</td>
+                <td>{{ standard2_valid_upto }}</td>
+                <td>{{ standard3_valid_upto }}</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Traceability</td>
+                <td>{{ standard1_traceability }}</td>
+                <td>{{ standard2_traceability }}</td>
+                <td>{{ standard3_traceability }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="margin-top: 5px;">
+        <tr>
+            <td class="label-cell">Environmental condition:</td>
+            <td class="label-cell">Temp</td>
+            <td class="value-cell" style="text-align: center;">{{ temperature }} °C</td>
+            <td class="label-cell">Humidity</td>
+            <td class="value-cell" style="text-align: center;">{{ humidity }}%</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+
+    <div class="notes">
+        <ul>
+            <li>All Calibrations are traceable to National/International standards as required in ISO/IEC 17025</li>
+            <li>This Certificate refers only to the item calibrated and shall not be reproduced except in full, without approval of the Laboratory, Nextage Engineering Pvt Ltd. Bangalore - 560043.</li>
+            <li>Results reported are valid at the time of and under the stated conditions of measurement.</li>
+            <li>Conformity Statement is given only when requested by the customer as per the Decision Rule applied.</li>
+        </ul>
+        <div class="qr-code">
+            <!-- QR Code -->
+            <img src="qr_code_certficate_1.png" alt="QR Code" style="max-width: 100%; max-height: 100%;">
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}

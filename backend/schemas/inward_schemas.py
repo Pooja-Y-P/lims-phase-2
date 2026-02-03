@@ -29,6 +29,7 @@ class EquipmentCreate(BaseModel):
     make: str
     model: str
     range: Optional[str] = None
+    unit: Optional[str] = None
     serial_no: Optional[str] = None
     qty: int
     visual_inspection_notes: Optional[str] = "OK"
@@ -50,6 +51,7 @@ class InwardEquipmentResponse(BaseModel):
     make: str
     model: str
     range: Optional[str] = None
+    unit: Optional[str] = None
     serial_no: Optional[str] = None
     quantity: int
     visual_inspection_notes: Optional[str] = None

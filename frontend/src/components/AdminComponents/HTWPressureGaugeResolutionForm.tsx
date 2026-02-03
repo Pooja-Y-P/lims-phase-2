@@ -290,8 +290,6 @@ const AddResolutionPage: React.FC<AddPageProps> = ({ onCancel, onSave, submittin
   });
   const [error, setError] = useState<string | null>(null);
 
-  const commonUnits = ['bar', 'psi', 'kg/cm²', 'kPa', 'MPa'];
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
@@ -368,12 +366,9 @@ const AddResolutionPage: React.FC<AddPageProps> = ({ onCancel, onSave, submittin
               <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
               <input 
                 type="text" name="unit" value={formData.unit} onChange={handleChange} 
-                required list="unit-options" placeholder="e.g. bar" 
+                required placeholder="e.g. bar" 
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
               />
-              <datalist id="unit-options">
-                 {commonUnits.map(u => <option key={u} value={u} />)}
-              </datalist>
             </div>
 
             {/* Valid Upto */}
@@ -433,7 +428,6 @@ const EditResolutionModal: React.FC<EditModalProps> = ({ item, onCancel, onSave,
     is_active: item.is_active
   });
   const [error, setError] = useState<string | null>(null);
-  const commonUnits = ['bar', 'psi', 'kg/cm²', 'kPa', 'MPa'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -507,12 +501,9 @@ const EditResolutionModal: React.FC<EditModalProps> = ({ item, onCancel, onSave,
               <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
               <input 
                 type="text" name="unit" value={formData.unit} onChange={handleChange} 
-                required list="unit-options" 
+                required placeholder="e.g. bar" 
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
               />
-              <datalist id="unit-options">
-                 {commonUnits.map(u => <option key={u} value={u} />)}
-              </datalist>
             </div>
 
             {/* Valid Upto */}

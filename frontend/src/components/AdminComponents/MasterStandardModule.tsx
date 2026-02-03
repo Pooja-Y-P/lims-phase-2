@@ -756,17 +756,17 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
     nomenclature: 'TORQUE_TRANSDUCER',
     range_min: '',
     range_max: '',
-    range_unit: 'Nm',
+    range_unit: '',
     manufacturer: '',
     model_serial_no: '',
     traceable_to_lab: '',
     uncertainty: '',
-    uncertainty_unit: '%',
+    uncertainty_unit: '',
     certificate_no: '',
     calibration_valid_upto: '',
     accuracy_of_master: '',
     resolution: '',
-    resolution_unit: 'Nm',
+    resolution_unit: '',
     is_active: true
   });
 
@@ -777,9 +777,13 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    let finalValue: string | boolean = type === 'checkbox' ? checked : value;
+    if ((name === 'range_unit' || name === 'uncertainty_unit' || name === 'resolution_unit') && typeof value === 'string') {
+      finalValue = value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+    }
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: finalValue
     }));
   };
 
@@ -899,7 +903,7 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
             </div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label><input type="text" name="manufacturer" value={formData.manufacturer} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Model / Serial No</label><input type="text" name="model_serial_no" value={formData.model_serial_no} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
-            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Operating Range</label><div className="flex items-center gap-2"><input type="number" name="range_min" value={formData.range_min} onChange={handleChange} placeholder="Min" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><span className="text-gray-400 font-bold">-</span><input type="number" name="range_max" value={formData.range_max} onChange={handleChange} placeholder="Max" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><div className="w-32"><select name="range_unit" value={formData.range_unit} onChange={handleChange} className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5"><option value="Nm">Nm</option><option value="lbf.ft">lbf.ft</option><option value="kgf.m">kgf.m</option><option value="bar">bar</option><option value="psi">psi</option></select></div></div></div>
+            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Operating Range</label><div className="flex items-center gap-2"><input type="number" name="range_min" value={formData.range_min} onChange={handleChange} placeholder="Min" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><span className="text-gray-400 font-bold">-</span><input type="number" name="range_max" value={formData.range_max} onChange={handleChange} placeholder="Max" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><div className="w-32"><input type="text" name="range_unit" value={formData.range_unit} onChange={handleChange} placeholder="e.g. Nm, bar" className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5" /></div></div></div>
           </div>
         </div>
         <div className="p-6 bg-gray-50/50">
@@ -907,9 +911,9 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
             <Activity size={16} className="mr-2 text-orange-500" /> Technical Specifications
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Uncertainty</label><div className="flex items-center gap-2"><input type="number" name="uncertainty" value={formData.uncertainty} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><select name="uncertainty_unit" value={formData.uncertainty_unit} onChange={handleChange} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-24"><option value="%">%</option><option value="Abs">Abs</option></select></div></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Uncertainty</label><div className="flex items-center gap-2"><input type="number" name="uncertainty" value={formData.uncertainty} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><input type="text" name="uncertainty_unit" value={formData.uncertainty_unit} onChange={handleChange} placeholder="e.g. %, Abs" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-24" /></div></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Accuracy of Master</label><input type="text" name="accuracy_of_master" value={formData.accuracy_of_master} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1">Resolution</label><div className="flex items-center gap-2"><input type="number" name="resolution" value={formData.resolution} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><input type="text" name="resolution_unit" value={formData.resolution_unit} onChange={handleChange} className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-20" /></div></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Resolution</label><div className="flex items-center gap-2"><input type="number" name="resolution" value={formData.resolution} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /><input type="text" name="resolution_unit" value={formData.resolution_unit} onChange={handleChange} placeholder="e.g. Nm, bar" className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block p-2.5 w-20" /></div></div>
             <div className="lg:col-span-3"><label className="block text-sm font-medium text-gray-700 mb-1">Traceable To Lab</label><input type="text" name="traceable_to_lab" value={formData.traceable_to_lab} onChange={handleChange} className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg block w-full p-2.5" /></div>
           </div>
         </div>

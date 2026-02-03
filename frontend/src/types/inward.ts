@@ -7,6 +7,7 @@ export interface EquipmentDetail {
   make: string;
   model: string;
   range?: string;
+  unit?: string;
   serial_no?: string;
   qty: number;
   
@@ -38,6 +39,7 @@ export interface ViewInwardEquipment {
   make: string;
   model: string;
   range?: string;
+  unit?: string;
   serial_no?: string;
   quantity: number;
   visual_inspection_notes?: string | null;

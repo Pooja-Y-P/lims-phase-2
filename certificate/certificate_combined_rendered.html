@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration Certificate</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 8pt;
+            font-weight: bold;
+            line-height: 1.2;
+            color: #000;
+            background: #f5f5f5;
+            padding: 5px;
+        }
+
+        .page {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            padding: 0 10mm; /* Left and right margins: 1cm each */
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            page-break-after: always;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Prevent any overflow beyond page boundaries */
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+                margin: 0;
+            }
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 0 10mm; /* Left and right margins: 1cm each */
+                width: 210mm;
+                height: 297mm;
+                overflow: hidden;
+            }
+            .header {
+                height: 50mm !important; /* Enforce exactly 5cm in print */
+                max-height: 50mm !important;
+            }
+            .footer {
+                height: 30mm !important; /* Enforce exactly 3cm in print */
+                max-height: 30mm !important;
+            }
+            .content-wrapper {
+                max-height: calc(297mm - 50mm - 30mm) !important; /* Enforce main body boundaries */
+            }
+        }
+
+        .header {
+            height: 50mm; /* Exactly 5cm header area */
+            max-height: 50mm; /* Ensure it doesn't exceed 5cm */
+            padding: 0;
+            flex-shrink: 0;
+            overflow: hidden; /* Prevent content overflow */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex: 1;
+            border-bottom: 2px solid #622819;
+            padding: 3mm 0 0 0; /* Add padding at top to prevent logos touching top edge */
+            margin-bottom: 0;
+            box-sizing: border-box;
+            min-height: 0;
+        }
+
+        .header-bottom {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+            padding: 1px 0 0 0;
+            margin-top: 0;
+            box-sizing: border-box;
+            height: auto;
+            min-height: fit-content;
+        }
+
+        .content-wrapper {
+            flex: 1;
+            overflow: hidden;
+            padding: 0;
+            min-height: 0; /* Allow flexbox to shrink if needed */
+            max-height: calc(297mm - 50mm - 30mm); /* Main body: 297mm - 50mm (header) - 30mm (footer) = 217mm */
+            /* Main body area: between 5cm header and 3cm footer */
+            /* Available height: 297mm - 50mm (header) - 30mm (footer) = 217mm */
+            box-sizing: border-box;
+        }
+
+        .logo-left {
+            width: 33.33%;
+            height: auto;
+            min-height: 30mm; /* Increased minimum height for larger logos */
+            max-height: calc(100% - 5mm); /* Account for top padding and bottom margin */
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6pt;
+            color: #999;
+            overflow: hidden;
+            box-sizing: border-box;
+            margin-bottom: 2mm; /* Add margin at bottom to prevent touching horizontal line */
+        }
+
+        .logo-right {
+            width: 33.33%;
+            height: auto;
+            min-height: 30mm; /* Increased minimum height for larger logos */
+            max-height: calc(100% - 5mm); /* Account for top padding and bottom margin */
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 6pt;
+            color: #999;
+            overflow: hidden;
+            margin-left: auto;
+            margin-bottom: 2mm; /* Add margin at bottom to prevent touching horizontal line */
+            box-sizing: border-box;
+        }
+
+        .header-center {
+            flex: 1;
+            text-align: center;
+            margin: 0 10px;
+            height: auto;
+            min-height: 30px;
+            max-height: 40mm; /* Limit logo area height */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
+        .header-center h1 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .header-center .cert-number {
+            font-size: 9pt;
+            font-weight: bold;
+        }
+
+        .certificate-title {
+            text-align: center;
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 0;
+            letter-spacing: 1px;
+            line-height: 1.2;
+            padding: 2px 0;
+            /* This will be used in the header-bottom, positioned just below the horizontal line */
+        }
+
+        .page-number {
+            text-align: right;
+            font-size: 7pt;
+            margin-bottom: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+            font-size: 7pt;
+            border: 1px solid #000;
+        }
+
+        table td {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            vertical-align: middle;
+            text-align: center;
+            background-color: white;
+        }
+
+        table th {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        table thead th {
+            background-color: #e8e8e8;
+            border-bottom: 2px solid #000;
+        }
+
+        .label-cell {
+            font-weight: bold;
+            width: 30%;
+            background-color: #f9f9f9;
+            text-align: left;
+        }
+
+        .colon-cell {
+            width: 1%;
+            padding: 3px 1px !important;
+            text-align: center;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .value-cell {
+            width: auto;
+            background-color: white;
+            text-align: left;
+        }
+
+        .value-cell:empty::before {
+            content: "\00a0";
+        }
+
+        .two-col-table td {
+            width: 50%;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 9pt;
+            margin: 8px 0 5px 0;
+            padding: 4px 6px;
+            background-color: #e8e8e8;
+            border: 1px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .footer {
+            margin-top: auto;
+            height: 30mm; /* Exactly 3cm footer area */
+            max-height: 30mm; /* Ensure it doesn't exceed 3cm */
+            padding: 0;
+            border-top: 2px solid #622819;
+            font-size: 8pt;
+            text-align: center;
+            flex-shrink: 0;
+            overflow: hidden; /* Prevent content overflow */
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .footer-company {
+            font-weight: bold;
+            font-size: 9pt; /* 1 size bigger than footer default 8pt */
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .footer-address {
+            margin-bottom: 2px;
+            line-height: 1.2;
+        }
+
+        .footer-contact {
+            margin-bottom: 0;
+            line-height: 1.2;
+        }
+
+        .qr-code {
+            width: 40px;
+            height: 40px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5pt;
+            color: #999;
+            position: absolute;
+            bottom: 5mm; /* Position relative to page bottom, within footer area */
+            right: 5mm;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        .signature-section {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 200px;
+            height: 60px;
+            border-bottom: 2px solid #000;
+            margin-top: 40px;
+            position: relative;
+        }
+
+        .signature-box::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            border-bottom: 1px solid #000;
+        }
+
+        .notes {
+            font-size: 6pt;
+            margin-top: 8px;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .notes ul {
+            margin-left: 15px;
+            margin-top: 3px;
+        }
+
+        .notes li {
+            margin-bottom: 2px;
+        }
+
+        .math-symbol {
+            font-style: italic;
+        }
+
+        .page-number {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .field-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .colon-separator {
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        /* Form-like styling */
+        .form-field {
+            margin: 8px 0;
+        }
+
+        .form-section {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        /* Ensure proper spacing for form elements */
+        table tr {
+            border: 1px solid #000;
+        }
+
+        /* Better table styling for form appearance */
+        table tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+
+        table tbody tr:hover td {
+            background-color: #f0f0f0;
+        }
+
+        /* Better alignment for form fields */
+        .header-center h1 {
+            letter-spacing: 2px;
+        }
+
+        /* Ensure all borders are visible */
+        table, table td, table th {
+            border: 1px solid #000 !important;
+        }
+
+        /* Better spacing in tables */
+        table td:empty {
+            min-height: 15px;
+        }
+
+        /* Form input-like appearance for value cells */
+        .value-cell {
+            min-height: 16px;
+        }
+
+        /* Improve readability */
+        .notes {
+            border: 1px solid #ddd;
+            padding: 6px;
+            background-color: #f9f9f9;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    
+<!-- PAGE 1 -->
+<div class="page">
+    <div class="header">
+        <div class="header-top">
+            <div class="logo-left">
+                <!-- Logo placeholder - left -->
+                
+                <img src="logo_left.png" alt="Logo Left" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+            <div class="logo-right">
+                <!-- Logo placeholder - right -->
+                
+                <img src="logo_right.png" alt="Logo Right" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+        </div>
+        <div class="header-bottom">
+            <div class="certificate-title">CALIBRATION CERTIFICATE</div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+    <div class="page-number">Page 1 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">NEPL ID</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">NEPL26001-1</td>
+            <td class="label-cell" style="border: none;">Recommended Cal Due Date</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">ULR No.</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date Of Issue:</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell">Field of Parameter</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell" style="width: 50%;">Customer Name & Address :</td>
+            <td class="label-cell" colspan="3">Customer Reference:</td>
+        </tr>
+        <tr>
+            <td class="value-cell" rowspan="4">Envision<br>Che</td>
+            <td class="label-cell">Reference DC No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">232343</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Reference No Date</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">30-01-2026</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Date of Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">30-01-2026</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Status of item on Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th colspan="6">Device Under Calibration :</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td class="label-cell">Nomenclature</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">Hydraulic Torque Wrench</td>
+            <td class="label-cell">Units of measurement</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">Nm</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Make/Model</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">ENERPAC / Enerpac / S3000X</td>
+            <td class="label-cell">Calibration Mode</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Type/Classification</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"> Type I Class C</td>
+            <td class="label-cell">Place of Calibration</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">In Lab</td>
+        </tr>
+        <tr>
+            <td class="label-cell">SI No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">12345</td>
+            <td class="label-cell">Resolution of the pressure gauge</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Torque Range</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">380 - 4373 Nm</td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div style="margin: 5px 0 10px 0; white-space: nowrap; font-size: 7pt; border: 1px solid #000; padding: 5px;">
+        <strong>Calibration Procedure :</strong> Done as per NEPL Ref: CP .No 02 in accordance with ISO/IEC :17025:2017, ISO :6789-1 & 2:2017
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Reference Standard Details</th>
+                <th>Standard 1</th>
+                <th>Standard 2</th>
+                <th>Standard 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="label-cell">Nomenclature</td>
+                <td>TORQUE TRANSDUCER (100 - 1500 Nm)</td>
+                <td>TORQUE TRANSDUCER (1000 - 40000 Nm)</td>
+                <td>DIGITAL PRESSURE GAUGE 1000 bar</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Manufacturer</td>
+                <td>NORBAR, UK</td>
+                <td>NORBAR, UK</td>
+                <td>MASS</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Model/serial No</td>
+                <td>50676.LOG/169590/148577</td>
+                <td>50781.LOG / 201062 / 148577</td>
+                <td>MG301 / 25.CI.017</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Uncertainty</td>
+                <td>0.15 %</td>
+                <td>0.16 %</td>
+                <td>0.39 %</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Certificate No</td>
+                <td>SCPL/CC/1289/07/2024-2025</td>
+                <td>SCPL/CC/3685/03/2023-2024</td>
+                <td>NEPL / C / 2025 / 98-9</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Calibration Valid Upto</td>
+                <td>25-07-2026</td>
+                <td>13-03-2026</td>
+                <td>25-03-2026</td>
+            </tr>
+            <tr>
+                <td class="label-cell">Traceability</td>
+                <td>Traceable to NABL Accredited Lab No. CC-2874</td>
+                <td>Traceable to NABL Accredited Lab No. CC-2874</td>
+                <td>Traceable to NABL Accredited Lab No. CC-3217</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="margin-top: 5px;">
+        <tr>
+            <td class="label-cell">Environmental condition:</td>
+            <td class="label-cell">Temp</td>
+            <td class="value-cell" style="text-align: center;">23.0 °C</td>
+            <td class="label-cell">Humidity</td>
+            <td class="value-cell" style="text-align: center;">55%</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+
+    <div class="notes">
+        <ul>
+            <li>All Calibrations are traceable to National/International standards as required in ISO/IEC 17025</li>
+            <li>This Certificate refers only to the item calibrated and shall not be reproduced except in full, without approval of the Laboratory, Nextage Engineering Pvt Ltd. Bangalore - 560043.</li>
+            <li>Results reported are valid at the time of and under the stated conditions of measurement.</li>
+            <li>Conformity Statement is given only when requested by the customer as per the Decision Rule applied.</li>
+        </ul>
+        <div class="qr-code">
+            <!-- QR Code -->
+            <img src="qr_code_certficate_1.png" alt="QR Code" style="max-width: 100%; max-height: 100%;">
+        </div>
+    </div>
+    </div>
+
+    <div class="footer">
+        <div class="footer-company">NEXTAGE ENGINEERING PRIVATE LIMITED</div>
+        <div class="footer-address">GF-01, Emerald Icon, #104, 5BC, III Block, HRBR Layout, Kalyan Nagar, Bangalore - 560043</div>
+        <div class="footer-contact">Ph: 9606957683/84, E-mail: next.info@nextelengg.com Web: www.nextelengg.com CIN No. U29100KA2019PTC127799</div>
+    </div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page">
+    <div class="header">
+        <div class="header-top">
+            <div class="logo-left">
+                <!-- Logo placeholder - left -->
+                
+                <img src="logo_left.png" alt="Logo Left" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+            <div class="logo-right">
+                <!-- Logo placeholder - right -->
+                
+                <img src="logo_right.png" alt="Logo Right" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+        </div>
+        <div class="header-bottom">
+            <div class="certificate-title">CALIBRATION CERTIFICATE</div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+    <div class="page-number">Page 2 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+    </table>
+
+    <div class="section-title">Calibration Result</div>
+
+    <div class="section-title" style="margin-top: 20px;">A. Repeatability</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Set Pressure</th>
+                <th>Target Value X<sub>a</sub></th>
+                <th>Reference Value X<sub>r</sub></th>
+                <th>Measurement error a<sub>s</sub> = X<sub>a</sub> - X<sub>r</sub></th>
+                <th>Relative Measurement error a<sub>s</sub></th>
+                <th colspan="2">Repeatability error b<sub>re</sub></th>
+            </tr>
+            <tr>
+                <th>bar</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in %</th>
+                <th>Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            
+            <tr>
+                <td rowspan="5">150.0</td>
+                <td rowspan="5">951.0</td>
+                <td>150.0</td>
+                <td>-801.0</td>
+                <td>-84.23</td>
+                <td rowspan="5">2.4</td>
+                <td rowspan="5">1.61</td>
+            </tr>
+            
+            <tr>
+                <td>150.0</td>
+                <td>-801.0</td>
+                <td>-84.23</td>
+            </tr>
+            
+            <tr>
+                <td>150.0</td>
+                <td>-801.0</td>
+                <td>-84.23</td>
+            </tr>
+            
+            <tr>
+                <td>150.0</td>
+                <td>-801.0</td>
+                <td>-84.23</td>
+            </tr>
+            
+            <tr>
+                <td>144.0</td>
+                <td>-807.0</td>
+                <td>-84.86</td>
+            </tr>
+            
+            
+            
+            <tr>
+                <td rowspan="5">420.0</td>
+                <td rowspan="5">2662.0</td>
+                <td>400.0</td>
+                <td>-2262.0</td>
+                <td>-84.97</td>
+                <td rowspan="5">8.0</td>
+                <td rowspan="5">1.98</td>
+            </tr>
+            
+            <tr>
+                <td>400.0</td>
+                <td>-2262.0</td>
+                <td>-84.97</td>
+            </tr>
+            
+            <tr>
+                <td>400.0</td>
+                <td>-2262.0</td>
+                <td>-84.97</td>
+            </tr>
+            
+            <tr>
+                <td>400.0</td>
+                <td>-2262.0</td>
+                <td>-84.97</td>
+            </tr>
+            
+            <tr>
+                <td>420.0</td>
+                <td>-2242.0</td>
+                <td>-84.22</td>
+            </tr>
+            
+            
+            
+            <tr>
+                <td rowspan="5">690.0</td>
+                <td rowspan="5">4373.0</td>
+                <td>700.0</td>
+                <td>-3673.0</td>
+                <td>-83.99</td>
+                <td rowspan="5">20.0</td>
+                <td rowspan="5">2.82</td>
+            </tr>
+            
+            <tr>
+                <td>700.0</td>
+                <td>-3673.0</td>
+                <td>-83.99</td>
+            </tr>
+            
+            <tr>
+                <td>700.0</td>
+                <td>-3673.0</td>
+                <td>-83.99</td>
+            </tr>
+            
+            <tr>
+                <td>700.0</td>
+                <td>-3673.0</td>
+                <td>-83.99</td>
+            </tr>
+            
+            <tr>
+                <td>750.0</td>
+                <td>-3623.0</td>
+                <td>-82.85</td>
+            </tr>
+            
+            
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">B. Reproducability</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Target Value X<sub>a</sub></th>
+                <th>Series-1 Mean Value</th>
+                <th>Series-2 Mean Value</th>
+                <th>Series-3 Mean Value</th>
+                <th>Series-4 Mean Value</th>
+                <th colspan="2">Reproducability error b<sub>rep</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td>951.0</td>
+                <td>948.8</td>
+                <td>956.0</td>
+                <td>952.0</td>
+                <td>953.8</td>
+                <td>7.2</td>
+                <td>0.76</td>
+            </tr>
+            
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">C. Geometric effect of the output drive of the torque tool</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Target Value X<sub>a</sub></th>
+                <th>Position 0° Mean Value</th>
+                <th>Position 90° Mean Value</th>
+                <th>Position 180° Mean Value</th>
+                <th>Position 270° Mean Value</th>
+                <th colspan="2">Error due to output drive b<sub>od</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td>951.0</td>
+                <td>953.8</td>
+                <td>955.6</td>
+                <td>951.4</td>
+                <td>952.8</td>
+                <td>4.2</td>
+                <td>0.44</td>
+            </tr>
+            
+        </tbody>
+    </table>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+    </div>
+
+    <div class="footer">
+        <div class="footer-company">NEXTAGE ENGINEERING PRIVATE LIMITED</div>
+        <div class="footer-address">GF-01, Emerald Icon, #104, 5BC, III Block, HRBR Layout, Kalyan Nagar, Bangalore - 560043</div>
+        <div class="footer-contact">Ph: 9606957683/84, E-mail: next.info@nextelengg.com Web: www.nextelengg.com CIN No. U29100KA2019PTC127799</div>
+    </div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page">
+    <div class="header">
+        <div class="header-top">
+            <div class="logo-left">
+                <!-- Logo placeholder - left -->
+                
+                <img src="logo_left.png" alt="Logo Left" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+            <div class="logo-right">
+                <!-- Logo placeholder - right -->
+                
+                <img src="logo_right.png" alt="Logo Right" style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: transparent;">
+                
+            </div>
+        </div>
+        <div class="header-bottom">
+            <div class="certificate-title">CALIBRATION CERTIFICATE</div>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+    <div class="page-number">Page 3 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+    </table>
+
+    <div class="section-title">D. Variation of interface between the tool and the calibration system</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Target Value X<sub>a</sub></th>
+                <th>Series-1 Mean Value</th>
+                <th>Series-2 Mean Value</th>
+                <th>Series-3 Mean Value</th>
+                <th>Series-4 Mean Value</th>
+                <th colspan="2">Error due to Interface b<sub>int</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td>951.0</td>
+                <td>958.1</td>
+                <td>952.8</td>
+                <td>956.0</td>
+                <td>957.0</td>
+                <td>5.3</td>
+                <td>0.56</td>
+            </tr>
+            
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">E. Variation due to Loading point</div>
+    <table>
+        <thead>
+            <tr>
+                <th>SET TORQUE</th>
+                <th>POSITION</th>
+                <th>Mean Value</th>
+                <th colspan="2">Error due to Loading point b<sub>l</sub></th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th></th>
+                <th>Nm</th>
+                <th>in Nm</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+            <tr>
+                <td rowspan="2">951.0</td>
+                <td>-10mm</td>
+                <td>954.1</td>
+                <td rowspan="2">0.6</td>
+                <td rowspan="2">0.06</td>
+            </tr>
+            <tr>
+                <td>+10mm</td>
+                <td>953.5</td>
+            </tr>
+            
+        </tbody>
+    </table>
+
+    <div class="section-title" style="margin-top: 20px;">F. Measurement Uncertainties</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Calibration Value X<sub>a</sub></th>
+                <th>Average Value of X<sub>a</sub></th>
+                <th>Mean Value of the error</th>
+                <th>Relative expanded measurement uncertainty W</th>
+                <th>Max. value of the calibration device measurement error</th>
+                <th>Relative measurement uncertainty interval W'</th>
+            </tr>
+            <tr>
+                <th>Nm</th>
+                <th>Nm</th>
+                <th>in %</th>
+                <th>in %</th>
+                <th>in %</th>
+                <th>in %</th>
+            </tr>
+        </thead>
+        <tbody>
+            
+        </tbody>
+    </table>
+
+    <div style="margin-top: 15px; font-size: 8pt; border: 1px solid #000; padding: 8px; background-color: #f9f9f9;">
+        The Estimated Uncertainty of Measurement associated with the results is calculated at a confidence level of 95% approximately with a coverage factor k=2
+    </div>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+    </div>
+
+    <div style="text-align: center; margin-top: 30px; font-weight: bold;">
+        *** END OF CERTIFICATE ***
+    </div>
+
+    <div class="footer">
+        <div class="footer-company">NEXTAGE ENGINEERING PRIVATE LIMITED</div>
+        <div class="footer-address">GF-01, Emerald Icon, #104, 5BC, III Block, HRBR Layout, Kalyan Nagar, Bangalore - 560043</div>
+        <div class="footer-contact">Ph: 9606957683/84, E-mail: next.info@nextelengg.com Web: www.nextelengg.com CIN No. U29100KA2019PTC127799</div>
+    </div>
+</div>
+
+</body>
+</html>
