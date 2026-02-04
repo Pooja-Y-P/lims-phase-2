@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 # # Example connection (update with your DB)
 #DATABASE_URL="postgresql://postgres:Aimlsn%40321@localhost:5432/limsp1"
 # DATABASE_URL="postgresql://postgres:postgres@postgres:5432/limsdbp1"
-DATABASE_URL="postgresql://postgres:RAGHUhr1@localhost:5432/limslab3"
-#DATABASE_URL="postgresql://postgres:root@localhost:5432/lims_phase_2"
+# DATABASE_URL="postgresql://postgres:RAGHUhr1@localhost:5432/limslab3"
+DATABASE_URL="postgresql://postgres:root@localhost:5432/lims_phase_2"
 
 # Changes added to see in git commits
 #1

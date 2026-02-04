@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration Certificate</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-weight: bold;
+        }
+
+        body {
+            font-family: 'Aptos', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 8pt;
+            font-weight: bold;
+            line-height: 1.2;
+            color: #000;
+            background: #f5f5f5;
+            padding: 5px;
+        }
+
+        .page {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            padding: 0 20mm;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            page-break-after: always;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 0 20mm;
+                width: 210mm;
+                height: 297mm;
+            }
+        }
+
+        .content-wrapper {
+            flex: 1;
+            overflow: hidden;
+            padding: 0;
+        }
+
+        .certificate-title {
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            margin: 8px 0 8px 0;
+            letter-spacing: 1px;
+        }
+
+        .page-number {
+            text-align: right;
+            font-size: 7pt;
+            margin-bottom: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+            font-size: 7pt;
+            border: 1px solid #000;
+        }
+
+        table td {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            vertical-align: middle;
+            text-align: center;
+            background-color: white;
+        }
+
+        table th {
+            padding: 3px 5px;
+            border: 1px solid #000;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        table thead th {
+            background-color: #e8e8e8;
+            border-bottom: 2px solid #000;
+        }
+
+        .label-cell {
+            font-weight: bold;
+            width: 30%;
+            background-color: #f9f9f9;
+            text-align: left;
+        }
+
+        .colon-cell {
+            width: 1%;
+            padding: 3px 1px !important;
+            text-align: center;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .value-cell {
+            width: auto;
+            background-color: white;
+            text-align: left;
+        }
+
+        .value-cell:empty::before {
+            content: "\00a0";
+        }
+
+        .two-col-table td {
+            width: 50%;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 9pt;
+            margin: 8px 0 5px 0;
+            padding: 4px 6px;
+            background-color: #e8e8e8;
+            border: 1px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .qr-code {
+            width: 40px;
+            height: 40px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5pt;
+            color: #999;
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            overflow: hidden;
+        }
+
+        .signature-section {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 200px;
+            height: 60px;
+            border-bottom: 2px solid #000;
+            margin-top: 40px;
+            position: relative;
+        }
+
+        .signature-box::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            border-bottom: 1px solid #000;
+        }
+
+        .notes {
+            font-size: 6pt;
+            margin-top: 8px;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .notes ul {
+            margin-left: 15px;
+            margin-top: 3px;
+        }
+
+        .notes li {
+            margin-bottom: 2px;
+        }
+
+        .math-symbol {
+            font-style: italic;
+        }
+
+        .page-number {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .field-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .colon-separator {
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        /* Form-like styling */
+        .form-field {
+            margin: 8px 0;
+        }
+
+        .form-section {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        /* Ensure proper spacing for form elements */
+        table tr {
+            border: 1px solid #000;
+        }
+
+        /* Better table styling for form appearance */
+        table tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+
+        table tbody tr:hover td {
+            background-color: #f0f0f0;
+        }
+
+        /* Ensure all borders are visible */
+        table, table td, table th {
+            border: 1px solid #000 !important;
+        }
+
+        /* Better spacing in tables */
+        table td:empty {
+            min-height: 15px;
+        }
+
+        /* Form input-like appearance for value cells */
+        .value-cell {
+            min-height: 16px;
+        }
+
+        /* Improve readability */
+        .notes {
+            border: 1px solid #ddd;
+            padding: 6px;
+            background-color: #f9f9f9;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    
+<div class="page">
+    <!-- Header gap - reserved space for letterhead (10mm top + 80px logo + 5px bottom + 8px margin) -->
+    <div style="padding: 10mm 0 5px 0; margin-bottom: 8px; flex-shrink: 0; min-height: 80px; box-sizing: border-box;"></div>
+
+    <div class="content-wrapper">
+    <div class="certificate-title">CALIBRATION CERTIFICATE</div>
+
+    <div class="page-number">Page 1 of 3</div>
+
+    <table style="border: 1px solid #000;">
+        <tr>
+            <td class="label-cell" style="border: none;">Certificate No</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date of Calibration</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">NEPL ID</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;">NEPL26013-1</td>
+            <td class="label-cell" style="border: none;">Recommended Cal Due Date</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+        <tr>
+            <td class="label-cell" style="border: none;">ULR No.</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+            <td class="label-cell" style="border: none;">Date Of Issue:</td>
+            <td class="colon-cell" style="border: none;">:</td>
+            <td class="value-cell" style="border: none;"></td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell">Field of Parameter</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell" style="width: 50%;">Customer Name & Address :</td>
+            <td class="label-cell" colspan="3">Customer Reference:</td>
+        </tr>
+        <tr>
+            <td class="value-cell" rowspan="4"><br></td>
+            <td class="label-cell">Reference DC No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Reference No Date</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Date of Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Status of item on Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <table>
+        <thead>
+            <tr>
+                <th colspan="6">Device Under Calibration :</th>
+            </tr>
+        </thead>
+        <tbody>
+        <tr>
+            <td class="label-cell">Nomenclature</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">Hydraulic Torque Wrench</td>
+            <td class="label-cell">Units of measurement</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Make/Model</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">HYTORC / HYTORC/ VERSA 4</td>
+            <td class="label-cell">Calibration Mode</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Type/Classification</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"> Type I Class C</td>
+            <td class="label-cell">Place of Calibration</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">In Lab</td>
+        </tr>
+        <tr>
+            <td class="label-cell">SI No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">1</td>
+            <td class="label-cell">Resolution of the pressure gauge</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Torque Range</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">887 - 6104 Nm</td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div style="margin: 5px 0 10px 0; white-space: nowrap; font-size: 7pt; border: 1px solid #000; padding: 5px;">
+        <strong>Calibration Procedure :</strong> Done as per NEPL Ref: CP .No 02 in accordance with ISO/IEC :17025:2017, ISO :6789-1 & 2:2017
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Reference Standard Details</th>
+                <th>Standard 1</th>
+                <th>Standard 2</th>
+                <th>Standard 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="label-cell">Nomenclature</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Manufacturer</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Model/serial No</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Uncertainty</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Certificate No</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Calibration Valid Upto</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Traceability</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="margin-top: 5px;">
+        <tr>
+            <td class="label-cell">Environmental condition:</td>
+            <td class="label-cell">Temp</td>
+            <td class="value-cell" style="text-align: center;"> °C</td>
+            <td class="label-cell">Humidity</td>
+            <td class="value-cell" style="text-align: center;">%</td>
+        </tr>
+    </table>
+
+    <div style="margin-top: 15px; margin-bottom: 15px; display: flex; justify-content: space-between;">
+        <div style="flex: 1;">
+            <div style="margin-bottom: 3px;"><strong>Checked By</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Calibration Engineer</strong></div>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <div style="margin-bottom: 3px;"><strong>Authorised Signatory</strong></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="height: 25px; margin-bottom: 3px;"></div>
+            <div style="margin-top: 3px;"><strong>Ramesh Ramakrishna</strong></div>
+        </div>
+    </div>
+
+    <div class="notes">
+        <ul>
+            <li>All Calibrations are traceable to National/International standards as required in ISO/IEC 17025</li>
+            <li>This Certificate refers only to the item calibrated and shall not be reproduced except in full, without approval of the Laboratory, Nextage Engineering Pvt Ltd. Bangalore - 560043.</li>
+            <li>Results reported are valid at the time of and under the stated conditions of measurement.</li>
+            <li>Conformity Statement is given only when requested by the customer as per the Decision Rule applied.</li>
+        </ul>
+        <div class="qr-code">
+            <!-- QR Code -->
+            <img src="qr_code_certficate_1.png" alt="QR Code" style="max-width: 100%; max-height: 100%;">
+        </div>
+    </div>
+    </div>
+
+    <!-- Footer gap - reserved space for letterhead -->
+    <div style="margin-top: auto; padding: 8px 0 10mm 0; flex-shrink: 0;"></div>
+</div>
+
+</body>
+</html>

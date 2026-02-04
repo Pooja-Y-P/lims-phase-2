@@ -26,6 +26,7 @@ interface EquipmentDetail {
   serial_no: string;
   quantity: number;
   range?: string;
+  unit?: string;
   srf_equipment?: SrfEquipmentDetail | null;
 }
 
@@ -98,6 +99,22 @@ const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
 };
 
 const getTodayDateString = (): string => new Date().toISOString().split("T")[0];
+
+// Function to fetch unit from manufacturer specs
+// FIX: Removed generic type from .get() call since axiosAuth is typed as 'any'
+const fetchUnitForMakeModel = async (make: string, model: string, axiosAuth: any): Promise<string> => {
+  if (!make || !model) return '';
+  try {
+    const response = await axiosAuth.get(
+      `staff/inwards/manufacturer/range`,
+      { params: { make, model } }
+    );
+    return response.data.unit || '';
+  } catch (error) {
+    console.error("Failed to fetch unit", error);
+    return '';
+  }
+};
 
 export const SrfDetailPage: React.FC = () => {
   const { srfId: paramSrfId } = useParams<{ srfId: string }>();
@@ -190,10 +207,25 @@ export const SrfDetailPage: React.FC = () => {
         const data = response.data;
         const rawData = data as any;
 
-        data.inward?.equipments?.forEach((eq) => {
+        // Auto-populate unit for each equipment if not already set
+        for (const eq of (data.inward?.equipments || [])) {
           if (!eq.srf_equipment) eq.srf_equipment = {};
           if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "";
-        });
+          
+          // Auto-populate unit from equipment or manufacturer specs if not set
+          if (!eq.srf_equipment.unit && eq.make && eq.model) {
+            // First try to use unit from inward equipment
+            if ((eq as any).unit) {
+              eq.srf_equipment.unit = (eq as any).unit;
+            } else {
+              // Otherwise fetch from manufacturer specs
+              const unit = await fetchUnitForMakeModel(eq.make, eq.model, axiosAuth);
+              if (unit) {
+                eq.srf_equipment.unit = unit;
+              }
+            }
+          }
+        }
 
         const companyName = data.customer_name || data.inward?.customer?.customer_details || "";
         const contactPerson = data.contact_person || data.inward?.customer?.contact_person || "";
@@ -254,10 +286,25 @@ export const SrfDetailPage: React.FC = () => {
           );
           const inward = response.data;
 
-          inward.equipments?.forEach((eq) => {
+          // Auto-populate unit for each equipment if not already set
+          for (const eq of (inward.equipments || [])) {
             if (!eq.srf_equipment) eq.srf_equipment = {};
             if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "1";
-          });
+            
+            // Auto-populate unit from equipment or manufacturer specs if not set
+            if (!eq.srf_equipment.unit && eq.make && eq.model) {
+              // First try to use unit from inward equipment
+              if ((eq as any).unit) {
+                eq.srf_equipment.unit = (eq as any).unit;
+              } else {
+                // Otherwise fetch from manufacturer specs
+                const unit = await fetchUnitForMakeModel(eq.make, eq.model, axiosAuth);
+                if (unit) {
+                  eq.srf_equipment.unit = unit;
+                }
+              }
+            }
+          }
 
           const initialDate = inward.material_inward_date
             ? inward.material_inward_date.split("T")[0]
@@ -446,8 +493,6 @@ export const SrfDetailPage: React.FC = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [srfData, hasUserEdited, isEngineer, handleSaveSrf]);
-
-  const unitOptions = ["Nm", "lbs in", "lbs ft", "Kgf cm", "cNm", "g.cm", "Kgf m", "in lb", "ft lb", "lbf in", "lbf ft"];
 
   if (loading) return <div className="p-12 text-center text-gray-500">Loading SRF Details...</div>;
   if (error) return <div className="p-12 text-center text-red-600 bg-red-50 rounded-lg">Error: {error}</div>;
@@ -824,7 +869,15 @@ export const SrfDetailPage: React.FC = () => {
                     <td className="px-4 py-2 font-medium">{eq.model}</td>
                     <td className="px-4 py-2">{eq.serial_no}</td>
                     <td className="px-4 py-2">{eq.range}</td>
-                    <td className="px-2 py-1"><select className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "cursor-pointer bg-white" : "cursor-not-allowed bg-gray-100"}`} value={eq.srf_equipment?.unit || ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "unit", e.target.value)} disabled={!canEdit}><option value="">Select Unit</option>{unitOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}</select></td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={eq.srf_equipment?.unit || eq.unit || ""}
+                        className="block w-full rounded-lg border-gray-300 px-2 py-1 text-sm bg-gray-50 cursor-not-allowed"
+                        placeholder="Auto-filled from spec"
+                      />
+                    </td>
                     <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.no_of_calibration_points ?? ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "no_of_calibration_points", e.target.value)} /></td>
                     <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.mode_of_calibration || ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "mode_of_calibration", e.target.value)} /></td>
                   </tr>

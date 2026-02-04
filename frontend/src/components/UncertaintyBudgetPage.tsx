@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   Info,
   Table as TableIcon,
+  Plus,  // Imported for Decimal Control
+  Minus, // Imported for Decimal Control
 } from "lucide-react";
 
 // --- Interfaces matching Backend Schema ---
@@ -22,11 +24,11 @@ interface UncertaintyBudget {
   delta_p: number;
   wmd: number;
   wr: number;
-  wrep: number; // Usually Repeatability
+  wrep: number;
   wod: number;
   wint: number;
-  wl: number;   // Loading Point
-  wre: number;  // Usually Reproducibility
+  wl: number;
+  wre: number;
 
   // Final results
   combined_uncertainty: number;
@@ -41,7 +43,7 @@ interface UncertaintyBudget {
   
   // CMC Fields
   cmc: number;
-  cmc_absolute?: number; // Added based on requirement
+  cmc_absolute?: number;
   cmc_of_reading: number;
 
   final_wl: number;
@@ -56,6 +58,9 @@ const UncertaintyBudgetPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [budgets, setBudgets] = useState<UncertaintyBudget[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // --- NEW STATE: Decimal Places (Default 4) ---
+  const [decimalPlaces, setDecimalPlaces] = useState<number>(4);
 
   // --- LOGIC: Find the row with the HIGHEST Expanded Uncertainty ---
   const maxUncertaintyBudget = budgets.length > 0 
@@ -105,10 +110,17 @@ const UncertaintyBudgetPage: React.FC = () => {
     navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
   };
 
-  const fmt = (num: number | null | undefined, decimals: number = 4) => {
+  // --- UPDATED FORMATTER FUNCTION ---
+  // Uses state 'decimalPlaces' unless a specific override is passed
+  const fmt = (num: number | null | undefined, overrideDecimals?: number) => {
     if (num === undefined || num === null || isNaN(num)) return "-";
-    return Number(num).toFixed(decimals);
+    const decimalsToUse = overrideDecimals !== undefined ? overrideDecimals : decimalPlaces;
+    return Number(num).toFixed(decimalsToUse);
   };
+
+  // --- Handlers for Decimal Control ---
+  const increaseDecimals = () => setDecimalPlaces((prev) => Math.min(prev + 1, 8)); // Max 10
+  const decreaseDecimals = () => setDecimalPlaces((prev) => Math.max(prev - 1, 0));  // Min 0
 
   // --- Render States ---
   if (loading) {
@@ -157,7 +169,6 @@ const UncertaintyBudgetPage: React.FC = () => {
               <Calculator className="h-5 w-5" />
               <span className="text-2xl font-bold text-blue-900"><h1>Uncertainty Budget Report</h1></span>
             </div>
-            {/* <h1 className="text-2xl font-bold text-gray-900">Uncertainty Budget Analysis</h1> */}
             <p className="text-gray-500 text-sm mt-1">
               <span className="font-semibold">Inward ID:</span> {inwardId} <span className="mx-2 text-gray-300">|</span> 
               <span className="font-semibold">Equipment ID:</span> {equipmentId}
@@ -175,6 +186,31 @@ const UncertaintyBudgetPage: React.FC = () => {
                     <TableIcon className="h-5 w-5 text-gray-500" />
                     <h3 className="font-bold text-gray-800">ISO 6789 Uncertainty Budget</h3>
                 </div>
+
+                {/* --- NEW: DECIMAL CONTROLS --- */}
+                <div className="flex items-center gap-3 bg-white border border-gray-200 p-1.5 rounded-lg shadow-sm">
+                    <span className="text-xs font-bold text-gray-500 uppercase px-1">Decimals</span>
+                    <div className="flex items-center bg-gray-100 rounded-md">
+                        <button 
+                            onClick={decreaseDecimals}
+                            className="p-1.5 hover:bg-gray-200 text-gray-600 rounded-l-md transition-colors border-r border-gray-300"
+                            title="Decrease Decimal"
+                        >
+                            <Minus className="h-4 w-4" />
+                        </button>
+                        <span className="w-8 text-center text-sm font-bold text-blue-600">
+                            {decimalPlaces}
+                        </span>
+                        <button 
+                            onClick={increaseDecimals}
+                            className="p-1.5 hover:bg-gray-200 text-gray-600 rounded-r-md transition-colors border-l border-gray-300"
+                            title="Increase Decimal"
+                        >
+                            <Plus className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+
             </div>
             
             <div className="overflow-x-auto p-2">
@@ -275,10 +311,11 @@ const UncertaintyBudgetPage: React.FC = () => {
                             
                             return (
                                 
-                                <tr>
+                                <tr key={row.id}>
                                     {/* 1. Set Torque (Ts) */}
+                                    {/* Note: Set Torque usually doesn't need high precision, but using fmt for consistency unless you prefer '2' */}
                                     <td className={`${bodyCellClass} font-bold text-gray-900 bg-gray-50`}>
-                                        {fmt(row.set_torque_ts, 2)}
+                                        {fmt(row.set_torque_ts, 2)} 
                                     </td>
                                     
                                     {/* Inputs */}
@@ -294,7 +331,13 @@ const UncertaintyBudgetPage: React.FC = () => {
                                     
                                     {/* Results */}
                                     <td className={`${bodyCellClass} font-bold`}>{fmt(row.combined_uncertainty)}</td>
-                                    <td className={bodyCellClass}>{fmt(row.coverage_factor, 2)}</td>
+                                    
+                                    {/* Coverage factor is usually standard 2.00, but can now be adjusted if desired. 
+                                        If you want this strictly 2 decimals always, pass 2 as second arg. 
+                                        Currently set to follow the global decimal setting for uniformity. 
+                                    */}
+                                    <td className={bodyCellClass}>{fmt(row.coverage_factor)}</td>
+                                    
                                     <td className={`${bodyCellClass} font-bold text-blue-700`}>{fmt(row.expanded_uncertainty)}</td>
                                     <td className={`${bodyCellClass} font-bold text-blue-700`}>{fmt(row.expanded_un_nm)}</td>
                                     <td className={bodyCellClass}>{fmt(row.mean_measurement_error)}</td>

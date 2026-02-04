@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration Certificate</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #000;
+            background: #f5f5f5;
+            padding: 10px;
+        }
+
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 20mm;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            page-break-after: always;
+            position: relative;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .page {
+                box-shadow: none;
+                margin: 0;
+                padding: 20mm;
+                width: 210mm;
+                min-height: 297mm;
+            }
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+        }
+
+        .logo-left {
+            width: 80px;
+            height: 80px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            color: #999;
+            overflow: hidden;
+        }
+
+        .logo-right {
+            width: 80px;
+            height: 80px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            color: #999;
+            overflow: hidden;
+        }
+
+        .header-center {
+            flex: 1;
+            text-align: center;
+            margin: 0 20px;
+        }
+
+        .header-center h1 {
+            font-size: 18pt;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .header-center .cert-number {
+            font-size: 12pt;
+            font-weight: bold;
+        }
+
+        .certificate-title {
+            text-align: center;
+            font-size: 18pt;
+            font-weight: bold;
+            margin: 15px 0 20px 0;
+            text-decoration: underline;
+            letter-spacing: 1px;
+        }
+
+        .page-number {
+            text-align: right;
+            font-size: 9pt;
+            margin-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+            font-size: 9pt;
+            border: 1px solid #000;
+        }
+
+        table td {
+            padding: 5px 8px;
+            border: 1px solid #000;
+            vertical-align: middle;
+            text-align: center;
+            background-color: white;
+        }
+
+        table th {
+            padding: 5px 8px;
+            border: 1px solid #000;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        table thead th {
+            background-color: #e8e8e8;
+            border-bottom: 2px solid #000;
+        }
+
+        .label-cell {
+            font-weight: bold;
+            width: 30%;
+            background-color: #f9f9f9;
+            text-align: left;
+        }
+
+        .colon-cell {
+            width: 1%;
+            padding: 5px 2px !important;
+            text-align: center;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+
+        .value-cell {
+            width: auto;
+            background-color: white;
+            text-align: left;
+        }
+
+        .value-cell:empty::before {
+            content: "\00a0";
+        }
+
+        .two-col-table td {
+            width: 50%;
+        }
+
+        .section-title {
+            font-weight: bold;
+            font-size: 11pt;
+            margin: 18px 0 10px 0;
+            padding: 6px 8px;
+            background-color: #e8e8e8;
+            border: 1px solid #000;
+            border-bottom: 2px solid #000;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 2px solid #000;
+            font-size: 8pt;
+            text-align: center;
+        }
+
+        .footer-company {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .footer-address {
+            margin-bottom: 3px;
+        }
+
+        .footer-contact {
+            margin-bottom: 3px;
+        }
+
+        .qr-code {
+            width: 100px;
+            height: 100px;
+            background: #f0f0f0;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            color: #999;
+            margin: 10px auto;
+            overflow: hidden;
+        }
+
+        .signature-section {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 200px;
+            height: 60px;
+            border-bottom: 2px solid #000;
+            margin-top: 40px;
+            position: relative;
+        }
+
+        .signature-box::after {
+            content: "";
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            border-bottom: 1px solid #000;
+        }
+
+        .notes {
+            font-size: 8pt;
+            margin-top: 20px;
+            line-height: 1.6;
+        }
+
+        .notes ul {
+            margin-left: 20px;
+            margin-top: 5px;
+        }
+
+        .notes li {
+            margin-bottom: 3px;
+        }
+
+        .math-symbol {
+            font-style: italic;
+        }
+
+        .page-number {
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .field-label {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .colon-separator {
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        /* Form-like styling */
+        .form-field {
+            margin: 8px 0;
+        }
+
+        .form-section {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #fafafa;
+        }
+
+        /* Ensure proper spacing for form elements */
+        table tr {
+            border: 1px solid #000;
+        }
+
+        /* Better table styling for form appearance */
+        table tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+
+        table tbody tr:hover td {
+            background-color: #f0f0f0;
+        }
+
+        /* Better alignment for form fields */
+        .header-center h1 {
+            letter-spacing: 2px;
+        }
+
+        /* Ensure all borders are visible */
+        table, table td, table th {
+            border: 1px solid #000 !important;
+        }
+
+        /* Better spacing in tables */
+        table td:empty {
+            min-height: 20px;
+        }
+
+        /* Form input-like appearance for value cells */
+        .value-cell {
+            min-height: 22px;
+        }
+
+        /* Improve readability */
+        .notes {
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    
+<div class="page">
+    <div class="header">
+        <div class="logo-left">
+            <!-- Logo placeholder - left -->
+            
+            <span>Logo Left</span>
+            
+        </div>
+        <div class="header-center">
+            <h1>NEXTAGE</h1>
+            <div class="cert-number"></div>
+        </div>
+        <div class="logo-right">
+            <!-- Logo placeholder - right -->
+            
+            <span>Logo Right</span>
+            
+        </div>
+    </div>
+
+    <div class="page-number">Page 1 of 3</div>
+
+    <div class="certificate-title">CALIBRATION CERTIFICATE</div>
+
+    <table>
+        <tr>
+            <td class="label-cell">Certificate No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+            <td class="label-cell">Date of Calibration</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">NEPL ID</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">NEPL26013-1</td>
+            <td class="label-cell">Recommended Cal Due Date</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">ULR No.</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+            <td class="label-cell">Date Of Issue:</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <div style="margin: 10px 0;">
+        <strong>Field of Parameter :</strong> 
+    </div>
+
+    <table>
+        <tr>
+            <td class="label-cell" rowspan="2">Customer Name & Address :</td>
+            <td class="value-cell" colspan="2"></td>
+        </tr>
+        <tr>
+            <td class="value-cell" colspan="2"></td>
+        </tr>
+    </table>
+
+    <table>
+        <tr>
+            <td class="label-cell">Customer Reference:</td>
+            <td class="label-cell">Reference DC No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell"></td>
+            <td class="label-cell">Reference No Date</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell"></td>
+            <td class="label-cell">Date of Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell"></td>
+            <td class="label-cell">Status of Item on Receipt</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <div class="section-title">Device Under Calibration :</div>
+    <table>
+        <tr>
+            <td class="label-cell">Nomenclature</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">Hydraulic Torque Wrench</td>
+            <td class="label-cell">Units of measurement</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Make/Model</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">HYTORC / HYTORC/ VERSA 4</td>
+            <td class="label-cell">Calibration Mode</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Type/Classification</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"> Type I Class C</td>
+            <td class="label-cell">Place of Calibration</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">SI No</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">1</td>
+            <td class="label-cell">Resolution of the pressure gauge</td>
+            <td class="colon-cell"></td>
+            <td class="value-cell"></td>
+        </tr>
+        <tr>
+            <td class="label-cell">Torque Range</td>
+            <td class="colon-cell">:</td>
+            <td class="value-cell">887 - 6104 Nm</td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+            <td class="value-cell"></td>
+        </tr>
+    </table>
+
+    <div style="margin: 10px 0;">
+        <strong>Calibration Procedure :</strong> 
+    </div>
+
+    <div class="section-title">Reference Standard Details</div>
+    <table>
+        <thead>
+            <tr>
+                <th></th>
+                <th>Standard 1</th>
+                <th>Standard 2</th>
+                <th>Standard 3</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="label-cell">Nomenclature</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Manufacturer</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Model/serial No</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Uncertainty</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Certificate No</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Calibration Valid Upto</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="label-cell">Traceability</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="margin-top: 10px;">
+        <tr>
+            <td class="label-cell">Environmental condition:</td>
+            <td class="label-cell">Temp</td>
+            <td class="value-cell" style="text-align: center;"> °C</td>
+            <td class="label-cell">Humidity</td>
+            <td class="value-cell" style="text-align: center;">%</td>
+        </tr>
+    </table>
+
+    <div style="text-align: right; margin-top: 20px;">
+        <div class="signature-box"></div>
+        <div style="margin-top: 5px;"><strong>Authorised Signatory</strong></div>
+    </div>
+
+    <div class="notes">
+        <ul>
+            <li>All Calibrations are traceable to National/International standards as required in ISO/IEC 17025</li>
+            <li>This Certificate refers only to the item calibrated and shall not be reproduced except in full, without approval of the Laboratory, Nextage Engineering Pvt Ltd. Bangalore - 560043.</li>
+            <li>Results reported are valid at the time of and under the stated conditions of measurement.</li>
+            <li>Conformity Statement is given only when requested by the customer as per the Decision Rule applied.</li>
+        </ul>
+    </div>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <div class="qr-code">
+            <!-- QR Code placeholder -->
+            
+            <span>QR Code</span>
+            
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="footer-company">NEXTAGE ENGINEERING PRIVATE LIMITED</div>
+        <div class="footer-address">GF-01, Emerald Icon, #104, 5BC, III Block, HRBR Layout, Kalyan Nagar, Bangalore - 560043</div>
+        <div class="footer-contact">Ph: 9606957683/84, E-mail: next.info@nextelengg.com Web: www.nextelengg.com CIN No. U29100KA2019PTC127799</div>
+    </div>
+</div>
+
+</body>
+</html>

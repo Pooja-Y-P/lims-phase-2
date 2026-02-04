@@ -22,6 +22,7 @@ class InwardEquipment(Base):
     make = Column(String(255))
     model = Column(String(255))
     range = Column(String(255))
+    unit = Column(String(50))
     status = Column(String(50), default='pending')
     serial_no = Column(String(255))
     quantity = Column(Integer, default=1, nullable=False)

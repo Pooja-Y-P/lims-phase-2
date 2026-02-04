@@ -558,13 +558,13 @@ function ManufacturerSpecForm({ onBack, initialData }: ManufacturerSpecFormProps
     torque_60: '',
     torque_80: '',
     torque_100: '',
-    torque_unit: 'Nm',
+    torque_unit: '',
     pressure_20: '',
     pressure_40: '',
     pressure_60: '',
     pressure_80: '',
     pressure_100: '',
-    pressure_unit: 'bar',
+    pressure_unit: '',
     is_active: true
   });
 
@@ -577,9 +577,13 @@ function ManufacturerSpecForm({ onBack, initialData }: ManufacturerSpecFormProps
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
+    let finalValue: string | boolean = type === 'checkbox' ? checked : value;
+    if ((name === 'torque_unit' || name === 'pressure_unit') && typeof value === 'string') {
+      finalValue = value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+    }
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: finalValue
     }));
   };
 
@@ -718,11 +722,7 @@ function ManufacturerSpecForm({ onBack, initialData }: ManufacturerSpecFormProps
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   <span className="ml-3 text-sm font-medium text-gray-700">Show 40% & 80%</span>
                 </label>
-                <select name="torque_unit" value={formData.torque_unit} onChange={handleChange} className="p-1 text-sm border border-gray-300 rounded-md">
-                   <option value="Nm">Nm</option>
-                   <option value="lbf.ft">lbf.ft</option>
-                   <option value="kgf.m">kgf.m</option>
-                </select>
+                <input type="text" name="torque_unit" value={formData.torque_unit} onChange={handleChange} placeholder="e.g. Nm, lbf.ft" className="p-2 text-sm border border-gray-300 rounded-md w-28 bg-white" />
               </div>
            </div>
            <div className={`grid grid-cols-1 gap-6 ${showOptionalFields ? 'md:grid-cols-5' : 'md:grid-cols-3'}`}>
@@ -740,10 +740,7 @@ function ManufacturerSpecForm({ onBack, initialData }: ManufacturerSpecFormProps
               <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider flex items-center">
                   <Gauge size={16} className="mr-2 text-cyan-600" /> Pressure Values
               </h4>
-              <select name="pressure_unit" value={formData.pressure_unit} onChange={handleChange} className="p-1 text-sm border border-gray-300 rounded-md">
-                 <option value="bar">bar</option>
-                 <option value="psi">psi</option>
-              </select>
+              <input type="text" name="pressure_unit" value={formData.pressure_unit} onChange={handleChange} placeholder="e.g. bar, psi" className="p-2 text-sm border border-gray-300 rounded-md w-28 bg-white" />
            </div>
            <div className={`grid grid-cols-1 gap-6 ${showOptionalFields ? 'md:grid-cols-5' : 'md:grid-cols-3'}`}>
               <div><label className="block text-xs font-medium text-gray-500 mb-1">Pressure @ 20%</label><input type="number" name="pressure_20" value={formData.pressure_20} onChange={handleChange} className="w-full p-2.5 bg-white border border-gray-300 rounded-lg focus:border-blue-500" /></div>
