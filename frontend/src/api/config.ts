@@ -53,6 +53,7 @@ export const ENDPOINTS = {
     DIRECT_ACCESS: (id: number, token?: string) => 
       `/portal/direct-fir/${id}${token ? `?token=${token}` : ''}`,
     CUSTOMERS_DROPDOWN: `/portal/customers/dropdown`,
+    TRACK: `/portal/track`, // <--- ADDED THIS
   },
 
   // Common

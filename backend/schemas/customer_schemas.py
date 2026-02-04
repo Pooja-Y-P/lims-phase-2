@@ -100,3 +100,11 @@ class CustomerDropdownResponse(BaseModel):
     bill_to_address: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class TrackingResponse(BaseModel):
+    id: str
+    status: str
+    description: str
+    date: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)

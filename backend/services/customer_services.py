@@ -250,6 +250,60 @@ class CustomerPortalService:
             logger.error(f"Error submitting customer remarks: {str(e)}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to submit remarks")
 
+    # --- TRACKING METHODS ---
+    
+    def track_equipment_status(self, customer_id: int, query_str: str) -> Optional[Dict[str, Any]]:
+        """
+        Searches for equipment by NEPL ID or DC Number.
+        STRICT SECURITY: Only returns results if the associated Inward belongs to the requesting customer_id.
+        """
+        clean_query = query_str.strip()
+        
+        # Join InwardEquipment with Inward to check ownership
+        stmt = (
+            select(InwardEquipment, Inward)
+            .join(Inward, InwardEquipment.inward_id == Inward.inward_id)
+            .where(
+                and_(
+                    Inward.customer_id == customer_id,  # <--- SECURITY ENFORCEMENT
+                    or_(
+                        InwardEquipment.nepl_id.ilike(f"{clean_query}"), # Case-insensitive match for NEPL
+                        Inward.customer_dc_no.ilike(f"{clean_query}")    # Case-insensitive match for DC
+                    )
+                )
+            )
+            .order_by(InwardEquipment.updated_at.desc()) # Get most recent if duplicates exist
+        )
+
+        result = self.db.execute(stmt).first()
+
+        if not result:
+            return None
+
+        equipment, inward = result
+
+        # Determine which ID to display (if they searched by DC, show DC, else NEPL)
+        display_id = equipment.nepl_id
+        if inward.customer_dc_no and clean_query.lower() == inward.customer_dc_no.lower():
+            display_id = inward.customer_dc_no
+
+        # Format date safely
+        date_val = equipment.updated_at or inward.material_inward_date
+        formatted_date = "N/A"
+        if date_val:
+            # Handle both datetime and date objects
+            if isinstance(date_val, str):
+                 formatted_date = date_val
+            else:
+                 formatted_date = date_val.strftime("%d-%b-%Y")
+
+        return {
+            "id": display_id,
+            "status": (equipment.status or "Unknown").replace("_", " ").title(), # e.g. "calibration_completed" -> "Calibration Completed"
+            "description": equipment.material_description or f"{equipment.make or ''} {equipment.model or ''}".strip(),
+            "date": formatted_date
+        }
+
     # --- DIRECT ACCESS METHODS ---
     def get_fir_for_direct_access(self, inward_id: int, access_token: str = None) -> InwardForCustomer:
         return self.get_fir_for_customer_review(inward_id, customer_id=None)

@@ -7,11 +7,15 @@ import {
   Award,
   ClipboardList,
   Activity,
-  CheckCircle2,
-  Clock,
   ChevronLeft,
   FileText,
   AlertTriangle,
+  Search,
+  Download,
+  ArrowRight,
+  X,
+  Info,
+  Clock
 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -19,12 +23,13 @@ import { api } from '../api/config';
 import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
 import CustomerSrfDetailView from "../components/CustomerSrfDetailView"; 
 import CustomerSrfListView from "../components/CustomerSrfListView";
+// --- IMPORT THE NEW SEPARATE COMPONENT ---
+import TrackStatusPage from "../components/TrackStatusPage";
 
 // --- LOCAL TYPE DEFINITIONS ---
 interface FirForReview {
   inward_id: number;
   srf_no: string;
-  // Updated interface to allow optional or multiple date fields
   date?: string; 
   material_inward_date?: string;
   status: string;
@@ -56,12 +61,13 @@ const formatSafeDate = (dateStr?: string | null) => {
   });
 };
 
-// --- FIR List View Component ---
+// --- SUB-PAGES ---
+
 const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
     return (
         <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200">
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
                     <FileText className="h-8 w-8 text-orange-600" />
                     First Inspection Reports (FIRs)
                 </h2>
@@ -69,15 +75,17 @@ const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
                     <ChevronLeft className="h-4 w-4" /> Back to Dashboard
                 </Link>
             </div>
-            <div className="mb-6 p-4 bg-orange-50 border-l-4 border-orange-400 rounded-r-lg">
-                <div className="flex items-start">
-                    <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 mr-3" />
-                    <div>
-                        <h3 className="text-sm font-medium text-orange-800">Action Required</h3>
-                        <p className="mt-1 text-sm text-orange-700">The following inwards have completed first inspection. Please review and provide your feedback.</p>
+            {firs.length > 0 && (
+                <div className="mb-6 p-4 bg-orange-50 border-l-4 border-orange-400 rounded-r-lg">
+                    <div className="flex items-start">
+                        <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 mr-3" />
+                        <div>
+                            <h3 className="text-sm font-medium text-orange-800">Action Required</h3>
+                            <p className="mt-1 text-sm text-orange-700">The following inwards have completed first inspection. Please review and provide your feedback.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
             <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-100 text-slate-600 text-sm">
@@ -94,27 +102,22 @@ const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
                                 <td className="p-4 align-top font-medium text-slate-800">{fir.srf_no}</td>
                                 <td className="p-4 align-top">
                                     <span className="bg-orange-100 text-orange-800 text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1 w-fit">
-                                        <AlertTriangle className="h-3 w-3" /> Requires Your Review
+                                        <AlertTriangle className="h-3 w-3" /> Requires Review
                                     </span>
                                 </td>
                                 <td className="p-4 align-top text-slate-600">
-                                    {/* Use helper to format either material_inward_date or date */}
                                     {formatSafeDate(fir.material_inward_date || fir.date)}
                                 </td>
                                 <td className="p-4 align-top">
                                     <Link to={`/customer/fir-remarks/${fir.inward_id}`} className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 text-sm transition-colors">
-                                        <FileText className="h-4 w-4" /> Review & Add Remarks
+                                        <FileText className="h-4 w-4" /> Review
                                     </Link>
                                 </td>
                             </tr>
                         ))) : (
                             <tr>
                                 <td colSpan={4} className="p-12 text-slate-500 text-center">
-                                    <div className="flex flex-col items-center gap-3">
-                                        <CheckCircle2 className="h-12 w-12 text-green-400" />
-                                        <h3 className="text-lg font-medium">All Caught Up!</h3>
-                                        <p className="text-sm">No FIRs are currently waiting for your remarks.</p>
-                                    </div>
+                                    <p className="text-sm">No FIRs are currently waiting for your remarks.</p>
                                 </td>
                             </tr>
                         )}
@@ -125,89 +128,245 @@ const FirListView: React.FC<{ firs: FirForReview[] }> = ({ firs }) => {
     );
 };
 
+// --- PLACEHOLDER SUB-PAGES ---
+const ViewDeviationsPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-2xl font-bold mb-4">View Deviations</h2><Link to="/customer" className="text-blue-600">&larr; Back to Dashboard</Link></div>;
+const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-2xl font-bold mb-4">Certificates</h2><Link to="/customer" className="text-blue-600">&larr; Back to Dashboard</Link></div>;
 
-// --- Sub-pages ---
-const ViewDeviationsPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">View Deviations</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
-const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-md"><h2 className="text-3xl font-semibold">Certificates</h2><Link to="/customer">&larr; Back to Dashboard</Link></div>;
+// --- DASHBOARD COMPONENTS ---
 
-// --- Dashboard UI Components ---
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: number; description: string; gradient: string; bgGradient: string; }> = ({ icon, label, value, description, gradient, bgGradient }) => ( 
-    <div className={`relative bg-white rounded-2xl p-8 shadow-lg border border-gray-100 hover:shadow-xl group`}> 
-        <div className={`absolute inset-0 bg-gradient-to-r ${bgGradient} opacity-0 group-hover:opacity-100 transition-opacity`} /> 
-        <div className="relative z-10"> 
-            <div className="flex items-start justify-between mb-6"> 
-                <div className={`p-4 bg-gradient-to-r ${gradient} rounded-xl text-white shadow-lg`}>{icon}</div> 
-                <div className="text-4xl font-bold text-gray-900 group-hover:text-white">{value}</div> 
+// 1. Dismissible Portal Message Component
+const PortalMessage: React.FC<{
+    title: string;
+    message: string;
+    type?: 'warning' | 'info' | 'pending';
+    actionLabel?: string;
+    onAction?: () => void;
+}> = ({ title, message, type = 'warning', actionLabel, onAction }) => {
+    const [isVisible, setIsVisible] = useState(true);
+
+    if (!isVisible) return null;
+
+    let styles = { bg: '', border: '', textTitle: '', textBody: '', btnBg: '', icon: <div /> };
+    
+    switch (type) {
+        case 'warning':
+            styles = { bg: 'bg-orange-50', border: 'border-orange-200', textTitle: 'text-orange-900', textBody: 'text-orange-800', btnBg: 'bg-orange-600 hover:bg-orange-700', icon: <AlertTriangle className="h-6 w-6 text-orange-600 mt-1 flex-shrink-0" /> };
+            break;
+        case 'pending': 
+            styles = { bg: 'bg-yellow-50', border: 'border-yellow-200', textTitle: 'text-yellow-900', textBody: 'text-yellow-800', btnBg: 'bg-yellow-600 hover:bg-yellow-700', icon: <Clock className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" /> };
+            break;
+        case 'info':
+        default:
+            styles = { bg: 'bg-blue-50', border: 'border-blue-200', textTitle: 'text-blue-900', textBody: 'text-blue-800', btnBg: 'bg-blue-600 hover:bg-blue-700', icon: <Info className="h-6 w-6 text-blue-600 mt-1 flex-shrink-0" /> };
+            break;
+    }
+
+    return (
+        <div className={`${styles.bg} border ${styles.border} rounded-xl p-6 mb-4 shadow-sm relative transition-all duration-300`}>
+            <button 
+                onClick={() => setIsVisible(false)}
+                className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-black/5 transition-colors"
+                aria-label="Dismiss message"
+            >
+                <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-start gap-4 pr-8">
+                {styles.icon}
+                <div className="flex-1">
+                    <h3 className={`text-lg font-semibold ${styles.textTitle} mb-1`}>{title}</h3>
+                    <p className={`${styles.textBody} text-sm mb-3`}>{message}</p>
+                    {actionLabel && onAction && (
+                        <button 
+                            onClick={onAction}
+                            className={`${styles.btnBg} text-white px-4 py-2 rounded-lg font-semibold transition-colors text-sm`}
+                        >
+                            {actionLabel}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 2. Action Button
+const ActionButton: React.FC<{
+  label: string;
+  description: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  colorClasses: string;
+  badge?: number;
+}> = ({ label, description, icon, onClick, colorClasses, badge }) => (
+  <button
+    onClick={onClick}
+    className="group relative p-6 rounded-2xl text-left transition-all duration-300 transform hover:scale-[1.02] border border-gray-100 bg-white hover:border-blue-500 hover:shadow-xl shadow-md"
+  >
+    <div className="flex items-start">
+      <div
+        className={`p-3 rounded-xl text-white mr-4 shadow-lg ${colorClasses} group-hover:shadow-2xl transition-shadow duration-300 relative`}
+      >
+        {icon}
+        {badge != null && badge > 0 && (
+          <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center font-bold border-2 border-white">
+            {badge > 99 ? '99+' : badge}
+          </span>
+        )}
+      </div>
+      <div className="flex-1">
+        <h3 className="text-xl font-bold text-gray-900 mb-1">{label}</h3>
+        <p className="text-gray-600 text-sm">{description}</p>
+      </div>
+      <ArrowRight className="ml-4 h-6 w-6 text-gray-400 group-hover:text-blue-600 transition-colors duration-300" />
+    </div>
+  </button>
+);
+
+// 3. Stat Card
+const StatCard: React.FC<{ 
+    icon: React.ReactNode; 
+    label: string; 
+    value: number; 
+    description: string; 
+    colorClass: string; 
+}> = ({ icon, label, value, description, colorClass }) => ( 
+    <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100 flex flex-col justify-between h-36 hover:shadow-lg transition-shadow"> 
+        <div className="flex justify-between items-start"> 
+            <div className={`p-3 rounded-xl text-white ${colorClass} shadow-md`}>
+                {icon}
             </div> 
-            <div> 
-                <h3 className="text-xl font-semibold text-gray-900 group-hover:text-white">{label}</h3> 
-                <p className="text-gray-600 group-hover:text-gray-100 text-sm">{description}</p> 
-            </div> 
+            <div className="text-4xl font-bold text-gray-800">{value}</div> 
+        </div> 
+        <div className="mt-2"> 
+            <h3 className="text-md font-bold text-gray-900">{label}</h3> 
+            <p className="text-gray-500 text-xs mt-0.5">{description}</p> 
         </div> 
     </div> 
-);
-
-const ActionButton: React.FC<{ color: string; label: string; description: string; icon: React.ReactNode; onClick: () => void; badgeCount?: number; }> = ({ color, label, description, icon, onClick, badgeCount }) => ( 
-    <button onClick={onClick} className="relative group bg-white border rounded-xl p-6 hover:shadow-lg text-left transition-all"> 
-        <div className={`inline-flex p-3 bg-gradient-to-r ${color} rounded-xl text-white mb-4`}>{icon}</div> 
-        <h3 className="font-semibold text-lg">{label}</h3> 
-        <p className="text-sm">{description}</p> 
-        {badgeCount && badgeCount > 0 && <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full px-2 text-xs font-bold">{badgeCount}</span>} 
-    </button> 
-);
-
-const QuickActions: React.FC<{ onSelect: (path: string) => void; stats: DashboardStats }> = ({ onSelect, stats }) => (
-    <div className="bg-white rounded-2xl shadow-lg border">
-        <div className="px-8 py-6 bg-gradient-to-r from-indigo-600 to-blue-600"> 
-            <h2 className="text-2xl font-bold text-white">Quick Actions</h2> 
-            <p className="text-indigo-100 mt-1">Choose an action</p> 
-        </div>
-        <div className="p-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-            <ActionButton color="from-orange-500 to-red-500" label="Review FIRs" description="Add remarks to inspection reports" icon={<FileText className="h-8 w-8" />} onClick={() => onSelect("/customer/view-firs")} badgeCount={stats.firsForReview} />
-            <ActionButton color="from-blue-500 to-indigo-600" label="View SRFs" description="Approve or reject SRFs" icon={<ClipboardList className="h-8 w-8" />} badgeCount={stats.draftSrfs} onClick={() => onSelect("/customer/view-srf")} />
-            <ActionButton color="from-yellow-500 to-amber-500" label="View Deviations" description="Track active issues" icon={<AlertCircle className="h-8 w-8" />} badgeCount={stats.activeDeviations} onClick={() => onSelect("/customer/deviations")} />
-            <ActionButton color="from-green-500 to-emerald-600" label="Certificates" description="Download certificates" icon={<Award className="h-8 w-8" />} badgeCount={stats.readyCertificates} onClick={() => onSelect("/customer/certificates")} />
-        </div>
-    </div>
 );
 
 const CustomerDashboardHome: React.FC<{ stats: DashboardStats }> = ({ stats }) => {
     const navigate = useNavigate();
     const { user } = useAuth();
+
     return ( 
-        <div className="min-h-full bg-gradient-to-br from-blue-50 via-white to-indigo-50"> 
-            <div className="max-w-7xl mx-auto py-8 px-4"> 
-                <div className="flex items-center gap-6 mb-12"> 
-                    <div className="p-3 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-2xl shadow-lg"><ClipboardList className="h-10 w-10 text-white" /></div> 
-                    <div><h1 className="text-4xl font-bold">Customer Portal</h1> <p className="text-lg text-gray-600 mt-1">Welcome back, {user?.full_name || "Customer"}</p></div> 
+        <div> 
+            {/* Header Section */}
+            <div className="flex items-center gap-4 mb-8"> 
+                <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
+                    <ClipboardList className="h-10 w-10 text-white" />
                 </div> 
-                {stats.firsForReview > 0 && (
-                    <div className="mb-6 p-4 bg-orange-100 text-orange-800 rounded-lg flex items-center gap-3 border border-orange-200">
-                        <AlertTriangle className="h-6 w-6 text-orange-600" /> 
-                        <div>
-                            <p className="font-semibold">Action Required: You have <span className="font-bold">{stats.firsForReview}</span> First Inspection Report(s) awaiting your review.</p>
-                            <p className="text-sm">Please review and provide remarks for equipment with deviations to proceed with calibration.</p>
-                        </div>
-                    </div>
-                )}
-                {stats.draftSrfs > 0 && (
-                    <div className="mb-6 p-4 bg-yellow-100 text-yellow-800 rounded-lg flex items-center gap-3 border border-yellow-200">
-                        <Clock className="h-6 w-6" /> 
-                        <p>You have <span className="font-semibold">{stats.draftSrfs}</span> pending Service Request Form(s) for approval.</p>
-                    </div>
-                )}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12"> 
-                    <StatCard icon={<Activity className="h-10 w-10" />} label="Total Service Requests" value={stats.totalSrfs} description="Submitted SRFs" gradient="from-blue-500 to-blue-600" bgGradient="from-blue-50 to-blue-100" /> 
-                    <StatCard icon={<AlertCircle className="h-10 w-10" />} label="Active Deviations" value={stats.activeDeviations} description="Issues requiring attention" gradient="from-orange-500 to-red-500" bgGradient="from-orange-50 to-red-50" /> 
-                    <StatCard icon={<Award className="h-10 w-10" />} label="Ready Certificates" value={stats.readyCertificates} description="Available for download" gradient="from-green-500 to-emerald-600" bgGradient="from-green-50 to-emerald-50" /> 
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900">Customer Portal</h1> 
+                    <p className="mt-1 text-base text-gray-600">Welcome back, {user?.full_name || user?.username || "Customer"}</p>
                 </div> 
-                <QuickActions onSelect={navigate} stats={stats} /> 
             </div> 
+
+            {/* --- NOTIFICATIONS SECTION --- */}
+            {stats.firsForReview > 0 && (
+                <PortalMessage 
+                    type="warning"
+                    title="Action Required"
+                    message={`You have ${stats.firsForReview} First Inspection Report(s) awaiting your review.`}
+                    actionLabel="Review Reports"
+                    onAction={() => navigate('/customer/view-firs')}
+                />
+            )}
+            
+            {stats.draftSrfs > 0 && (
+                <PortalMessage 
+                    type="pending"
+                    title="Approval Pending"
+                    message={`You have ${stats.draftSrfs} pending Service Request Form(s) for approval.`}
+                    actionLabel="View SRFs"
+                    onAction={() => navigate('/customer/view-srf')}
+                />
+            )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 mt-6"> 
+                <StatCard 
+                    icon={<Activity className="h-6 w-6" />} 
+                    label="Total Requests" 
+                    value={stats.totalSrfs} 
+                    description="Submitted SRFs" 
+                    colorClass="bg-gradient-to-r from-blue-500 to-blue-600" 
+                /> 
+                <StatCard 
+                    icon={<AlertCircle className="h-6 w-6" />} 
+                    label="Active Deviations" 
+                    value={stats.activeDeviations} 
+                    description="Issues pending" 
+                    colorClass="bg-gradient-to-r from-orange-500 to-red-500" 
+                /> 
+                <StatCard 
+                    icon={<Award className="h-6 w-6" />} 
+                    label="Ready Certificates" 
+                    value={stats.readyCertificates} 
+                    description="Download available" 
+                    colorClass="bg-gradient-to-r from-green-500 to-emerald-600" 
+                /> 
+            </div> 
+
+            {/* Quick Actions Grid */}
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6 border-b pb-3">
+                    Quick Actions
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <ActionButton 
+                        label="Track Status" 
+                        description="Check status of equipment and SRFs" 
+                        icon={<Activity className="h-8 w-8" />} 
+                        onClick={() => navigate("/customer/track-status")}
+                        colorClasses="bg-gradient-to-r from-blue-500 to-indigo-600"
+                    />
+                    <ActionButton 
+                        label="Review FIRs" 
+                        description="Approve inspection reports" 
+                        icon={<Search className="h-8 w-8" />} 
+                        onClick={() => navigate("/customer/view-firs")} 
+                        colorClasses="bg-gradient-to-r from-cyan-500 to-blue-600"
+                        badge={stats.firsForReview} 
+                    />
+                    <ActionButton 
+                        label="View SRFs" 
+                        description="Manage Service Request Forms" 
+                        icon={<FileText className="h-8 w-8" />} 
+                        onClick={() => navigate("/customer/view-srf")} 
+                        colorClasses="bg-gradient-to-r from-green-500 to-emerald-600"
+                        badge={stats.draftSrfs}
+                    />
+                    <ActionButton 
+                        label="View Deviations" 
+                        description="Access deviation reports" 
+                        icon={<AlertTriangle className="h-8 w-8" />} 
+                        badge={stats.activeDeviations} 
+                        onClick={() => navigate("/customer/deviations")} 
+                        colorClasses="bg-gradient-to-r from-orange-500 to-red-500"
+                    />
+                    <ActionButton 
+                        label="Certificates" 
+                        description="Generate and manage certificates" 
+                        icon={<Award className="h-8 w-8" />} 
+                        badge={stats.readyCertificates} 
+                        onClick={() => navigate("/customer/certificates")} 
+                        colorClasses="bg-gradient-to-r from-purple-500 to-indigo-600"
+                    />
+                     <ActionButton 
+                        label="Export Data" 
+                        description="Download records" 
+                        icon={<Download className="h-8 w-8" />} 
+                        onClick={() => console.log("Export Data clicked")} 
+                        colorClasses="bg-gradient-to-r from-indigo-500 to-purple-600"
+                    />
+                </div>
+            </div>
         </div> 
     );
 };
 
-// --- Customer Portal Main Container ---
+// --- MAIN CUSTOMER PORTAL CONTAINER ---
 const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
     const { user } = useAuth();
     const [srfs, setSrfs] = useState<Srf[]>([]);
@@ -255,21 +414,26 @@ const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
 
     const dashboardStats: DashboardStats = {
         totalSrfs: srfs.length,
-        activeDeviations: 0,
-        readyCertificates: 0,
-        draftSrfs: srfs.filter((srf) => srf.status === "inward_completed" || srf.status === "pending").length,
+        activeDeviations: 0, 
+        readyCertificates: 0, 
+        draftSrfs: srfs.filter((srf) => {
+            const status = srf.status.toLowerCase();
+            return status === "inward_completed" || status === "pending";
+        }).length,
         firsForReview: firs.length,
     };
 
-    if (loading) return <div className="p-8 text-lg text-center">Loading...</div>;
+    if (loading) return <div className="p-8 text-lg text-center text-gray-500">Loading your portal...</div>;
 
     return (
-        <div className="flex flex-col min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-gray-50 flex flex-col">
             <Header onLogout={onLogout} username={user?.full_name || user?.username || "Customer"} role="Customer" />
-            <main className="flex-1 p-4 sm:p-6 lg:p-8">
+            
+            <main className="flex-1 max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 w-full">
                 <Routes>
                     <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
-                    <Route path="view-srf" element={<CustomerSrfListView srfs={srfs} />} />
+                    <Route path="track-status" element={<TrackStatusPage />} />
+                    <Route path="view-srf" element={<CustomerSrfListView srfs={srfs as any[]} />} />
                     <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
                     <Route path="view-firs" element={<FirListView firs={firs} />} />
                     <Route path="fir-remarks/:inwardId" element={<CustomerRemarksPortal />} />
@@ -277,6 +441,7 @@ const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
                     <Route path="certificates" element={<CertificatesPage />} />
                 </Routes>
             </main>
+            
             <Footer />
         </div>
     );

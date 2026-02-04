@@ -16,10 +16,11 @@ from backend.schemas.user_schemas import UserResponse
 from backend.schemas.customer_schemas import (
     RemarksSubmissionRequest, 
     InwardForCustomer,
-    AccountActivationRequest
+    AccountActivationRequest,
+    CustomerDropdownResponse,
+    TrackingResponse  # <--- Imported this new schema
 )
 from backend.schemas.srf_schemas import SrfApiResponse, SrfResponse
-from backend.schemas.customer_schemas import CustomerDropdownResponse
 
 router = APIRouter(prefix="/portal", tags=["Customer Portal"])
 logger = logging.getLogger(__name__)
@@ -160,6 +161,28 @@ async def submit_fir_remarks(
 ):
     service = CustomerPortalService(db)
     return service.submit_customer_remarks(inward_id, request, current_user.customer_id)
+
+
+# --- TRACKING ENDPOINT ---
+# Added this new endpoint to handle secure tracking
+@router.get("/track", response_model=Optional[TrackingResponse])
+async def track_application_status(
+    query: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    current_user: UserResponse = Depends(get_customer_user)
+):
+    """
+    Track equipment status. 
+    Only returns data if the equipment belongs to the authenticated customer.
+    """
+    service = CustomerPortalService(db)
+    result = service.track_equipment_status(current_user.customer_id, query)
+    
+    if not result:
+        # We return 404 so the frontend knows to show "No records found"
+        raise HTTPException(status_code=404, detail="No matching records found for this account.")
+        
+    return result
 
 
 # --- DIRECT ACCESS & ACCOUNT ACTIVATION ENDPOINTS ---
