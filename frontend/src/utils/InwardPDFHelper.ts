@@ -17,7 +17,7 @@ export const generateStandardInwardPDF = (formData: any, equipmentList: any[]) =
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.setTextColor(44, 62, 80); // Dark Blue/Grey
-  doc.text("NextAge Engineering Private Limited", pageWidth / 2, cursorY, { align: 'center' });
+  doc.text("Nextage Engineering Private Limited\n", pageWidth / 2, cursorY, { align: 'center' });
   
   cursorY += 6;
   doc.setFontSize(9);
@@ -272,7 +272,7 @@ export const generateStandardInwardPDF = (formData: any, equipmentList: any[]) =
   doc.line(leftMargin, cursorY + 8, leftMargin + 50, cursorY + 8); // Line for signature
 
   doc.setFont("helvetica", "normal");
-  doc.text("For NextAge Engineering Pvt Ltd", rightMargin, cursorY, { align: 'right' });
+  doc.text("For Nextage Engineering Private Limited", rightMargin, cursorY, { align: 'right' });
   doc.line(rightMargin - 50, cursorY + 8, rightMargin, cursorY + 8); // Line for signature
   doc.text("Authorized Signatory", rightMargin, cursorY + 14, { align: 'right' });
 
