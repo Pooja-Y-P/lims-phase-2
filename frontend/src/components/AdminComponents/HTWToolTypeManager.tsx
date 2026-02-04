@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Save, 
   Loader2, AlertCircle, Wrench, Settings,
@@ -44,9 +45,7 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     // Check if either Edit Modal OR View Modal is open
     if (isEditModalOpen || isViewModalOpen) {
@@ -81,13 +80,10 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Navigation
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Modals
   const handleEditClick = (item: HTWToolType) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
@@ -98,22 +94,15 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
     setIsViewModalOpen(true);
   };
 
-  // 3. Status Toggle
   const handleToggleStatus = async (item: HTWToolType) => {
     if(!item.id) return;
     try {
       setTogglingId(item.id);
-      
-      // Check if your backend supports a specific status toggle or needs a full PUT
-      // Here using the logic from your provided code:
       if (item.is_active) {
-        // Deactivate via DELETE (Soft Delete logic based on your code)
         await api.delete(`/htw/tool-types/${item.id}`);
       } else {
-        // Reactivate via PUT
         await api.put(`/htw/tool-types/${item.id}`, { ...item, is_active: true });
       }
-
       setData(prev => prev.map(r => r.id === item.id ? { ...r, is_active: !r.is_active } : r));
     } catch (err: any) {
       alert(err.response?.data?.detail || "Failed to update status");
@@ -122,16 +111,12 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
     }
   };
 
-  // 4. Explicit Delete
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this tool type?")) return;
     try {
       setDeletingId(id);
       await api.delete(`/htw/tool-types/${id}`);
-      // Assuming soft delete behavior from your code, update to inactive
-      // Or if it's a hard delete, filter out. Adjust based on actual API behavior.
-      // setData(prev => prev.filter(r => r.id !== id)); // Hard delete style
-      setData(prev => prev.map(r => r.id === id ? { ...r, is_active: false } : r)); // Soft delete style
+      setData(prev => prev.map(r => r.id === id ? { ...r, is_active: false } : r));
     } catch (err: any) {
       alert(err.response?.data?.detail || "Failed to delete");
     } finally {
@@ -139,7 +124,6 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWToolType, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -151,9 +135,9 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
         await api.post('/htw/tool-types', payload);
         setViewMode('list');
       }
-      fetchData(); // Refresh list
+      fetchData();
     } catch (err: any) {
-      throw err; // Propagate error
+      throw err;
     } finally {
       setSubmitting(false);
     }
@@ -167,7 +151,6 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddToolPage 
@@ -211,7 +194,8 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
           <p className="text-gray-500">Loading tool types...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -296,10 +280,9 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
         </div>
       )}
 
-      {/* View Modal (Popup) */}
-      {isViewModalOpen && viewingItem && (
-        // UPDATED Z-INDEX: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+      {/* 2. USED PORTAL FOR VIEW MODAL */}
+      {isViewModalOpen && viewingItem && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm animate-fadeIn overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -362,17 +345,19 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 3. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditToolModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -431,7 +416,7 @@ const AddToolPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitting }) =
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fadeIn">
+    <div className="max-w-2xl mx-auto animate-fadeIn mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 

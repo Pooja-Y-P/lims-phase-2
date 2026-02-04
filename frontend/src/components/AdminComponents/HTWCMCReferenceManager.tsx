@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   Loader2, Plus, ArrowLeft, CheckCircle, 
   PowerOff, Edit, AlertCircle, Save, Scale,
   Trash2, X, 
 } from 'lucide-react';
-import { api } from '../../api/config'; // Adjust path
+import { api } from '../../api/config';
 
 // --- TYPES ---
 export interface HTWCMCReference {
@@ -40,19 +41,13 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     if (isEditModalOpen) {
-      // Disable scrolling on the body
       document.body.style.overflow = 'hidden';
     } else {
-      // Re-enable scrolling
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -78,30 +73,21 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Navigation
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Edit Modal
   const handleEditClick = (item: HTWCMCReference) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Status Toggle (using PUT logic as generic example)
   const handleToggleStatus = async (item: HTWCMCReference) => {
     if(!item.id) return;
     try {
       setTogglingId(item.id);
-      
-      // Update object with toggled status
       const updatedItem = { ...item, is_active: !item.is_active };
-      
-      // Using generic PUT endpoint. Adjust if your API needs specific PATCH or DELETE logic.
       await api.put(`/htw/cmc/${item.id}`, updatedItem);
-
       setData(prev => prev.map(r => r.id === item.id ? updatedItem : r));
     } catch (err: any) {
       alert(err.response?.data?.detail || "Failed to update status");
@@ -110,7 +96,6 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
     }
   };
 
-  // 4. Explicit Delete
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this record?")) return;
     try {
@@ -124,7 +109,6 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWCMCReference, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -136,16 +120,15 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
         await api.post('/htw/cmc', payload);
         setViewMode('list');
       }
-      fetchData(); // Refresh list
+      fetchData();
     } catch (err: any) {
-      throw err; // Propagate error
+      throw err;
     } finally {
       setSubmitting(false);
     }
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddCMCPage 
@@ -189,7 +172,8 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
           <p className="text-gray-500">Loading records...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 to ensure content isn't hidden if footer overlaps before modal opens */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -248,14 +232,15 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
         </div>
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 2. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditCMCModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -317,7 +302,8 @@ const AddCMCPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitting }) =>
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fadeIn">
+    <div className="max-w-2xl mx-auto animate-fadeIn mb-20"> 
+      {/* Added mb-20 for safe spacing */}
       <div className="mb-6">
         <button 
           onClick={onCancel} 
@@ -472,10 +458,8 @@ const EditCMCModal: React.FC<EditModalProps> = ({ item, onCancel, onSave, submit
   };
 
   return (
-    // ---------------------------------------------------------
-    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
-    // ---------------------------------------------------------
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+    // Z-INDEX set high, though portal moves it to body level
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

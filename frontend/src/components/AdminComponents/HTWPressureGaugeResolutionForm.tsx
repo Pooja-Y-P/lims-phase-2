@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { api } from '../../api/config'; // Adjust path as needed
 import {
   ArrowLeft, Plus, Edit, Trash2, X, Save,
@@ -45,9 +46,7 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     // Check if either Edit Modal OR View Modal is open
     if (isEditModalOpen || viewingItem) {
@@ -82,19 +81,15 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Switch to Add Page
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Open Edit Modal
   const handleEditClick = (item: HTWPressureGaugeResolution) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Status Toggle
   const handleToggleStatus = async (item: HTWPressureGaugeResolution) => {
     if (!item.id) return;
     try {
@@ -111,7 +106,6 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
     }
   };
 
-  // 4. Delete
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this resolution?")) return;
     try {
@@ -125,7 +119,6 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWPressureGaugeResolution, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -137,9 +130,9 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
         await api.post('/htw-pressure-gauge-resolutions/', payload);
         setViewMode('list');
       }
-      fetchData(); // Refresh list
+      fetchData();
     } catch (err: any) {
-      throw err; // Propagate error to form component
+      throw err;
     } finally {
       setSubmitting(false);
     }
@@ -151,7 +144,6 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddResolutionPage
@@ -195,7 +187,8 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
           <p className="text-gray-500">Loading resolutions...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -257,10 +250,9 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
         </div>
       )}
 
-      {/* View Detail Modal */}
-      {viewingItem && (
-        // UPDATED Z-INDEX: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+      {/* 2. USED PORTAL FOR VIEW MODAL */}
+      {viewingItem && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full animate-fadeIn p-6">
              <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-lg flex items-center gap-2"><Ruler size={18} /> Details</h3>
@@ -274,17 +266,19 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
                 <p><span className="font-medium">Status:</span> {viewingItem.is_active ? 'Active' : 'Inactive'}</p>
              </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 3. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditResolutionModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -339,7 +333,7 @@ const AddResolutionPage: React.FC<AddPageProps> = ({ onCancel, onSave, submittin
   };
 
   return (
-    <div className="max-w-3xl mx-auto animate-fadeIn">
+    <div className="max-w-3xl mx-auto animate-fadeIn mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 
@@ -478,8 +472,8 @@ const EditResolutionModal: React.FC<EditModalProps> = ({ item, onCancel, onSave,
   };
 
   return (
-    // UPDATED Z-INDEX: z-[9999]
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+    // Z-INDEX high, but Portal moves it to root
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

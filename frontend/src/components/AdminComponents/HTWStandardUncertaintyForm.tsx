@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../../api/config'; // Adjust path
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Save, 
@@ -37,19 +38,16 @@ export const HTWStandardUncertaintyManager: React.FC<HTWStandardUncertaintyManag
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<HTWStandardUncertainty | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // State to control when the list refreshes
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Handle Scroll Locking
   useEffect(() => {
     if (isEditModalOpen) {
-      // Disable scrolling on the body
       document.body.style.overflow = 'hidden';
     } else {
-      // Re-enable scrolling
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -63,6 +61,7 @@ export const HTWStandardUncertaintyManager: React.FC<HTWStandardUncertaintyManag
   const handleEdit = (item: HTWStandardUncertainty) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
+    // Note: We DO NOT change refreshKey here, so the list behind stays static
   };
 
   const closeEditModal = () => {
@@ -71,17 +70,15 @@ export const HTWStandardUncertaintyManager: React.FC<HTWStandardUncertaintyManag
   };
 
   const handleSaveSuccess = () => {
-    // If saving from Add Page
+    // Increment key to force list reload only after successful save
+    setRefreshKey(prev => prev + 1);
     setCurrentView('list');
   };
 
   const handleEditSuccess = () => {
-    // If saving from Edit Modal
+    // Increment key to force list reload only after successful update
+    setRefreshKey(prev => prev + 1);
     closeEditModal();
-    // We need to trigger a refresh in the list. 
-    // Since the list mounts/unmounts or we pass a key, it will refresh.
-    // Ideally, we pass a refresh trigger, but for now, simple state updates in List handle local changes,
-    // and full re-mount handles list updates.
   };
 
   // 1. Render Add Page
@@ -101,15 +98,18 @@ export const HTWStandardUncertaintyManager: React.FC<HTWStandardUncertaintyManag
         onBack={onBack} 
         onAddNew={handleAddNew} 
         onEdit={handleEdit}
-        refreshTrigger={isEditModalOpen ? 0 : 1} // Trick to force refresh if needed, usually List fetches on mount
+        // Pass the controlled key. It only changes on save, not on modal open.
+        refreshTrigger={refreshKey}
       />
 
-      {isEditModalOpen && editingItem && (
+      {/* 2. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditUncertaintyModal 
           item={editingItem} 
           onCancel={closeEditModal} 
           onSuccess={handleEditSuccess} 
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -135,9 +135,12 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
 
   const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
+      // Only set loading true if we don't have data yet (initial load)
+      // or if you prefer a hard reload every time, keep it as is. 
+      // If you want "silent refresh", remove setLoading(true).
+      setLoading(true); 
       setError(null);
-      const response = await api.get('/htw-standard-uncertainty/'); // Ensure trailing slash if your API needs it
+      const response = await api.get('/htw-standard-uncertainty/');
       setData(response.data || []);
     } catch (err: any) {
       console.error(err);
@@ -148,7 +151,6 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
     }
   }, []);
 
-  // Fetch on mount and when modal closes (refreshTrigger changes)
   useEffect(() => {
     fetchData();
   }, [fetchData, refreshTrigger]);
@@ -159,7 +161,7 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
       setTogglingId(item.id);
       const newStatus = !item.is_active;
       await api.patch(`/htw-standard-uncertainty/${item.id}`, null, {
-        params: { is_active: newStatus } // Or body depending on your API
+        params: { is_active: newStatus }
       });
       setData(prev => prev.map(s => s.id === item.id ? { ...s, is_active: newStatus } : s));
     } catch (err: any) {
@@ -215,7 +217,8 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
           <p className="text-gray-500">Loading data...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -339,7 +342,7 @@ const AddUncertaintyPage: React.FC<AddUncertaintyPageProps> = ({ onCancel, onSuc
   };
 
   return (
-    <div className="animate-fadeIn max-w-4xl mx-auto">
+    <div className="animate-fadeIn max-w-4xl mx-auto mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 
@@ -540,10 +543,8 @@ const EditUncertaintyModal: React.FC<EditUncertaintyModalProps> = ({ item, onCan
   };
 
   return (
-    // ---------------------------------------------------------
-    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
-    // ---------------------------------------------------------
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+    // Z-INDEX set to 99999, though Portal moves it to body level
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Header */}
@@ -615,7 +616,7 @@ const EditUncertaintyModal: React.FC<EditUncertaintyModalProps> = ({ item, onCan
             <button type="button" onClick={onCancel} disabled={loading} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={loading} className="flex items-center px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-70 transition-all">
+            <button type="submit" disabled={loading} className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-70 transition-all">
               {loading ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}
               Update Record
             </button>

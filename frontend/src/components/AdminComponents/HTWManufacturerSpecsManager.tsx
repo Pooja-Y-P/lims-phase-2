@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { api, ENDPOINTS } from '../../api/config';
 import { 
   Factory, ArrowLeft, Filter, ChevronDown, Search, Plus, 
@@ -96,11 +97,8 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
   const [viewingSpec, setViewingSpec] = useState<ManufacturerSpec | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
-    // Check if EITHER the delete modal OR the view modal is open
     if (showDeleteModal || showViewModal) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -252,7 +250,8 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
           <p className="text-gray-500">Loading manufacturer specifications...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20"> 
+          {/* Added mb-20 above to ensure list doesn't get hidden behind footer in normal flow */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -370,10 +369,9 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && specToDelete && (
-        // UPDATED Z-INDEX HERE: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      {/* 2. USED PORTAL FOR DELETE MODAL */}
+      {showDeleteModal && specToDelete && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -420,13 +418,13 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* View Details Modal */}
-      {showViewModal && viewingSpec && (
-        // UPDATED Z-INDEX HERE: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      {/* 3. USED PORTAL FOR VIEW MODAL */}
+      {showViewModal && viewingSpec && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
@@ -558,7 +556,8 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -702,7 +701,8 @@ function ManufacturerSpecForm({ onBack, initialData }: ManufacturerSpecFormProps
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20"> 
+        {/* Added mb-20 to form too just in case it hits footer */}
         {/* Basic Info */}
         <div className="p-6 border-b border-gray-100">
            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">

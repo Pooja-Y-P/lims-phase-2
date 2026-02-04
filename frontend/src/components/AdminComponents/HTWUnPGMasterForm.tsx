@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Save, 
   Loader2, AlertCircle, Gauge, Calendar, 
@@ -39,19 +40,13 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     if (isEditModalOpen) {
-      // Disable scrolling on the body
       document.body.style.overflow = 'hidden';
     } else {
-      // Re-enable scrolling
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -77,30 +72,21 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Navigation
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Edit Modal
   const handleEditClick = (item: HTWUnPGMaster) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Status Toggle (using PUT logic as generic example)
   const handleToggleStatus = async (item: HTWUnPGMaster) => {
     if(!item.id) return;
     try {
       setTogglingId(item.id);
-      
-      // Update object with toggled status
       const updatedItem = { ...item, is_active: !item.is_active };
-      
-      // Using generic PUT endpoint. Adjust if your API needs specific PATCH or DELETE logic.
       await api.put(`/htw/un-pg-master/${item.id}`, updatedItem);
-
       setData(prev => prev.map(r => r.id === item.id ? updatedItem : r));
     } catch (err: any) {
       alert(err.response?.data?.detail || "Failed to update status");
@@ -109,7 +95,6 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
     }
   };
 
-  // 4. Explicit Delete
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this record?")) return;
     try {
@@ -123,7 +108,6 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWUnPGMaster, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -135,9 +119,9 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
         await api.post('/htw/un-pg-master', payload);
         setViewMode('list');
       }
-      fetchData(); // Refresh list
+      fetchData();
     } catch (err: any) {
-      throw err; // Propagate error
+      throw err;
     } finally {
       setSubmitting(false);
     }
@@ -149,7 +133,6 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddUncertaintyPage 
@@ -193,7 +176,8 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
           <p className="text-gray-500">Loading data...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -254,14 +238,15 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
         </div>
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 2. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditUncertaintyModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -320,7 +305,7 @@ const AddUncertaintyPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitti
   };
 
   return (
-    <div className="max-w-2xl mx-auto animate-fadeIn">
+    <div className="max-w-2xl mx-auto animate-fadeIn mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 
@@ -476,9 +461,7 @@ const EditUncertaintyModal: React.FC<EditModalProps> = ({ item, onCancel, onSave
   };
 
   return (
-    // ---------------------------------------------------------
-    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
-    // ---------------------------------------------------------
+    // UPDATED Z-INDEX: z-[9999], Portal renders it at body level
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         

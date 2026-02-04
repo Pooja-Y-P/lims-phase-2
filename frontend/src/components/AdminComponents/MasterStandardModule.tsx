@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { api, ENDPOINTS } from '../../api/config';
 import { ExportMasterStandardPage } from './ExportMasterStandardPage';
 
@@ -343,11 +344,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
   const [viewingStandard, setViewingStandard] = useState<MasterStandard | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
-    // Check if either View Modal OR Delete Modal is open
     if (showDeleteModal || showViewModal) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -493,7 +491,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
           <p className="text-gray-500">Loading master standards...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20"> 
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -597,9 +596,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && standardToDelete && (
-        // UPDATED Z-INDEX HERE: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      {showDeleteModal && standardToDelete && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -646,13 +644,13 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* View Details Modal */}
-      {showViewModal && viewingStandard && (
-        // UPDATED Z-INDEX HERE: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+      {showViewModal && viewingStandard && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999]">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
@@ -757,7 +755,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -890,7 +889,7 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
         <div className="p-6 border-b border-gray-100">
           <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 flex items-center">
             <ShieldCheck size={16} className="mr-2 text-blue-600" /> General Identification
