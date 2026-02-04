@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ..db import get_db
-from ..schemas.htw_job import HTWJobCreate, HTWJobResponse
+from ..schemas.htw_job import HTWJobCreate, HTWJobResponse, JobStatusUpdate
 from ..services import htw_job as service
 
 router = APIRouter(prefix="/htw-jobs", tags=["HTW Jobs"])
@@ -37,4 +37,24 @@ def read_htw_job(job_id: int, db: Session = Depends(get_db)):
     job = service.get_job_by_id(db, job_id=job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+@router.patch("/{job_id}", response_model=HTWJobResponse)
+def update_job_status(job_id: int, status_data: JobStatusUpdate, db: Session = Depends(get_db)):
+    """
+    Update the status of a specific HTW Job.
+    """
+    # Fetch the job
+    job = service.get_job_by_id(db, job_id=job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Update the status
+    job.job_status = status_data.job_status
+    
+    # Commit changes
+    db.commit()
+    db.refresh(job)
+    
     return job
