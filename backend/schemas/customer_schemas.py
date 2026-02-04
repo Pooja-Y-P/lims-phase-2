@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import date, datetime
 
 # --- Request Schemas ---
@@ -101,10 +101,42 @@ class CustomerDropdownResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class TrackingResponse(BaseModel):
-    id: str
-    status: str
-    description: str
+# --- TRACKING SCHEMAS (UPDATED) ---
+
+class TimelineStep(BaseModel):
+    label: str          # e.g., "Received", "Inward", "Calibration"
+    status: str         # "completed", "current", "pending"
     date: Optional[str] = None
+    icon: str           # identifier for UI icon
+
+class ActivityLogItem(BaseModel):
+    date: str
+    title: str
+    description: str
+
+class TrackingEquipmentItem(BaseModel):
+    nepl_id: str
+    inward_eqp_id: int
+    srf_no: str
+    customer_name: str
+    dc_number: Optional[str]
+    qty: int
+    
+    # Current Overall Status
+    current_status: str       # The raw DB status
+    display_status: str       # The pretty UI status (e.g. "Calibration In Progress")
+    
+    # Timeline Data for Detail View
+    timeline: List[TimelineStep]
+    activity_log: List[ActivityLogItem]
+    
+    expected_completion: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class TrackingResponse(BaseModel):
+    search_query: str
+    found_via: str 
+    equipments: List[TrackingEquipmentItem]
     
     model_config = ConfigDict(from_attributes=True)
