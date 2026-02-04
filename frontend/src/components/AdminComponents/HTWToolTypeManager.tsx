@@ -44,6 +44,23 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    // Check if either Edit Modal OR View Modal is open
+    if (isEditModalOpen || isViewModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    // Cleanup function
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isEditModalOpen, isViewModalOpen]);
+
   // --- API FETCH ---
   const fetchData = useCallback(async () => {
     try {
@@ -281,7 +298,8 @@ export const HTWToolTypeManager: React.FC<HTWToolTypeManagerProps> = ({ onBack }
 
       {/* View Modal (Popup) */}
       {isViewModalOpen && viewingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        // UPDATED Z-INDEX: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm animate-fadeIn overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -583,7 +601,8 @@ const EditToolModal: React.FC<EditModalProps> = ({ item, onCancel, onSave, submi
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    // UPDATED Z-INDEX: z-[9999]
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

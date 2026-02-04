@@ -343,6 +343,22 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
   const [viewingStandard, setViewingStandard] = useState<MasterStandard | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    // Check if either View Modal OR Delete Modal is open
+    if (showDeleteModal || showViewModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showDeleteModal, showViewModal]);
+
   const fetchStandards = useCallback(async () => {
     try {
       setLoading(true);
@@ -582,7 +598,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && standardToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        // UPDATED Z-INDEX HERE: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -634,7 +651,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
 
       {/* View Details Modal */}
       {showViewModal && viewingStandard && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        // UPDATED Z-INDEX HERE: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">

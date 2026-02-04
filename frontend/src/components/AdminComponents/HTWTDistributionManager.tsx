@@ -45,6 +45,23 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    // Check if any of the three modals are open
+    if (isEditModalOpen || isViewModalOpen || isDeleteModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    // Cleanup
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isEditModalOpen, isViewModalOpen, isDeleteModalOpen]);
+
   // --- API FETCH ---
   const fetchData = useCallback(async () => {
     try {
@@ -252,7 +269,8 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
 
       {/* VIEW MODAL (Popup) */}
       {isViewModalOpen && viewingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        // UPDATED Z-INDEX: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm animate-fadeIn overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -322,7 +340,8 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
 
       {/* DELETE MODAL (Popup) */}
       {isDeleteModalOpen && itemToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fadeIn">
+        // UPDATED Z-INDEX: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] animate-fadeIn">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -601,7 +620,8 @@ const EditTDistModal: React.FC<EditModalProps> = ({ item, onCancel, onSave, subm
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    // UPDATED Z-INDEX: z-[9999]
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

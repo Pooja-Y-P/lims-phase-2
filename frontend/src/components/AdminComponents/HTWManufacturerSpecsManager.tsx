@@ -85,12 +85,33 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
   const [error, setError] = useState<string | null>(null);
   const [filterModel, setFilterModel] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal States
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [specToDelete, setSpecToDelete] = useState<ManufacturerSpec | null>(null);
+  
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  
   const [viewingSpec, setViewingSpec] = useState<ManufacturerSpec | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
+
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    // Check if EITHER the delete modal OR the view modal is open
+    if (showDeleteModal || showViewModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showDeleteModal, showViewModal]);
+
 
   const fetchSpecs = useCallback(async () => {
     try {
@@ -351,7 +372,8 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && specToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        // UPDATED Z-INDEX HERE: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -403,7 +425,8 @@ function ManufacturerSpecList({ onBack, onAddNew, onEdit }: ManufacturerSpecList
 
       {/* View Details Modal */}
       {showViewModal && viewingSpec && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        // UPDATED Z-INDEX HERE: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
