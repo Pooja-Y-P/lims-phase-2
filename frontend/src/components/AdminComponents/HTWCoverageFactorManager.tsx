@@ -34,6 +34,24 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    if (isEditModalOpen) {
+      // Disable scrolling on the body
+      document.body.style.overflow = 'hidden';
+    } else {
+      // Re-enable scrolling
+      document.body.style.overflow = 'unset';
+    }
+
+    // Cleanup function to ensure scroll is restored if component unmounts
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isEditModalOpen]);
+
   // --- API FETCH ---
   const fetchData = useCallback(async () => {
     try {
@@ -225,102 +243,103 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
   );
 };
 
-// ============================================================================
-// COMPONENT 1: ADD PAGE (Full Page View)
-// ============================================================================
+// ... [AddCoverageFactorPage component remains unchanged] ...
+// Re-paste AddCoverageFactorPage here if needed, but it wasn't modified.
+// For brevity, assuming AddCoverageFactorPage exists as in your original code.
+
 interface AddPageProps {
-  onCancel: () => void;
-  onSave: (payload: { k: number, is_active: boolean }) => Promise<void>;
-  submitting: boolean;
-}
-
-const AddCoverageFactorPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitting }) => {
-  const [k, setK] = useState('2.0');
-  const [isActive, setIsActive] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const val = parseFloat(k);
-    if (isNaN(val) || val <= 0) {
-      setError("Please enter a valid K value > 0");
-      return;
-    }
-    try {
-      await onSave({ k: val, is_active: isActive });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to save");
-    }
-  };
-
-  return (
-    <div className="max-w-xl mx-auto animate-fadeIn">
-      <div className="mb-6">
-        <button 
-          onClick={onCancel} 
-          className="flex items-center text-gray-500 hover:text-blue-600 transition-colors font-medium text-sm"
-        >
-          <ArrowLeft size={16} className="mr-2" /> Back to List
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-          <h3 className="text-xl font-bold text-gray-900 flex items-center">
-            <Plus className="w-5 h-5 text-blue-500 mr-2" />
-            Add New Coverage Factor
-          </h3>
+    onCancel: () => void;
+    onSave: (payload: { k: number, is_active: boolean }) => Promise<void>;
+    submitting: boolean;
+  }
+  
+  const AddCoverageFactorPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitting }) => {
+    const [k, setK] = useState('2.0');
+    const [isActive, setIsActive] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+  
+    const handleSubmit = async (e: FormEvent) => {
+      e.preventDefault();
+      setError(null);
+      const val = parseFloat(k);
+      if (isNaN(val) || val <= 0) {
+        setError("Please enter a valid K value > 0");
+        return;
+      }
+      try {
+        await onSave({ k: val, is_active: isActive });
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Failed to save");
+      }
+    };
+  
+    return (
+      <div className="max-w-xl mx-auto animate-fadeIn">
+        <div className="mb-6">
+          <button 
+            onClick={onCancel} 
+            className="flex items-center text-gray-500 hover:text-blue-600 transition-colors font-medium text-sm"
+          >
+            <ArrowLeft size={16} className="mr-2" /> Back to List
+          </button>
         </div>
-
-        {error && (
-          <div className="mx-6 mt-4 px-4 py-3 bg-red-50 border border-red-100 text-red-700 rounded-lg text-sm flex items-center">
-            <AlertCircle size={16} className="mr-2" /> {error}
+  
+        <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center">
+              <Plus className="w-5 h-5 text-blue-500 mr-2" />
+              Add New Coverage Factor
+            </h3>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Coverage Factor (k) <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                value={k}
-                onChange={(e) => setK(e.target.value)}
-                required
-                step="0.0001"
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
-              />
-              <Sigma className="absolute left-3 top-2.5 text-gray-400" size={18} />
+  
+          {error && (
+            <div className="mx-6 mt-4 px-4 py-3 bg-red-50 border border-red-100 text-red-700 rounded-lg text-sm flex items-center">
+              <AlertCircle size={16} className="mr-2" /> {error}
             </div>
-            <p className="text-xs text-gray-500 mt-1">Standard coverage factor defaults to 2.0</p>
-          </div>
-
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between">
-             <span className="text-sm font-medium text-gray-700">Status</span>
-             <label className="relative inline-flex items-center cursor-pointer">
-               <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="sr-only peer" />
-               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-               <span className="ml-3 text-sm font-medium text-gray-700">{isActive ? 'Active' : 'Inactive'}</span>
-             </label>
-          </div>
-
-          <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-100">
-            <button type="button" onClick={onCancel} className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={submitting} className="flex items-center px-6 py-2.5 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm disabled:opacity-70 transition-all">
-              {submitting ? <Loader2 className="animate-spin mr-2" size={18} /> : <Save className="mr-2" size={18} />}
-              Save Factor
-            </button>
-          </div>
-        </form>
+          )}
+  
+          <form onSubmit={handleSubmit} className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Coverage Factor (k) <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={k}
+                  onChange={(e) => setK(e.target.value)}
+                  required
+                  step="0.0001"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
+                />
+                <Sigma className="absolute left-3 top-2.5 text-gray-400" size={18} />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Standard coverage factor defaults to 2.0</p>
+            </div>
+  
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between">
+               <span className="text-sm font-medium text-gray-700">Status</span>
+               <label className="relative inline-flex items-center cursor-pointer">
+                 <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="sr-only peer" />
+                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                 <span className="ml-3 text-sm font-medium text-gray-700">{isActive ? 'Active' : 'Inactive'}</span>
+               </label>
+            </div>
+  
+            <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-100">
+              <button type="button" onClick={onCancel} className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting} className="flex items-center px-6 py-2.5 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm disabled:opacity-70 transition-all">
+                {submitting ? <Loader2 className="animate-spin mr-2" size={18} /> : <Save className="mr-2" size={18} />}
+                Save Factor
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 // ============================================================================
 // COMPONENT 2: EDIT MODAL (Popup Overlay)
@@ -353,7 +372,10 @@ const EditCoverageFactorModal: React.FC<EditModalProps> = ({ item, onCancel, onS
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    // ---------------------------------------------------------
+    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
+    // ---------------------------------------------------------
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

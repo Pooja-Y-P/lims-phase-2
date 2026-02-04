@@ -45,6 +45,23 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    // Check if either Edit Modal OR View Modal is open
+    if (isEditModalOpen || viewingItem) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isEditModalOpen, viewingItem]);
+
+
   // --- API FETCH ---
   const fetchData = useCallback(async () => {
     try {
@@ -242,7 +259,8 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
 
       {/* View Detail Modal */}
       {viewingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        // UPDATED Z-INDEX: z-[9999]
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full animate-fadeIn p-6">
              <div className="flex justify-between items-center mb-4">
                 <h3 className="font-bold text-lg flex items-center gap-2"><Ruler size={18} /> Details</h3>
@@ -460,7 +478,8 @@ const EditResolutionModal: React.FC<EditModalProps> = ({ item, onCancel, onSave,
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    // UPDATED Z-INDEX: z-[9999]
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

@@ -39,6 +39,24 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
+  // ---------------------------------------------------------
+  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
+  // ---------------------------------------------------------
+  useEffect(() => {
+    if (isEditModalOpen) {
+      // Disable scrolling on the body
+      document.body.style.overflow = 'hidden';
+    } else {
+      // Re-enable scrolling
+      document.body.style.overflow = 'unset';
+    }
+
+    // Cleanup function to ensure scroll is restored if component unmounts
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isEditModalOpen]);
+
   // --- API FETCH ---
   const fetchData = useCallback(async () => {
     try {
@@ -458,7 +476,10 @@ const EditUncertaintyModal: React.FC<EditModalProps> = ({ item, onCancel, onSave
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    // ---------------------------------------------------------
+    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
+    // ---------------------------------------------------------
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}
