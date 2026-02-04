@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Save, 
   Loader2, AlertCircle, LineChart, Eye
@@ -45,9 +46,7 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     // Check if any of the three modals are open
     if (isEditModalOpen || isViewModalOpen || isDeleteModalOpen) {
@@ -87,25 +86,20 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Switch to Add Page
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Open Edit Modal
   const handleEditClick = (item: HTWTDistribution) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Open View Modal
   const handleViewClick = (item: HTWTDistribution) => {
     setViewingItem(item);
     setIsViewModalOpen(true);
   };
 
-  // 4. Delete Logic
   const handleDeleteClick = (item: HTWTDistribution) => {
     setItemToDelete(item);
     setIsDeleteModalOpen(true);
@@ -126,7 +120,6 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWTDistribution, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -159,7 +152,6 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddTDistPage 
@@ -203,7 +195,8 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
           <p className="text-gray-500">Loading table data...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -267,10 +260,9 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
         </div>
       )}
 
-      {/* VIEW MODAL (Popup) */}
-      {isViewModalOpen && viewingItem && (
-        // UPDATED Z-INDEX: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+      {/* 2. USED PORTAL FOR VIEW MODAL */}
+      {isViewModalOpen && viewingItem && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm animate-fadeIn overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-gray-100">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -325,23 +317,24 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* EDIT MODAL (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 3. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditTDistModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
 
-      {/* DELETE MODAL (Popup) */}
-      {isDeleteModalOpen && itemToDelete && (
-        // UPDATED Z-INDEX: z-[9999]
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] animate-fadeIn">
+      {/* 4. USED PORTAL FOR DELETE MODAL */}
+      {isDeleteModalOpen && itemToDelete && createPortal(
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] animate-fadeIn">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6">
               <div className="flex items-center mb-4">
@@ -388,7 +381,8 @@ export const HTWTDistributionManager: React.FC<HTWTDistributionManagerProps> = (
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -447,7 +441,7 @@ const AddTDistPage: React.FC<AddPageProps> = ({ onCancel, onSave, submitting }) 
   };
 
   return (
-    <div className="max-w-xl mx-auto animate-fadeIn">
+    <div className="max-w-xl mx-auto animate-fadeIn mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 

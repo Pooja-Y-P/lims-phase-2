@@ -318,16 +318,12 @@ const CalibrationPage: React.FC = () => {
   const [postEnvValid, setPostEnvValid] = useState(false);
   const [activeTab, setActiveTab] = useState<StepId>('PRE');
 
-  const [masterStandards, setMasterStandards] = useState<HTWMasterStandard[]>([]);
   const [manufacturerSpec, setManufacturerSpec] = useState<HTWManufacturerSpec | null>(null);
   const [allResolutions, setAllResolutions] = useState<HTWPressureGaugeResolution[]>([]);
 
   const [masterStandardInputs, setMasterStandardInputs] = useState<MasterStandardInput>({
     standard1: {}, standard2: {}, standard3: {}
   });
-  const [selectedStandardIds, setSelectedStandardIds] = useState<{
-    standard1: number | null; standard2: number | null; standard3: number | null;
-  }>({ standard1: null, standard2: null, standard3: null });
 
   const [deviceDetails, setDeviceDetails] = useState({
     calibrationDate: new Date().toISOString().split('T')[0],
@@ -354,13 +350,6 @@ const CalibrationPage: React.FC = () => {
             const s1 = standards.find(s => s.standard_order === 1);
             const s2 = standards.find(s => s.standard_order === 2);
             const s3 = standards.find(s => s.standard_order === 3);
-
-            // Update UI IDs
-            setSelectedStandardIds({
-                standard1: s1?.master_standard_id || null,
-                standard2: s2?.master_standard_id || null,
-                standard3: s3?.master_standard_id || null,
-            });
 
             // Helper to map snapshot to UI inputs
             const mapSnapshotToInput = (snap: HTWJobStandardSnapshot | undefined): Partial<HTWMasterStandard> => {
@@ -400,13 +389,12 @@ const CalibrationPage: React.FC = () => {
       setError(null);
       
       try {
-        const [inwardRes, standardsRes, resolutionsRes] = await Promise.all([
+        // Removed fetch for HTW_MASTER_STANDARDS.LIST as manual selection is no longer used
+        const [inwardRes, resolutionsRes] = await Promise.all([
           api.get<InwardDetailResponse>(`${ENDPOINTS.STAFF.INWARDS}/${inwardId}`),
-          api.get<HTWMasterStandard[]>(`${ENDPOINTS.HTW_MASTER_STANDARDS.LIST}?is_active=true`),
           api.get<HTWPressureGaugeResolution[]>(`${ENDPOINTS.HTW_PRESSURE_GAUGE_RESOLUTIONS.LIST}`) 
         ]);
 
-        setMasterStandards(standardsRes.data);
         setAllResolutions(resolutionsRes.data);
         const fetchedResolutions = resolutionsRes.data;
         const defaultResUnit = fetchedResolutions.length > 0 ? fetchedResolutions[0].unit : "";
@@ -516,7 +504,6 @@ const CalibrationPage: React.FC = () => {
   }, [deviceDetails.make, deviceDetails.model, loading]);
 
   // FIX: Unit Auto-correction
-  // Removed `isValidated` from the blocking condition so existing jobs with missing units get fixed
   useEffect(() => {
     if (loading || !manufacturerSpec) return; 
     setDeviceDetails((prev) => {
@@ -564,15 +551,6 @@ const CalibrationPage: React.FC = () => {
     const matchedResolution = allResolutions.find(res => res.unit === selectedUnit);
     setDeviceDetails(prev => ({ ...prev, resolutionOfPressureGaugeUnit: selectedUnit, resolutionOfPressureGauge: matchedResolution ? String(matchedResolution.pressure) : prev.resolutionOfPressureGauge }));
   };
-  const handleSelectMasterStandard = (standard: 'standard1' | 'standard2' | 'standard3', standardId: string) => {
-    if (!standardId) { setMasterStandardInputs(prev => ({ ...prev, [standard]: {} })); setSelectedStandardIds(prev => ({ ...prev, [standard]: null })); return; }
-    const selectedStandard = masterStandards.find(s => s.id === Number(standardId));
-    if (selectedStandard) {
-      setSelectedStandardIds(prev => ({ ...prev, [standard]: selectedStandard.id }));
-      setMasterStandardInputs(prev => ({ ...prev, [standard]: { ...prev[standard], id: selectedStandard.id, nomenclature: selectedStandard.nomenclature || "", manufacturer: selectedStandard.manufacturer || "", model_serial_no: selectedStandard.model_serial_no || "", uncertainty: selectedStandard.uncertainty || undefined, uncertainty_unit: selectedStandard.uncertainty_unit || "", certificate_no: selectedStandard.certificate_no || "", calibration_valid_upto: selectedStandard.calibration_valid_upto || "", resolution: selectedStandard.resolution || undefined, resolution_unit: selectedStandard.resolution_unit || "", traceable_to_lab: selectedStandard.traceable_to_lab || "" } }));
-    }
-  };
-  const handleMasterStandardInputChange = (standard: 'standard1' | 'standard2' | 'standard3', field: keyof HTWMasterStandard, value: string | number) => { setMasterStandardInputs(prev => ({ ...prev, [standard]: { ...prev[standard], [field]: value } })); };
 
   // --- 3. Validate & Create Job ---
   const handleValidateAndCreate = async () => {
@@ -670,9 +648,15 @@ const CalibrationPage: React.FC = () => {
   const wrapperClass = "flex flex-col";
   const inputBase = "w-full p-2 text-sm border rounded-lg focus:outline-none shadow-sm transition-all";
   const editableInput = `${inputBase} bg-white border-gray-300 text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500`;
+  
+  // New Styles for Read-Only Inputs
+  const readOnlyInput = `${inputBase} bg-gray-100 text-gray-600 border-gray-300 font-medium cursor-not-allowed`;
+  const groupLeftReadOnly = "w-2/3 p-2 text-sm bg-gray-100 border border-gray-300 border-r-0 rounded-l-lg text-gray-600 cursor-not-allowed focus:outline-none";
+  const groupRightReadOnly = "w-1/3 p-2 text-sm bg-gray-100 border border-gray-300 rounded-r-lg text-gray-600 font-bold text-center cursor-not-allowed focus:outline-none";
+
   const groupContainer = "flex shadow-sm rounded-lg overflow-hidden";
   const groupLeft = "w-2/3 p-2 text-sm bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg text-gray-900 focus:outline-none disabled:bg-gray-100";
-  const groupRight = "w-1/3 p-2 text-sm bg-gray-100 border border-gray-300 rounded-r-lg text-gray-700 font-bold text-center focus:outline-none disabled:bg-gray-100";
+  // Removed unused groupRight
   const groupRightSelect = "w-1/3 p-2 text-sm bg-white border border-gray-300 rounded-r-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100";
 
   if (loading) return <div className="bg-white h-screen flex justify-center items-center"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>;
@@ -704,13 +688,14 @@ const CalibrationPage: React.FC = () => {
         <div className="mb-6"><h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 border-l-4 border-blue-500 pl-2">Device Under Calibration</h2></div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-12 gap-y-5 pb-8 border-b border-gray-100">
              <div className={wrapperClass}><label className={labelClass}><span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Calibration Date</span></label><input type="date" value={deviceDetails.calibrationDate} onChange={(e) => handleDeviceDetailChange('calibrationDate', e.target.value)} className={editableInput} /></div>
-             <div className={wrapperClass}><label className={labelClass}>Material Nomenclature</label><input type="text" value={deviceDetails.materialNomenclature} onChange={(e) => handleDeviceDetailChange('materialNomenclature', e.target.value)} className={editableInput} /></div>
-             <div className={wrapperClass}><label className={labelClass}>Make</label><input type="text" value={deviceDetails.make} onChange={(e) => handleDeviceDetailChange('make', e.target.value)} className={editableInput} /></div>
-             <div className={wrapperClass}><label className={labelClass}>Model</label><input type="text" value={deviceDetails.model} onChange={(e) => handleDeviceDetailChange('model', e.target.value)} className={editableInput} /></div>
+             {/* Locked Fields */}
+             <div className={wrapperClass}><label className={labelClass}>Material Nomenclature</label><input type="text" value={deviceDetails.materialNomenclature} readOnly className={readOnlyInput} /></div>
+             <div className={wrapperClass}><label className={labelClass}>Make</label><input type="text" value={deviceDetails.make} readOnly className={readOnlyInput} /></div>
+             <div className={wrapperClass}><label className={labelClass}>Model</label><input type="text" value={deviceDetails.model} readOnly className={readOnlyInput} /></div>
              <div className={wrapperClass}><label className={labelClass}>Device Type</label><select value={deviceDetails.type} onChange={(e) => handleDeviceDetailChange('type', e.target.value)} className={editableInput}><option value="Indicating">Indicating</option><option value="Setting">Setting</option></select></div>
              <div className={wrapperClass}><label className={labelClass}>Classification</label><input type="text" value={deviceDetails.classification} onChange={(e) => handleDeviceDetailChange('classification', e.target.value)} className={editableInput} /></div>
-             <div className={wrapperClass}><label className={labelClass}>Serial No.</label><input type="text" value={deviceDetails.serialNo} onChange={(e) => handleDeviceDetailChange('serialNo', e.target.value)} className={editableInput} /></div>
-             <div className={wrapperClass}><label className={labelClass}>Range</label><div className={groupContainer}><input type="text" value={deviceDetails.range} onChange={(e) => handleDeviceDetailChange('range', e.target.value)} placeholder="Min - Max" className={groupLeft} /><input type="text" value={deviceDetails.rangeUnit} onChange={(e) => handleDeviceDetailChange('rangeUnit', e.target.value)} placeholder="Unit" className={groupRight} /></div></div>
+             <div className={wrapperClass}><label className={labelClass}>Serial No.</label><input type="text" value={deviceDetails.serialNo} readOnly className={readOnlyInput} /></div>
+             <div className={wrapperClass}><label className={labelClass}>Range</label><div className={groupContainer}><input type="text" value={deviceDetails.range} readOnly placeholder="Min - Max" className={groupLeftReadOnly} /><input type="text" value={deviceDetails.rangeUnit} readOnly placeholder="Unit" className={groupRightReadOnly} /></div></div>
              <div className={wrapperClass}><label className={labelClass}>Resolution of Pressure Gauge</label><div className={groupContainer}><input type="text" value={deviceDetails.resolutionOfPressureGauge} readOnly placeholder="Auto-filled" className={groupLeft} /><select value={deviceDetails.resolutionOfPressureGaugeUnit} onChange={handleResolutionUnitChange} className={groupRightSelect}><option value="">Select Unit</option>{allResolutions.map((res, index) => (<option key={`${res.unit}-${index}`} value={res.unit}>{res.unit}</option>))}</select></div></div>
              <div className={wrapperClass}><label className={labelClass}>Calibration Mode</label><select value={deviceDetails.calibrationMode} onChange={(e) => handleDeviceDetailChange('calibrationMode', e.target.value)} className={editableInput}><option value="Clockwise">Clockwise</option><option value="Anti Clockwise">Anti Clockwise</option></select></div>
         </div>
@@ -732,12 +717,9 @@ const CalibrationPage: React.FC = () => {
                                         <th className="px-4 py-3 font-bold w-1/5">Field</th>
                                         {['standard1', 'standard2', 'standard3'].map((stdKey, idx) => (
                                             <th key={stdKey} className="px-4 py-3 font-bold w-1/4 min-w-[200px]">
+                                                {/* Dropdown removed, replaced with static label */}
                                                 <div className="flex flex-col gap-1.5">
-                                                    <span>Standard {idx + 1}</span>
-                                                    <select onChange={(e) => handleSelectMasterStandard(stdKey as any, e.target.value)} value={selectedStandardIds[stdKey as keyof typeof selectedStandardIds] || ""} className={editableInput}>
-                                                        <option value="">-- Select --</option>
-                                                        {masterStandards.map((std) => (<option key={std.id} value={std.id}>{std.nomenclature} {std.model_serial_no ? `(${std.model_serial_no})` : ""}</option>))}
-                                                    </select>
+                                                    <span className="text-sm text-gray-700 font-bold">Standard {idx + 1}</span>
                                                 </div>
                                             </th>
                                         ))}
@@ -749,17 +731,17 @@ const CalibrationPage: React.FC = () => {
                                             <td className="px-4 py-3 font-medium text-gray-700 text-xs uppercase bg-gray-50/20 align-top pt-4">{row.label}</td>
                                             {['standard1', 'standard2', 'standard3'].map((stdKey) => {
                                                 const isTextArea = row.field === 'nomenclature' || row.field === 'traceable_to_lab';
-                                                return (<td key={stdKey} className="px-4 py-2">{isTextArea ? (<textarea value={masterStandardInputs[stdKey as keyof MasterStandardInput][row.field as keyof HTWMasterStandard] as string || ""} onChange={(e) => handleMasterStandardInputChange(stdKey as any, row.field as any, e.target.value)} className={`${editableInput} min-h-[50px] resize-none overflow-hidden`} rows={2} placeholder="-" />) : (<input type="text" value={masterStandardInputs[stdKey as keyof MasterStandardInput][row.field as keyof HTWMasterStandard] as string || ""} onChange={(e) => handleMasterStandardInputChange(stdKey as any, row.field as any, e.target.value)} className={editableInput} placeholder="-" />)}</td>);
+                                                return (<td key={stdKey} className="px-4 py-2">{isTextArea ? (<textarea value={masterStandardInputs[stdKey as keyof MasterStandardInput][row.field as keyof HTWMasterStandard] as string || ""} readOnly className={`${readOnlyInput} min-h-[50px] resize-none overflow-hidden`} rows={2} placeholder="-" />) : (<input type="text" value={masterStandardInputs[stdKey as keyof MasterStandardInput][row.field as keyof HTWMasterStandard] as string || ""} readOnly className={readOnlyInput} placeholder="-" />)}</td>);
                                             })}
                                         </tr>
                                     ))}
                                     <tr className="hover:bg-gray-50/30">
                                         <td className="px-4 py-3 font-medium text-gray-700 text-xs uppercase bg-gray-50/20">Valid Upto</td>
-                                        {['standard1', 'standard2', 'standard3'].map((stdKey) => (<td key={stdKey} className="px-4 py-2"><input type="date" value={masterStandardInputs[stdKey as keyof MasterStandardInput].calibration_valid_upto || ""} onChange={(e) => handleMasterStandardInputChange(stdKey as any, 'calibration_valid_upto', e.target.value)} className={editableInput} /></td>))}
+                                        {['standard1', 'standard2', 'standard3'].map((stdKey) => (<td key={stdKey} className="px-4 py-2"><input type="date" value={masterStandardInputs[stdKey as keyof MasterStandardInput].calibration_valid_upto || ""} readOnly className={readOnlyInput} /></td>))}
                                     </tr>
                                     <tr className="hover:bg-gray-50/30">
                                         <td className="px-4 py-3 font-medium text-gray-700 text-xs uppercase bg-gray-50/20">Uncertainty</td>
-                                        {['standard1', 'standard2', 'standard3'].map((stdKey) => (<td key={stdKey} className="px-4 py-2"><div className={groupContainer}><input type="number" step="any" value={masterStandardInputs[stdKey as keyof MasterStandardInput].uncertainty || ""} onChange={(e) => handleMasterStandardInputChange(stdKey as any, 'uncertainty', e.target.value)} className={groupLeft.replace("bg-gray-50", "bg-white")} placeholder="Val" /><input type="text" value={masterStandardInputs[stdKey as keyof MasterStandardInput].uncertainty_unit || ""} onChange={(e) => handleMasterStandardInputChange(stdKey as any, 'uncertainty_unit', e.target.value)} className={groupRight.replace("bg-gray-100", "bg-white")} placeholder="Unit" /></div></td>))}
+                                        {['standard1', 'standard2', 'standard3'].map((stdKey) => (<td key={stdKey} className="px-4 py-2"><div className={groupContainer}><input type="number" step="any" value={masterStandardInputs[stdKey as keyof MasterStandardInput].uncertainty || ""} readOnly className={groupLeftReadOnly} placeholder="Val" /><input type="text" value={masterStandardInputs[stdKey as keyof MasterStandardInput].uncertainty_unit || ""} readOnly className={groupRightReadOnly} placeholder="Unit" /></div></td>))}
                                     </tr>
                                 </tbody>
                             </table>

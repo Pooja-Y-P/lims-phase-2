@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   ArrowLeft, Plus, Edit, Trash2, X, Save, 
   Loader2, AlertCircle, Activity, ArrowRightLeft, 
@@ -47,19 +48,13 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     if (isEditModalOpen) {
-      // Disable scrolling on the body
       document.body.style.overflow = 'hidden';
     } else {
-      // Re-enable scrolling
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -95,19 +90,15 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
   }, [fetchData, fetchMasterStandards]);
 
   // --- HANDLERS ---
-
-  // 1. Switch to Add Page
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Open Edit Modal
   const handleEditClick = (item: HTWNomenclatureRange) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Status Toggle
   const handleToggleStatus = async (item: HTWNomenclatureRange) => {
     if(!item.id) return;
     try {
@@ -124,7 +115,6 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
     }
   };
 
-  // 4. Delete
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this range?")) return;
     try {
@@ -138,7 +128,6 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
     }
   };
 
-  // 5. Unified Save Handler
   const handleSave = async (payload: HTWNomenclatureRange, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -150,9 +139,9 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
         await api.post('/htw-nomenclature-ranges/', payload);
         setViewMode('list');
       }
-      fetchData(); // Refresh list
+      fetchData();
     } catch (err: any) {
-      throw err; // Propagate error to form component
+      throw err;
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +153,6 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddRangePage 
@@ -209,7 +197,8 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
           <p className="text-gray-500">Loading ranges...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -272,15 +261,16 @@ export const HTWNomenclatureRangeManager: React.FC<HTWNomenclatureRangeManagerPr
         </div>
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 2. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditRangeModal 
           item={editingItem}
           masterStandards={masterStandards}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
@@ -316,17 +306,13 @@ const AddRangePage: React.FC<AddPageProps> = ({ onCancel, onSave, masterStandard
     }));
   };
 
-  // Specific handler to sync ID and Nomenclature string
   const handleNomenclatureChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
-    
-    // Find the standard object to get the text name
     const selectedStandard = masterStandards.find(s => s.id.toString() === selectedId);
 
     setFormData(prev => ({
       ...prev,
       master_standard_id: selectedId,
-      // Automatically set the nomenclature string based on selection
       nomenclature: selectedStandard ? selectedStandard.nomenclature : ''
     }));
   };
@@ -359,7 +345,7 @@ const AddRangePage: React.FC<AddPageProps> = ({ onCancel, onSave, masterStandard
   };
 
   return (
-    <div className="max-w-3xl mx-auto animate-fadeIn">
+    <div className="max-w-3xl mx-auto animate-fadeIn mb-20">
       <div className="mb-6">
         <button 
           onClick={onCancel} 
@@ -496,7 +482,6 @@ const EditRangeModal: React.FC<EditModalProps> = ({ item, masterStandards, onCan
     }));
   };
 
-  // Specific handler to sync ID and Nomenclature string
   const handleNomenclatureChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedId = e.target.value;
     const selectedStandard = masterStandards.find(s => s.id.toString() === selectedId);
@@ -536,10 +521,8 @@ const EditRangeModal: React.FC<EditModalProps> = ({ item, masterStandards, onCan
   };
 
   return (
-    // ---------------------------------------------------------
-    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
-    // ---------------------------------------------------------
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+    // Z-INDEX set to 99999, though Portal moves it to body level
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}

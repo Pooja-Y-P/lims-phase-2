@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
+import { createPortal } from 'react-dom'; // 1. Import createPortal
 import { 
   Loader2, Plus, ArrowLeft, CheckCircle, 
   PowerOff, Trash2, Edit, AlertCircle, Save, Sigma, 
@@ -34,19 +35,13 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
-  // ---------------------------------------------------------
-  // 1. ADD THIS USE EFFECT TO HANDLE SCROLL LOCKING
-  // ---------------------------------------------------------
+  // Handle Scroll Locking
   useEffect(() => {
     if (isEditModalOpen) {
-      // Disable scrolling on the body
       document.body.style.overflow = 'hidden';
     } else {
-      // Re-enable scrolling
       document.body.style.overflow = 'unset';
     }
-
-    // Cleanup function to ensure scroll is restored if component unmounts
     return () => {
       document.body.style.overflow = 'unset';
     };
@@ -72,19 +67,15 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
   }, [fetchData]);
 
   // --- HANDLERS ---
-
-  // 1. Switch to Add Page
   const handleAddNewClick = () => {
     setViewMode('add');
   };
 
-  // 2. Open Edit Modal
   const handleEditClick = (item: HTWConstCoverageFactor) => {
     setEditingItem(item);
     setIsEditModalOpen(true);
   };
 
-  // 3. Delete Action
   const handleDelete = async (id: number) => {
     if (!window.confirm("Are you sure you want to delete this factor?")) return;
     try {
@@ -98,7 +89,6 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
     }
   };
 
-  // 4. Handle Save (Used by both Add Page and Edit Modal)
   const handleSave = async (payload: { k: number, is_active: boolean }, isEdit: boolean) => {
     setSubmitting(true);
     try {
@@ -108,18 +98,17 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
         setEditingItem(null);
       } else {
         await api.post('/htw/coverage-factor', payload);
-        setViewMode('list'); // Go back to list
+        setViewMode('list');
       }
-      fetchData(); // Refresh data
+      fetchData();
     } catch (err: any) {
-      throw err; // Let the form handle the error display
+      throw err;
     } finally {
       setSubmitting(false);
     }
   };
 
   // --- RENDER ---
-
   if (viewMode === 'add') {
     return (
       <AddCoverageFactorPage 
@@ -167,7 +156,8 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
           <p className="text-gray-500">Loading data...</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -230,23 +220,21 @@ export const HTWCoverageFactorManager: React.FC<HTWCoverageFactorManagerProps> =
         </div>
       )}
 
-      {/* Edit Modal (Popup) */}
-      {isEditModalOpen && editingItem && (
+      {/* 2. USED PORTAL FOR EDIT MODAL */}
+      {isEditModalOpen && editingItem && createPortal(
         <EditCoverageFactorModal 
           item={editingItem}
           onCancel={() => setIsEditModalOpen(false)}
           onSave={(payload) => handleSave(payload, true)}
           submitting={submitting}
-        />
+        />,
+        document.body
       )}
     </div>
   );
 };
 
-// ... [AddCoverageFactorPage component remains unchanged] ...
-// Re-paste AddCoverageFactorPage here if needed, but it wasn't modified.
-// For brevity, assuming AddCoverageFactorPage exists as in your original code.
-
+// ... [AddCoverageFactorPage component] ...
 interface AddPageProps {
     onCancel: () => void;
     onSave: (payload: { k: number, is_active: boolean }) => Promise<void>;
@@ -274,7 +262,7 @@ interface AddPageProps {
     };
   
     return (
-      <div className="max-w-xl mx-auto animate-fadeIn">
+      <div className="max-w-xl mx-auto animate-fadeIn mb-20">
         <div className="mb-6">
           <button 
             onClick={onCancel} 
@@ -372,10 +360,8 @@ const EditCoverageFactorModal: React.FC<EditModalProps> = ({ item, onCancel, onS
   };
 
   return (
-    // ---------------------------------------------------------
-    // 2. UPDATED Z-INDEX HERE: CHANGED z-50 to z-[9999]
-    // ---------------------------------------------------------
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4">
+    // Z-INDEX set high, although Portal moves this to body level
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[99999] p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl animate-fadeIn overflow-hidden">
         
         {/* Modal Header */}
