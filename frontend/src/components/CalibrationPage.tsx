@@ -603,22 +603,31 @@ const CalibrationPage: React.FC = () => {
   const handleBack = () => { navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } }); };
 
   // --- Handle Finish and Exit with Uncertainty Calculation ---
+  // --- Handle Finish and Exit with Uncertainty Calculation & Status Update ---
   const handleFinishAndExit = async () => {
-    if (!inwardId || !equipmentId) return;
+    if (!inwardId || !equipmentId || !jobId) return;
     
     setFinishing(true);
     try {
-        // Trigger Uncertainty Calculation
+        // 1. Trigger Uncertainty Calculation
         await api.post("/uncertainty/uncertainity-calculation", {
             inward_id: Number(inwardId),
             inward_eqp_id: Number(equipmentId)
         });
 
-        // Navigate back on success
+        // 2. Update Job Status to "Calibrated"
+        // This now matches the @router.patch("/{job_id}") we added to the backend
+        await api.patch(`/htw-jobs/${jobId}`, {
+            job_status: "Calibrated"
+        });
+
+        // 3. Navigate back on success
         navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
     } catch (err: any) {
-        console.error("Uncertainty calculation failed:", err);
-        const errorMsg = err.response?.data?.detail || "Failed to calculate uncertainty budget.";
+        console.error("Finish process failed:", err);
+        const errorMsg = err.response?.data?.detail 
+            ? (typeof err.response.data.detail === 'object' ? JSON.stringify(err.response.data.detail) : err.response.data.detail)
+            : "Failed to finish job.";
         alert(`Error: ${errorMsg}`);
     } finally {
         setFinishing(false);

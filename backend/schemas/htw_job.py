@@ -36,6 +36,11 @@ class HTWJobCreate(HTWJobBase):
     class Config:
         populate_by_name = True
 
+# ... (existing code in schemas/htw_job.py) ...
+
+class JobStatusUpdate(BaseModel):
+    job_status: str
+
 
 # --- RESPONSE SCHEMA (Output) ---
 class HTWJobResponse(BaseModel):
@@ -110,6 +115,7 @@ class HTWJobResponse(BaseModel):
         if r_min is not None and r_max is not None:
             return f"{r_min} - {r_max}"
         return v
+    
 
     class Config:
         from_attributes = True
