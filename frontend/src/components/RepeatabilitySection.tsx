@@ -83,7 +83,6 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
         // 1. CAPTURE DEFAULTS
         if (jobRes.data.defaults) {
             setSpecDefaults(jobRes.data.defaults);
-        } else {
         }
 
         if (jobRes.data.status === "success" && jobRes.data.results.length > 0) {
@@ -207,16 +206,12 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
     } else {
       // ADD
       setTableData((prev) => {
-        // 1. Get defaults using string key (e.g., "40")
         const key = targetPercent.toString();
         const defs = specDefaults[key];
-
-
         const baseRow = prev.length > 0 ? prev[0] : null;
 
         const newRow: RepeatabilityRowData = {
           step_percent: targetPercent,
-          // 2. Apply defaults if they exist
           set_pressure: defs ? defs.set_pressure : 0,
           set_torque: defs ? defs.set_torque : 0,
           readings: ["", "", "", "", ""],
@@ -234,6 +229,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
   };
 
   // --- 5. INPUT HANDLERS ---
+  // (Note: handleSetValChange is no longer used in JSX but kept if logic is needed elsewhere)
   const handleSetValChange = (rowIndex: number, field: "set_pressure" | "set_torque", value: string) => {
     if (!/^\d*\.?\d*$/.test(value)) return;
     setTableData((prev) => {
@@ -340,10 +336,40 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId }) =>
               tableData.map((row, rowIndex) => (
                 <tr key={row.step_percent} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="p-2 border border-gray-300 font-bold text-center text-gray-700 bg-gray-50 sticky left-0 group-hover:bg-gray-100">{row.step_percent}</td>
-                  <td className="p-0 border border-gray-300 relative"><input type="text" value={row.set_pressure === 0 ? "" : row.set_pressure} onChange={(e) => handleSetValChange(rowIndex, "set_pressure", e.target.value)} className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-800 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400 placeholder:text-gray-400" placeholder="-" /></td>
-                  <td className="p-0 border border-gray-300 relative"><input type="text" value={row.set_torque === 0 ? "" : row.set_torque} onChange={(e) => handleSetValChange(rowIndex, "set_torque", e.target.value)} className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-800 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400 placeholder:text-gray-400" placeholder="-" /></td>
+                  
+                  {/* --- READ-ONLY Set Pressure --- */}
+                  <td className="p-0 border border-gray-300 relative bg-gray-50">
+                    <input 
+                      type="text" 
+                      value={row.set_pressure === 0 ? "" : row.set_pressure} 
+                      readOnly
+                      className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-500 cursor-default" 
+                      placeholder="-" 
+                    />
+                  </td>
+
+                  {/* --- READ-ONLY Set Torque --- */}
+                  <td className="p-0 border border-gray-300 relative bg-gray-50">
+                    <input 
+                      type="text" 
+                      value={row.set_torque === 0 ? "" : row.set_torque} 
+                      readOnly
+                      className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-500 cursor-default" 
+                      placeholder="-" 
+                    />
+                  </td>
+
+                  {/* Editable Readings */}
                   {row.readings.map((reading, rIndex) => (
-                    <td key={rIndex} className="p-0 border border-gray-300 relative"><input type="text" value={reading} onChange={(e) => handleReadingChange(rowIndex, rIndex, e.target.value)} className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-700 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400" placeholder="-" /></td>
+                    <td key={rIndex} className="p-0 border border-gray-300 relative bg-white">
+                      <input 
+                        type="text" 
+                        value={reading} 
+                        onChange={(e) => handleReadingChange(rowIndex, rIndex, e.target.value)} 
+                        className="w-full h-full p-2 text-center text-sm font-medium focus:outline-none bg-transparent text-gray-700 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400" 
+                        placeholder="-" 
+                      />
+                    </td>
                   ))}
                   <td className="p-2 border border-gray-300 text-center font-bold text-gray-800 bg-gray-50">{row.mean_xr !== null ? row.mean_xr.toFixed(2) : "-"}</td>
                   <td className="p-2 border border-gray-300 text-center text-gray-600 text-sm">{row.corrected_standard !== null ? row.corrected_standard.toFixed(2) : "-"}</td>

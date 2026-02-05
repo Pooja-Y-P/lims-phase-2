@@ -8,8 +8,8 @@ import {
   AlertTriangle,
   Info,
   Table as TableIcon,
-  Plus,  // Imported for Decimal Control
-  Minus, // Imported for Decimal Control
+  Plus,
+  Minus,
 } from "lucide-react";
 
 // --- Interfaces matching Backend Schema ---
@@ -32,7 +32,7 @@ interface UncertaintyBudget {
 
   // Final results
   combined_uncertainty: number;
-  effective_dof: number;
+  effective_dof: number; // Matches backend schema
   coverage_factor: number;
   expanded_uncertainty: number;
   expanded_un_nm: number | null;
@@ -59,15 +59,8 @@ const UncertaintyBudgetPage: React.FC = () => {
   const [budgets, setBudgets] = useState<UncertaintyBudget[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // --- NEW STATE: Decimal Places (Default 4) ---
+  // --- Decimal Places (Default 4) ---
   const [decimalPlaces, setDecimalPlaces] = useState<number>(4);
-
-  // --- LOGIC: Find the row with the HIGHEST Expanded Uncertainty ---
-  const maxUncertaintyBudget = budgets.length > 0 
-    ? budgets.reduce((max, current) => 
-        (current.expanded_uncertainty > max.expanded_uncertainty) ? current : max
-      , budgets[0])
-    : null;
 
   useEffect(() => {
     if (equipmentId) {
@@ -110,8 +103,7 @@ const UncertaintyBudgetPage: React.FC = () => {
     navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
   };
 
-  // --- UPDATED FORMATTER FUNCTION ---
-  // Uses state 'decimalPlaces' unless a specific override is passed
+  // --- FORMATTER FUNCTION ---
   const fmt = (num: number | null | undefined, overrideDecimals?: number) => {
     if (num === undefined || num === null || isNaN(num)) return "-";
     const decimalsToUse = overrideDecimals !== undefined ? overrideDecimals : decimalPlaces;
@@ -119,8 +111,8 @@ const UncertaintyBudgetPage: React.FC = () => {
   };
 
   // --- Handlers for Decimal Control ---
-  const increaseDecimals = () => setDecimalPlaces((prev) => Math.min(prev + 1, 8)); // Max 10
-  const decreaseDecimals = () => setDecimalPlaces((prev) => Math.max(prev - 1, 0));  // Min 0
+  const increaseDecimals = () => setDecimalPlaces((prev) => Math.min(prev + 1, 8));
+  const decreaseDecimals = () => setDecimalPlaces((prev) => Math.max(prev - 1, 0));
 
   // --- Render States ---
   if (loading) {
@@ -152,7 +144,7 @@ const UncertaintyBudgetPage: React.FC = () => {
     );
   }
 
-  // Styles for the specific table header look
+  // Styles
   const headerCellClass = "border border-gray-400 px-2 py-2 text-center text-xs font-bold text-gray-800 bg-[#e0f2f1]"; 
   const symbolCellClass = "border border-gray-400 px-2 py-1 text-center text-sm font-serif font-bold text-gray-900 bg-[#e0f2f1]";
   const unitCellClass = "border border-gray-400 px-2 py-1 text-center text-xs font-bold text-gray-700 bg-[#e0f2f1]";
@@ -179,7 +171,7 @@ const UncertaintyBudgetPage: React.FC = () => {
           </button>
         </div>
 
-        {/* --- DETAILED TABLE MATCHING IMAGE --- */}
+        {/* --- DETAILED TABLE --- */}
         <div className="bg-white rounded-xl border border-gray-300 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -187,7 +179,7 @@ const UncertaintyBudgetPage: React.FC = () => {
                     <h3 className="font-bold text-gray-800">ISO 6789 Uncertainty Budget</h3>
                 </div>
 
-                {/* --- NEW: DECIMAL CONTROLS --- */}
+                {/* --- DECIMAL CONTROLS --- */}
                 <div className="flex items-center gap-3 bg-white border border-gray-200 p-1.5 rounded-lg shadow-sm">
                     <span className="text-xs font-bold text-gray-500 uppercase px-1">Decimals</span>
                     <div className="flex items-center bg-gray-100 rounded-md">
@@ -228,20 +220,21 @@ const UncertaintyBudgetPage: React.FC = () => {
                             <th className={headerCellClass}>Interface</th>
                             <th className={headerCellClass}>Loading Point</th>
                             
-                            {/* Stacked Header for Repeatability */}
                             <th className={`${headerCellClass} p-0 align-top`}>
                                 <div className="border-b border-gray-400 py-1 bg-[#e0f2f1]">Type A</div>
                                 <div className="py-1 bg-[#e0f2f1]">Repeatability</div>
                             </th>
                             
                             <th className={headerCellClass}>Combined Uncertainty</th>
+                            {/* NEW COLUMN DESCRIPTION */}
+                            <th className={headerCellClass}>Effective Degree of Freedom</th>
                             <th className={headerCellClass}>Coverage factor</th>
+                            
                             <th className={headerCellClass}>Expanded Uncertainty</th>
                             <th className={headerCellClass}>Expanded Uncertainty</th>
                             <th className={headerCellClass} style={{ maxWidth: '100px' }}>Mean Value of error</th>
                             <th className={headerCellClass} style={{ maxWidth: '100px' }}>Max value of error</th>
                             
-                            {/* NEW CMC COLUMNS */}
                             <th className={headerCellClass}>Calibration Capability</th>
                             <th className={headerCellClass}>CMC Absolute</th>
                             <th className={headerCellClass}>CMC of Reading</th>
@@ -262,13 +255,15 @@ const UncertaintyBudgetPage: React.FC = () => {
                             <th className={symbolCellClass}>Wl</th>
                             <th className={symbolCellClass}>brep</th>
                             <th className={symbolCellClass}>W</th>
+                            {/* NEW COLUMN SYMBOL */}
+                            <th className={symbolCellClass}>Veff</th>
                             <th className={symbolCellClass}>k</th>
+                            
                             <th className={symbolCellClass}>%</th>
                             <th className={symbolCellClass}>U</th>
                             <th className={symbolCellClass}>|ās|</th>
                             <th className={symbolCellClass}>|bep|</th>
                             
-                            {/* NEW CMC SYMBOLS */}
                             <th className={symbolCellClass}>CMC</th>
                             <th className={symbolCellClass}>CMC (abs)</th>
                             <th className={symbolCellClass}>CMC (rdg)</th>
@@ -289,13 +284,15 @@ const UncertaintyBudgetPage: React.FC = () => {
                             <th className={unitCellClass}>%</th>
                             <th className={unitCellClass}>%</th>
                             <th className={unitCellClass}>%</th>
+                            {/* NEW COLUMN UNIT (Empty) */}
                             <th className={unitCellClass}></th>
+                            <th className={unitCellClass}></th>
+                            
                             <th className={unitCellClass}></th> 
                             <th className={unitCellClass}>Nm</th>
                             <th className={unitCellClass}>%</th>
                             <th className={unitCellClass}>%</th>
 
-                            {/* NEW CMC UNITS */}
                             <th className={unitCellClass}>%</th>
                             <th className={unitCellClass}>Nm</th>
                             <th className={unitCellClass}>%</th>
@@ -306,36 +303,28 @@ const UncertaintyBudgetPage: React.FC = () => {
 
                     <tbody className="divide-y divide-gray-200">
                         {budgets.map((row) => {
-                            
                             const cmcAbs = Math.abs(row.cmc);
-                            
                             return (
-                                
                                 <tr key={row.id}>
-                                    {/* 1. Set Torque (Ts) */}
-                                    {/* Note: Set Torque usually doesn't need high precision, but using fmt for consistency unless you prefer '2' */}
                                     <td className={`${bodyCellClass} font-bold text-gray-900 bg-gray-50`}>
                                         {fmt(row.set_torque_ts, 2)} 
                                     </td>
                                     
-                                    {/* Inputs */}
                                     <td className={bodyCellClass}>{fmt(row.delta_s_un)}</td>
                                     <td className={bodyCellClass}>{fmt(row.delta_p)}</td>
                                     <td className={bodyCellClass}>{fmt(row.wmd)}</td>
                                     <td className={bodyCellClass}>{fmt(row.wr)}</td>
-                                    <td className={bodyCellClass}>{fmt(row.wre)}</td>
+                                    <td className={bodyCellClass}>{fmt(row.wrep)}</td>
                                     <td className={bodyCellClass}>{fmt(row.wod)}</td>
                                     <td className={bodyCellClass}>{fmt(row.wint)}</td>
                                     <td className={bodyCellClass}>{fmt(row.wl)}</td>
-                                    <td className={bodyCellClass}>{fmt(row.wrep)}</td>
+                                    <td className={bodyCellClass}>{fmt(row.wre)}</td>
                                     
-                                    {/* Results */}
                                     <td className={`${bodyCellClass} font-bold`}>{fmt(row.combined_uncertainty)}</td>
                                     
-                                    {/* Coverage factor is usually standard 2.00, but can now be adjusted if desired. 
-                                        If you want this strictly 2 decimals always, pass 2 as second arg. 
-                                        Currently set to follow the global decimal setting for uniformity. 
-                                    */}
+                                    {/* NEW DATA COLUMN: Effective DOF */}
+                                    <td className={bodyCellClass}>{fmt(row.effective_dof)}</td>
+
                                     <td className={bodyCellClass}>{fmt(row.coverage_factor)}</td>
                                     
                                     <td className={`${bodyCellClass} font-bold text-blue-700`}>{fmt(row.expanded_uncertainty)}</td>
@@ -343,7 +332,6 @@ const UncertaintyBudgetPage: React.FC = () => {
                                     <td className={bodyCellClass}>{fmt(row.mean_measurement_error)}</td>
                                     <td className={bodyCellClass}>{fmt(row.max_device_error)}</td>
 
-                                    {/* --- NEW CMC COLUMNS --- */}
                                     <td className={`${bodyCellClass} font-semibold text-purple-700 bg-purple-50/50`}>
                                         {fmt(row.cmc)}
                                     </td>
@@ -354,7 +342,6 @@ const UncertaintyBudgetPage: React.FC = () => {
                                         {fmt(row.cmc_of_reading)}
                                     </td>
                                     
-                                    {/* Final S (Wt) */}
                                     <td className={`${bodyCellClass} font-bold text-green-700 border-l-2 border-green-200`}>
                                         {fmt(row.final_wl)}
                                     </td>
