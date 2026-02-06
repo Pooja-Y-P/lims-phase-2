@@ -4,6 +4,7 @@ from datetime import date
 
 from backend.db import get_db
 from backend.models.htw_job_standard_snapshot import HTWJobStandardSnapshot
+# Import the service function
 from backend.services.htw_job_standard_selection import (
     auto_select_standards_for_job
 )
@@ -41,7 +42,7 @@ def get_auto_selected_standards(
 
 
 # =========================================================
-# POST → Auto select standards (ONLY if not exists)
+# POST → Auto select standards (FIXED)
 # =========================================================
 @router.post("/{job_id}/auto-select-standards")
 def auto_select_standards(
@@ -50,29 +51,23 @@ def auto_select_standards(
     job_date: date,
     db: Session = Depends(get_db)
 ):
-    existing = (
-        db.query(HTWJobStandardSnapshot)
-        .filter(HTWJobStandardSnapshot.job_id == job_id)
-        .first()
-    )
+    # REMOVED the "if existing" check.
+    # The service function handles deleting old records, so it is safe to run this again.
+    
+    try:
+        auto_select_standards_for_job(
+            db=db,
+            job_id=job_id,
+            inward_eqp_id=inward_eqp_id,
+            job_date=job_date
+        )
 
-    if existing:
         return {
-            "status": "already_selected",
-            "message": "Master standards already selected. Use GET API to fetch them."
+            "status": "created", # or "updated"
+            "message": "Master standards selected successfully"
         }
-
-    auto_select_standards_for_job(
-        db=db,
-        job_id=job_id,
-        inward_eqp_id=inward_eqp_id,
-        job_date=job_date
-    )
-
-    return {
-        "status": "created",
-        "message": "Master standards selected successfully"
-    }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # =========================================================
@@ -85,11 +80,7 @@ def recompute_auto_selected_standards(
     job_date: date,
     db: Session = Depends(get_db)
 ):
-    db.query(HTWJobStandardSnapshot)\
-        .filter(HTWJobStandardSnapshot.job_id == job_id)\
-        .delete()
-    db.flush()
-
+    # Just calls the same logic, explicit for PUT requests
     auto_select_standards_for_job(
         db=db,
         job_id=job_id,
