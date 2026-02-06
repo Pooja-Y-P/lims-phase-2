@@ -381,6 +381,27 @@ const CalibrationPage: React.FC = () => {
     }
   };
 
+  // --- NEW: Refresh Standards Handler for Child Components ---
+  const handleRefreshStandards = async () => {
+    if (!jobId || !equipmentId) return;
+    
+    try {
+      // 1. Trigger Auto-Selection in Backend (re-computes based on new steps)
+      await api.post(`/jobs/${jobId}/auto-select-standards`, null, { 
+          params: { 
+              inward_eqp_id: Number(equipmentId), 
+              job_date: deviceDetails.calibrationDate 
+          } 
+      });
+
+      // 2. Refresh UI with newly selected standards
+      await fetchSavedStandards(jobId);
+    } catch (err) {
+      console.error("Failed to auto-update standards after step change", err);
+      // Optional: Add alert or toast here if critical
+    }
+  };
+
   // --- 2. Initial Data Load ---
   useEffect(() => {
     const initData = async () => {
@@ -602,7 +623,6 @@ const CalibrationPage: React.FC = () => {
 
   const handleBack = () => { navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } }); };
 
-  // --- Handle Finish and Exit with Uncertainty Calculation ---
   // --- Handle Finish and Exit with Uncertainty Calculation & Status Update ---
   const handleFinishAndExit = async () => {
     if (!inwardId || !equipmentId || !jobId) return;
@@ -616,7 +636,6 @@ const CalibrationPage: React.FC = () => {
         });
 
         // 2. Update Job Status to "Calibrated"
-        // This now matches the @router.patch("/{job_id}") we added to the backend
         await api.patch(`/htw-jobs/${jobId}`, {
             job_status: "Calibrated"
         });
@@ -792,7 +811,10 @@ const CalibrationPage: React.FC = () => {
                                 </div>
                                 
                                 <div className={activeTab === 'A' ? 'block animate-step' : 'hidden'}>
-                                    <RepeatabilitySection jobId={jobId} />
+                                    <RepeatabilitySection 
+                                        jobId={jobId} 
+                                        onStepAdded={handleRefreshStandards}
+                                    />
                                 </div>
                                 
                                 <div className={activeTab === 'B' ? 'block animate-step' : 'hidden'}>
