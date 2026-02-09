@@ -290,8 +290,8 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       </div>
     );
   }
+  const isLocked = inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
 
-  const isLocked = inwardDetails.status === 'approved' || inwardDetails.status === 'rejected' || inwardDetails.status === 'updated';
   const deviatedCount = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK').length;
   const displayDate = inwardDetails.material_inward_date || inwardDetails.date || inwardDetails.created_at;
 

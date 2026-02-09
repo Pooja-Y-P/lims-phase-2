@@ -14,6 +14,8 @@ import {
   XCircle, ChevronDown, Activity, UserCog
 } from 'lucide-react';
 
+import { useSearchParams } from 'react-router-dom';
+
 // --- Extended Types for UI ---
 interface User extends BaseUser {
   customer_details?: string; 
@@ -924,7 +926,11 @@ const AdminDashboardHome: React.FC<{ users: User[], onNavigate: (section: string
 // --- MAIN DASHBOARD COMPONENT ---
 const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeSection, setActiveSection] = useState<string>('dashboard');
+  
+  // --- Updated: State synced with URL search params
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSection = searchParams.get('section') || 'dashboard';
+  const [activeSection, setActiveSection] = useState<string>(initialSection);
   
   const [users, setUsers] = useState<User[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -933,6 +939,12 @@ const AdminDashboard: React.FC = () => {
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+
+  // --- Updated: Function to handle navigation
+  const handleNavigate = (section: string) => {
+    setActiveSection(section);
+    setSearchParams({ section });
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -1001,8 +1013,6 @@ const AdminDashboard: React.FC = () => {
       
       {/* 
          HEADER CONTAINER
-         z-index set to 100 to ensure the dropdown menu (Logout) 
-         renders ON TOP of the sidebar and main content.
       */}
       <div className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 shadow-sm">
          <Header username={userName} role={userRole} onLogout={handleLogout} />
@@ -1010,8 +1020,6 @@ const AdminDashboard: React.FC = () => {
 
       {/* 
          MAIN LAYOUT
-         Sidebar and Content sit below the header.
-         The z-index of the sidebar is lower than the header (40 < 100).
       */}
       <div className="flex flex-1 w-full relative z-0">
         
@@ -1022,7 +1030,7 @@ const AdminDashboard: React.FC = () => {
                     isOpen={isSidebarOpen} 
                     setIsOpen={setSidebarOpen} 
                     activeSection={activeSection} 
-                    setActiveSection={setActiveSection} 
+                    setActiveSection={handleNavigate} 
                 />
              </div>
         </div>
@@ -1034,7 +1042,7 @@ const AdminDashboard: React.FC = () => {
 
               {/* --- Dashboard Home Section --- */}
               {activeSection === 'dashboard' && (
-                <AdminDashboardHome users={users} onNavigate={setActiveSection} />
+                <AdminDashboardHome users={users} onNavigate={handleNavigate} />
               )}
 
               {/* --- Invite Users Section --- */}

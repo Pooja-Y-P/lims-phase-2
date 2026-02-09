@@ -44,7 +44,7 @@ class Inward(Base):
     draft_data = Column(JSONB, nullable=True)
     is_draft = Column(Boolean, default=False)
     draft_updated_at = Column(TIMESTAMP(timezone=True), nullable=True)
-
+    inward_srf_flag = Column(Boolean, nullable=False, server_default="false")
     # --- Relationships ---
     
     customer: Mapped["Customer"] = relationship("Customer")
