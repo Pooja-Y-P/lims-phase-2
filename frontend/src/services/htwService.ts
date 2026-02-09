@@ -5,7 +5,7 @@ import {
   VariationPayload 
 } from '../types/htwTypes';
 
-const API_URL = 'http://localhost:8000/htw-calculations';
+const API_URL = 'http://192.168.31.195:8000/htw-calculations';
 
 // Section A
 export const saveRepeatability = async (payload: RepeatabilityPayload) => {

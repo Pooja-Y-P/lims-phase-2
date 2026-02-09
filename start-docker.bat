@@ -38,8 +38,8 @@ echo ✅ LIMS Project is starting!
 echo.
 echo 📱 Access the application at:
 echo    - Frontend:  http://localhost:3000
-echo    - Backend:   http://localhost:8000
-echo    - API Docs:  http://localhost:8000/docs
+echo    - Backend:   http://192.168.31.195:8000
+echo    - API Docs:  http://192.168.31.195:8000/docs
 echo    - pgAdmin:   http://localhost:5050
 echo.
 echo 📝 View logs with: docker-compose logs -f

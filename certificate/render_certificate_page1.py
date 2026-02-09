@@ -216,13 +216,13 @@ def render_certificate_combined(data, output_path=None, template_dir=None):
     return html
 
 
-def fetch_inward_data(inward_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_inward_data(inward_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch full inward data from the API endpoint including customer and equipment data.
     
     Args:
         inward_id: The inward ID to fetch data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing full inward data with customer and equipment, or None if fetch fails
@@ -238,13 +238,13 @@ def fetch_inward_data(inward_id: int, api_base_url: str = "http://localhost:8000
         return None
 
 
-def fetch_inward_equipment(inward_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_inward_equipment(inward_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch inward equipment data from the API endpoint.
     
     Args:
         inward_id: The inward ID to fetch equipment data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing equipment data, or None if fetch fails
@@ -256,13 +256,13 @@ def fetch_inward_equipment(inward_id: int, api_base_url: str = "http://localhost
     return None
 
 
-def fetch_job_id_from_inward_eqp_id(inward_eqp_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[int]:
+def fetch_job_id_from_inward_eqp_id(inward_eqp_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[int]:
     """
     Fetch job_id from inward_eqp_id using the HTW Jobs API.
     
     Args:
         inward_eqp_id: The inward equipment ID to fetch job for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         job_id if found, None otherwise
@@ -283,13 +283,13 @@ def fetch_job_id_from_inward_eqp_id(inward_eqp_id: int, api_base_url: str = "htt
         return None
 
 
-def fetch_standards_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[List[Dict[str, Any]]]:
+def fetch_standards_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[List[Dict[str, Any]]]:
     """
     Fetch standards from htw_job_standard_snapshot table using job_id.
     
     Args:
         job_id: The job ID to fetch standards for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         List of standard dictionaries ordered by standard_order, or None if fetch fails
@@ -588,7 +588,7 @@ def map_equipment_to_certificate_data(equipment: Dict[str, Any], standards: Opti
     }
 
 
-def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http://localhost:8000/api") -> Dict[str, Any]:
+def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Dict[str, Any]:
     """
     Fetch inward equipment data and map it to certificate template fields.
     Also fetches Reference Standard Details from htw_job_standard_snapshot table.
@@ -596,7 +596,7 @@ def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http:/
     
     Args:
         inward_id: The inward ID to fetch equipment data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary with certificate data fields (device under calibration, standards, and customer populated)
@@ -633,13 +633,13 @@ def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http:/
         return map_equipment_to_certificate_data({}, standards, customer, inward_data)
 
 
-def fetch_repeatability_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[List[Dict[str, Any]]]:
+def fetch_repeatability_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[List[Dict[str, Any]]]:
     """
     Fetch repeatability data from htw_repeatability and htw_repeatability_readings tables using job_id.
     
     Args:
         job_id: The job ID to fetch repeatability data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         List of repeatability dictionaries, or None if fetch fails
@@ -731,13 +731,13 @@ def map_repeatability_to_certificate_data(repeatability_results: List[Dict[str, 
     return certificate_data
 
 
-def fetch_reproducibility_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_reproducibility_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch reproducibility data from htw_reproducibility and htw_reproducibility_reading tables using job_id.
     
     Args:
         job_id: The job ID to fetch reproducibility data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing reproducibility data, or None if fetch fails
@@ -806,13 +806,13 @@ def map_reproducibility_to_certificate_data(reproducibility_data: Dict[str, Any]
     return certificate_data
 
 
-def fetch_output_drive_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_output_drive_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch output drive variation data from htw_output_drive_variation and htw_output_drive_variation_reading tables using job_id.
     
     Args:
         job_id: The job ID to fetch output drive variation data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing output drive variation data, or None if fetch fails
@@ -881,13 +881,13 @@ def map_output_drive_to_certificate_data(output_drive_data: Dict[str, Any]) -> L
     return certificate_data
 
 
-def fetch_drive_interface_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_drive_interface_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch drive interface variation data from htw_drive_interface_variation and htw_drive_interface_variation_reading tables using job_id.
     
     Args:
         job_id: The job ID to fetch drive interface variation data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing drive interface variation data, or None if fetch fails
@@ -972,13 +972,13 @@ def map_drive_interface_to_certificate_data(drive_interface_data: Dict[str, Any]
     return certificate_data
 
 
-def fetch_loading_point_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_loading_point_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch loading point variation data from htw_loading_point_variation and htw_loading_point_variation_reading tables using job_id.
     
     Args:
         job_id: The job ID to fetch loading point variation data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing loading point variation data, or None if fetch fails
@@ -1058,13 +1058,13 @@ def map_loading_point_to_certificate_data(loading_point_data: Dict[str, Any]) ->
     return certificate_data
 
 
-def fetch_environment_from_job_id(job_id: int, api_base_url: str = "http://localhost:8000/api") -> Optional[Dict[str, Any]]:
+def fetch_environment_from_job_id(job_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Optional[Dict[str, Any]]:
     """
     Fetch environment data (PRE and POST) from htw_job_environment table using job_id.
     
     Args:
         job_id: The job ID to fetch environment data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary containing PRE and POST environment data, or None if fetch fails
@@ -1146,7 +1146,7 @@ def calculate_average_environment(environment_data: Dict[str, Any]) -> Dict[str,
     }
 
 
-def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http://localhost:8000/api") -> Dict[str, Any]:
+def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http://192.168.31.195:8000/api") -> Dict[str, Any]:
     """
     Fetch inward equipment data and map it to certificate template fields.
     Also fetches Reference Standard Details from htw_job_standard_snapshot table.
@@ -1160,7 +1160,7 @@ def get_certificate_data_from_inward(inward_id: int, api_base_url: str = "http:/
     
     Args:
         inward_id: The inward ID to fetch equipment data for
-        api_base_url: Base URL for the API (default: http://localhost:8000/api)
+        api_base_url: Base URL for the API (default: http://192.168.31.195:8000/api)
     
     Returns:
         Dictionary with certificate data fields (device under calibration, standards, customer, repeatability, reproducibility, geometric, interface, loading, and environment data populated)
@@ -1327,7 +1327,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         try:
             inward_id = int(sys.argv[1])
-            api_url = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8000/api"
+            api_url = sys.argv[2] if len(sys.argv) > 2 else "http://192.168.31.195:8000/api"
             
             print(f"Fetching inward equipment data for inward_id={inward_id}...")
             data = get_certificate_data_from_inward(inward_id, api_url)
