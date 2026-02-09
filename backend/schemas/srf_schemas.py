@@ -24,6 +24,7 @@ class InwardListSummary(BaseModel):
     inward_id: int
     status: Optional[str] = None
     customer_dc_no: Optional[str] = None
+    inward_srf_flag: Optional[bool] = None # <--- ADDED HERE for list views
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,14 +49,12 @@ class InwardEquipmentSchema(BaseModel):
     serial_no: Optional[str] = None
     quantity: int
 
-    # ✅ ✅ ✅ ADD THIS LINE (CRITICAL FIX)
     status: Optional[str] = None
 
     srf_equipment: Optional[SrfEquipmentSchema] = None
    
     model_config = ConfigDict(from_attributes=True)
 
- 
  
 class InwardSchema(BaseModel):
     inward_id: int
@@ -71,6 +70,9 @@ class InwardSchema(BaseModel):
     customer_dc_date: Optional[date] = None
     material_inward_date: Optional[datetime] = None
     status: Optional[str] = None
+    
+    # ✅ ✅ ✅ ADDED THIS FIELD FOR THE DB COLUMN
+    inward_srf_flag: Optional[bool] = None 
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -97,8 +99,23 @@ class InwardSchema(BaseModel):
                 # If parsing fails, return None
                 return None
         return v
- 
- 
+
+
+# ====================================================================
+# ✅ NEW SCHEMA: Inward Update (Use this in your FastAPI Route)
+# ====================================================================
+class InwardUpdateSchema(BaseModel):
+    """
+    Used for partial updates to the Inward table (e.g., setting the flag).
+    """
+    inward_srf_flag: Optional[bool] = None
+    # You can add other updatable fields here if needed in the future
+    status: Optional[str] = None
+    
+    # Ignore extra fields so the API doesn't crash if React sends too much data
+    model_config = ConfigDict(extra='ignore')
+
+
 # ====================================================================
 # Base Schema
 # ====================================================================
@@ -284,12 +301,10 @@ class SrfResponse(BaseModel):
  
     model_config = ConfigDict(from_attributes=True)
     
-    # --- ADDED FIX HERE: VALIDATE srf_no TO STRING ---
     @field_validator('srf_no', mode='before')
     @classmethod
     def stringify_srf_no(cls, v):
         return str(v)
-    # -------------------------------------------------
 
     @model_validator(mode='after')
     def flatten_portal_info(self):

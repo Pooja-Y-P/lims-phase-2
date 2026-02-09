@@ -1,7 +1,7 @@
 import json
 from datetime import date, datetime
 from typing import Dict, List, Optional
-from pydantic import BaseModel, EmailStr, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError
 import logging
 from fastapi import (
     APIRouter, Depends, status, HTTPException, Request,
@@ -12,6 +12,12 @@ from sqlalchemy.orm import Session
 
 # Local imports
 from backend.db import get_db
+# ------------------------------------------------------------------
+# ✅ IMPORT Inward (Removed InwardEquipment as it is no longer used here)
+from backend.models.inward import Inward
+# ✅ IMPORT HTWJob
+from backend.models.htw_job import HTWJob 
+# ------------------------------------------------------------------
 from backend.services.inward_services import InwardService
 from backend.services.delayed_email_services import DelayedEmailService
 from backend.services.notification_services import NotificationService
@@ -43,7 +49,13 @@ ALLOWED_ROLES = ["staff", "admin", "engineer"]
 router = APIRouter(prefix="/staff/inwards", tags=["Inwards"])
 
 # =========================================================
-# 1. STATIC ROUTES (MUST BE DEFINED FIRST)
+# LOCAL SCHEMA DEFINITION
+# =========================================================
+class InwardFlagUpdate(BaseModel):
+    inward_srf_flag: bool
+
+# =========================================================
+# 1. STATIC ROUTES
 # =========================================================
 
 @router.get("/next-no", response_model=dict)
@@ -63,7 +75,7 @@ async def get_drafts(db: Session = Depends(get_db), current_user: UserSchema = D
     return await inward_service.get_user_drafts(current_user.user_id)
 
 # =========================================================
-# 2. DYNAMIC ROUTES WITH SPECIFIC PREFIXES
+# 2. DYNAMIC ROUTES
 # =========================================================
 
 @router.get("/drafts/{draft_id}", response_model=DraftResponse)
@@ -184,12 +196,10 @@ async def delete_draft(draft_id: int, db: Session = Depends(get_db), current_use
     if not await InwardService(db).delete_draft(draft_id, current_user.user_id):
         raise HTTPException(status_code=404, detail="Draft not found")
 
-# --- CUSTOMER PORTAL ENDPOINTS (Added manually here to support logic) ---
-# Note: Typically these might be in a separate router, but included here for context of the task.
+# --- CUSTOMER PORTAL ENDPOINTS ---
 
 @router.get("/portal/firs/{inward_id}", tags=["Portal"], response_model=InwardResponse)
 async def get_fir_details(inward_id: int, db: Session = Depends(get_db)):
-    # Public/Token protected access usually, basic retrieval here
     return await InwardService(db).get_inward_by_id(inward_id)
 
 @router.post("/portal/firs/{inward_id}/remarks", tags=["Portal"])
@@ -214,7 +224,6 @@ async def update_fir_status(
 
 @router.get("/portal/direct-fir/{inward_id}", tags=["Portal"], response_model=InwardResponse)
 async def get_direct_fir(inward_id: int, token: str, db: Session = Depends(get_db)):
-    # In a real app, validate token against DB. Assuming valid for this snippet context.
     return await InwardService(db).get_inward_by_id(inward_id)
 
 @router.post("/portal/direct-fir/{inward_id}/remarks", tags=["Portal"])
@@ -242,7 +251,6 @@ async def get_all_inward_records(
 @router.get("/reviewed-firs", response_model=List[ReviewedFirResponse])
 async def get_reviewed_firs(db: Session = Depends(get_db), current_user: UserSchema = Depends(check_staff_role)):
     inward_service = InwardService(db)
-    # Updated to use the filtered method that only returns equipments with 'reviewed' status
     return await inward_service.get_reviewed_inwards_filtered()
 
 @router.get("/exportable-list", response_model=List[UpdatedInwardSummary])
@@ -347,13 +355,11 @@ async def delete_notification(notification_id: int, db: Session = Depends(get_db
 
 @router.get("/manufacturer/makes", response_model=List[str])
 def get_makes(db: Session = Depends(get_db)):
-    """Get all distinct makes from manufacturer specifications."""
     return InwardService(db).get_all_makes()
 
 
 @router.get("/manufacturer/models", response_model=List[str])
 def get_models(make: str, db: Session = Depends(get_db)):
-    """Get all distinct models for a given make."""
     models = InwardService(db).get_models_by_make(make)
     if not models:
         raise HTTPException(status_code=404, detail="No models found for selected make")
@@ -362,14 +368,13 @@ def get_models(make: str, db: Session = Depends(get_db)):
 
 @router.get("/manufacturer/range")
 def get_range(make: str, model: str, db: Session = Depends(get_db)):
-    """Get range_min and range_max for a given make and model combination."""
     data = InwardService(db).get_range_by_make_model(make, model)
     if not data:
         raise HTTPException(status_code=404, detail="No range found for selected make & model")
     return data
 
 # =========================================================
-# 3. CATCH-ALL DYNAMIC ROUTES (MUST BE DEFINED LAST)
+# 3. CATCH-ALL DYNAMIC ROUTES
 # =========================================================
 
 @router.get("/{inward_id}/export")
@@ -394,6 +399,49 @@ async def get_inward_by_id(inward_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Inward not found")
     return db_inward
 
+# ==========================================================
+# 4. UPDATED: Partial Update Route (Flag + Job Termination Only)
+# ==========================================================
+@router.patch("/{inward_id}")
+async def partial_update_inward(
+    inward_id: int,
+    payload: InwardFlagUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Handles partial updates via JSON.
+    - Updates inward_srf_flag.
+    - If flag is True (Rejected):
+        1. TERMINATES ALL associated HTWJobs.
+        (Note: Does NOT terminate InwardEquipments as per requirement)
+    """
+    inward = db.query(Inward).filter(Inward.inward_id == inward_id).first()
+    if not inward:
+        raise HTTPException(status_code=404, detail="Inward record not found")
+
+    # 1. Update Inward Flag
+    if payload.inward_srf_flag is not None:
+        inward.inward_srf_flag = payload.inward_srf_flag
+        
+        # 2. If flag is True (Rejected), Terminate ALL associated HTWJobs
+        if payload.inward_srf_flag is True:
+            db.query(HTWJob).filter(HTWJob.inward_id == inward_id).update(
+                {"job_status": "terminated"}, 
+                synchronize_session=False
+            )
+
+    try:
+        db.commit()
+        db.refresh(inward)
+        return {"message": "Inward updated successfully", "inward_id": inward.inward_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database commit failed: {str(e)}")
+
+
+# ==========================================================
+# 5. EXISTING PUT ROUTE (For Form Data + File Uploads)
+# ==========================================================
 @router.put("/{inward_id}", response_model=InwardResponse)
 async def update_inward(
     inward_id: int,
@@ -409,15 +457,8 @@ async def update_inward(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(check_staff_role)
 ):
-    print(f"\n[DEBUG] >>> ROUTER HIT: Update Inward ID: {inward_id}")
-    
-    # 1. LOG RAW JSON FROM FRONTEND
-    print(f"[DEBUG] Raw equipment_list string received:\n{equipment_list}")
-
     try:
-        # Parse raw JSON to check before Pydantic touches it
         raw_list = json.loads(equipment_list)
-        print(f"[DEBUG] JSON Load Success. Found {len(raw_list)} items.")
         
         inward_data = InwardUpdate(
             srf_no=srf_no,
@@ -429,25 +470,7 @@ async def update_inward(
             receiver=receiver,
             equipment_list=raw_list
         )
-        
-        # 2. LOG PYDANTIC PARSED DATA
-        print("[DEBUG] Pydantic Validation Successful. Checking Parsed Items:")
-        for i, eq in enumerate(inward_data.equipment_list):
-            # Check if inward_eqp_id and status exist on the object
-            # getattr is used in case the field is missing from the schema entirely
-            p_id = getattr(eq, 'inward_eqp_id', 'FIELD_MISSING')
-            p_status = getattr(eq, 'status', 'FIELD_MISSING')
-            
-            print(f"   Item {i}: ID={p_id} | Status={p_status}")
-            
-            if p_id is None or p_id == 'FIELD_MISSING':
-                print(f"     [⚠️ WARNING] Item {i} has no ID. Service will treat as NEW item (Pending).")
-            
-            if p_status is None or p_status == 'FIELD_MISSING':
-                print(f"     [⚠️ WARNING] Item {i} has no Status. Service might ignore update.")
-
     except (ValidationError, ValueError, json.JSONDecodeError) as e:
-        print(f"[DEBUG] ❌ Validation Error: {e}")
         logger.error(f"Validation error on update: {e}")
         raise HTTPException(status_code=422, detail=f"Validation Error: {e}")
 
@@ -465,7 +488,6 @@ async def update_inward(
         if upload_files:
             photos_by_index[index] = upload_files
             
-    print(f"[DEBUG] Calling Service Layer...")
     inward_service = InwardService(db)
 
     updated_inward = await inward_service.update_inward_with_files(
@@ -475,5 +497,4 @@ async def update_inward(
         updater_id=current_user.user_id
     )
     
-    print(f"[DEBUG] Service Layer Finished. Response Sent.\n")
     return updated_inward

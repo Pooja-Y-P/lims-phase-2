@@ -13,16 +13,16 @@ import {
   Wrench,
   ChevronLeft,
 } from "lucide-react";
- 
-// --- Interfaces (Updated to match your JSON) ---
+
+// --- Interfaces ---
 type SrfStatus = 'approved' | 'rejected' | 'pending' | 'inward_completed' | 'created';
- 
+
 interface SrfEquipmentData {
   unit?: string | null;
   no_of_calibration_points?: string;
   mode_of_calibration?: string;
 }
- 
+
 interface EquipmentData {
   inward_eqp_id: number;
   material_description?: string;
@@ -31,73 +31,65 @@ interface EquipmentData {
   range?: string;
   srf_equipment?: SrfEquipmentData;
 }
- 
+
 interface CustomerData {
   customer_id?: number;
-  customer_details?: string; // This serves as the Company Name
+  customer_details?: string; // Company Name
   phone?: string;
   contact_person?: string;
   email?: string;
-  bill_to_address?: string; // Matches JSON
-  ship_to_address?: string; // Matches JSON
+  bill_to_address?: string;
+  ship_to_address?: string;
 }
- 
+
 interface InwardData {
   inward_id: number;
   customer_dc_no?: string;
   customer_dc_date?: string;
-  material_inward_date?: string; // Matches JSON
+  material_inward_date?: string;
+  inward_srf_flag?: boolean; // Added field
   customer?: CustomerData;
   equipments?: EquipmentData[];
 }
- 
+
 interface SrfData {
   srf_id: number;
-  date: string; // SRF Date
+  date: string;
   nepl_srf_no: string;
   status: SrfStatus;
- 
-  // Contact Info
   telephone: string | null;
   email: string | null;
   contact_person: string | null;
   address?: string | null;
- 
-  // Certificate Info
   certificate_issue_name: string | null;
-  // Note: JSON has a typo 'adress', mapping both for safety
   certificate_issue_adress?: string | null;
   certificate_issue_address?: string | null;
- 
   inward?: InwardData;
- 
-  // Instructions
   calibration_frequency: string;
   statement_of_conformity: boolean;
   ref_iso_is_doc?: boolean;
   ref_manufacturer_manual?: boolean;
   ref_customer_requirement?: boolean;
-  turnaround_time?: string | number; // JSON returns number 7
+  turnaround_time?: string | number;
   remarks?: string | null;
   remark_special_instructions?: string | null;
   specified_frequency?: string;
 }
- 
-// Props interface for the component
+
 interface Props {
   onStatusChange: (id: number, status: string) => void;
 }
- 
+
 const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   const { srfId } = useParams<{ srfId: string }>();
   const [srfData, setSrfData] = useState<SrfData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
- 
+
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
- 
+
   // --- Data Loading ---
   const loadSrfData = useCallback(async () => {
     if (!srfId) return;
@@ -107,37 +99,29 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       const response = await fetch(`http://localhost:8000/api/srfs/${srfId}`);
       if (!response.ok) throw new Error("Failed to fetch SRF details");
       const data: SrfData = await response.json();
-     
-      // --- Data Normalization ---
- 
-      // 1. Date Formatting
+      
+      // Data Normalization
       if (data.date) data.date = data.date.split("T")[0];
-     
-      // 2. Inward Data Formatting
+      
       if (data.inward) {
         if (data.inward.customer_dc_date) {
             data.inward.customer_dc_date = data.inward.customer_dc_date.split("T")[0];
         }
-        // Handle 'material_inward_date' from JSON
         if (data.inward.material_inward_date) {
             data.inward.material_inward_date = data.inward.material_inward_date.split("T")[0];
         }
       }
- 
-      // 3. Handle JSON typo: certificate_issue_adress -> certificate_issue_address
-      // We store it in the standard 'address' field for the state
+
       const certAddr = data.certificate_issue_address || data.certificate_issue_adress;
       data.certificate_issue_address = certAddr;
- 
-      // 4. Convert Turnaround time to string if it's a number
+
       if (typeof data.turnaround_time === 'number') {
           data.turnaround_time = data.turnaround_time.toString();
       }
- 
-      // 5. Defaults
+
       data.calibration_frequency = data.calibration_frequency ?? "As per Standard";
       data.statement_of_conformity = typeof data.statement_of_conformity === "boolean" ? data.statement_of_conformity : false;
-     
+      
       setSrfData(data);
     } catch (err: any) {
       console.error("Error loading SRF:", err);
@@ -146,27 +130,28 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       setLoading(false);
     }
   }, [srfId]);
- 
+
   useEffect(() => {
     loadSrfData();
   }, [loadSrfData]);
- 
+
   const handleSrfChange = (key: keyof SrfData, value: any) => {
     setSrfData((prev: SrfData | null) => (prev ? { ...prev, [key]: value } : null));
   };
- 
+
   const saveAndUpdateStatus = async (status: SrfStatus, remarks?: string) => {
     if (!srfData) return;
     setIsSubmitting(true);
     try {
-      // Construct payload
-      const payload: Partial<SrfData> = {
+      // ---------------------------------------------------------
+      // 1. Update SRF Table (Status & Remarks)
+      // ---------------------------------------------------------
+      const srfPayload: Partial<SrfData> = {
         status,
         telephone: srfData.telephone,
         email: srfData.email,
         contact_person: srfData.contact_person,
         certificate_issue_name: srfData.certificate_issue_name,
-        // Send back both spellings to be safe or just the one the backend expects
         certificate_issue_adress: srfData.certificate_issue_address,
         calibration_frequency: srfData.calibration_frequency,
         specified_frequency: srfData.specified_frequency,
@@ -175,32 +160,66 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         ref_manufacturer_manual: srfData.ref_manufacturer_manual,
         ref_customer_requirement: srfData.ref_customer_requirement,
         turnaround_time: srfData.turnaround_time,
-        remarks: srfData.remarks,
+        remarks: status === 'rejected' && remarks ? remarks : srfData.remarks,
         remark_special_instructions: srfData.remark_special_instructions,
       };
-     
-      if (status === 'rejected' && remarks) {
-        payload.remarks = remarks;
-      }
- 
-      const response = await fetch(`http://localhost:8000/api/srfs/${srfData.srf_id}`, {
+
+      const srfResponse = await fetch(`http://localhost:8000/api/srfs/${srfData.srf_id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(srfPayload),
       });
- 
-      if (!response.ok) {
-        const errorData = await response.json();
+
+      if (!srfResponse.ok) {
+        const errorData = await srfResponse.json();
         throw new Error(errorData.detail || `Failed to ${status} SRF`);
       }
-     
+      
+      // ---------------------------------------------------------
+      // 2. IF REJECTED: Update Inward Table (inward_srf_flag -> True)
+      // ---------------------------------------------------------
+      if (status === 'rejected' && srfData.inward?.inward_id) {
+        const inwardId = srfData.inward.inward_id;
+        // Adjusted URL to match backend router prefix (/staff/inwards)
+        const url = `http://localhost:8000/api/staff/inwards/${inwardId}`;
+        
+        try {
+            const inwardResponse = await fetch(url, {
+                method: "PATCH", 
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    inward_srf_flag: true 
+                }),
+            });
+
+            if (!inwardResponse.ok) {
+                console.warn("SRF status updated, but failed to update inward flag.");
+            }
+        } catch (inwardErr) {
+            console.error("Network error updating inward flag:", inwardErr);
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 3. Update Local State & UI
+      // ---------------------------------------------------------
       const updatedSrfData: SrfData = {
         ...srfData,
         status,
-        remarks: status === 'rejected' ? remarks : srfData.remarks };
+        remarks: status === 'rejected' ? remarks : srfData.remarks 
+      };
+
+      // Manually update the local flag so the UI reflects it immediately
+      if (status === 'rejected' && updatedSrfData.inward) {
+          updatedSrfData.inward = {
+              ...updatedSrfData.inward,
+              inward_srf_flag: true
+          };
+      }
+
       setSrfData(updatedSrfData);
       onStatusChange(srfData.srf_id, status);
-     
+      
       if (status === 'rejected') {
         setShowRejectionModal(false);
         setRejectionReason("");
@@ -212,7 +231,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       setIsSubmitting(false);
     }
   };
- 
+
   const handleRejectSubmit = () => {
     if (!rejectionReason.trim()) {
       alert("Please provide a reason for rejection");
@@ -220,7 +239,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     }
     saveAndUpdateStatus("rejected", rejectionReason);
   };
- 
+
   // --- UI State & Classes ---
   if (loading) return <div className="flex items-center justify-center h-96 text-slate-500">Loading SRF Details...</div>;
   if (error) return <div className="p-8 text-center text-red-700 bg-red-50 rounded-lg border border-red-200">{error}</div>;
@@ -239,13 +258,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     created: { label: "New", color: "bg-slate-100 text-slate-800", icon: <FileText className="h-4 w-4" /> },
   } as const)[srfData.status] || { label: srfData.status, color: "bg-slate-100 text-slate-800", icon: <FileText className="h-4 w-4" /> };
  
-  // Determine display value for Customer Name (from JSON: inward.customer.customer_details)
   const customerNameDisplay = srfData.inward?.customer?.customer_details || "";
  
   return (
     <>
       <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10">
-        {/* --- Header --- */}
         <header className="border-b border-slate-200 pb-6">
           <div className="flex justify-between items-center mb-2">
             <Link to="/customer/view-srf" className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors flex items-center gap-1">
@@ -266,7 +283,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
           </div>
         )}
        
-        {/* --- Section: Customer Details --- */}
         <section className="border border-slate-200 rounded-xl">
           <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl">
             <div className="flex items-center gap-3">
@@ -277,54 +293,42 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
          
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
            
-            {/* Row 1: Logistics & IDs */}
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer DC No</label>
-                {/* Matches: inward.customer_dc_no */}
                 <input className={readOnlyInputClasses} readOnly value={srfData.inward?.customer_dc_no || "N/A"} />
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer DC Date</label>
-                {/* Matches: inward.customer_dc_date */}
                 <input type="date" className={readOnlyInputClasses} readOnly value={srfData.inward?.customer_dc_date || ""} />
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Reference (SRF No)</label>
-                {/* Matches: nepl_srf_no */}
                 <input className={readOnlyInputClasses} readOnly value={srfData.nepl_srf_no} />
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Material Inward Date</label>
-                {/* Matches: inward.material_inward_date */}
                 <input type="date" className={readOnlyInputClasses} readOnly value={srfData.inward?.material_inward_date || ""} />
             </div>
  
-            {/* Row 2: Company Info */}
             <div className="lg:col-span-4 border-t border-slate-100 pt-2 mt-2">
                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Company Name</label>
-                 {/* Matches: inward.customer.customer_details */}
                  <input className={`text-lg font-semibold ${readOnlyInputClasses}`} readOnly value={customerNameDisplay} />
             </div>
  
-            {/* Row 3: Addresses */}
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bill To Address</label>
-                {/* Matches: inward.customer.bill_to_address */}
                 <textarea rows={3} className={readOnlyInputClasses} readOnly value={srfData.inward?.customer?.bill_to_address || ""} />
             </div>
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ship To Address</label>
-                {/* Matches: inward.customer.ship_to_address */}
                 <textarea rows={3} className={readOnlyInputClasses} readOnly value={srfData.inward?.customer?.ship_to_address || ""} />
             </div>
  
-            {/* Row 4: Contact Info (Editable) */}
             <div className="lg:col-span-4 border-t border-slate-100 pt-2 mt-2">
                 <h4 className="text-sm font-semibold text-indigo-600 mb-3">Contact Information</h4>
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contact Person</label>
-                {/* Matches: top-level contact_person */}
                 <input
                     className={isReadOnly ? readOnlyInputClasses : editableInputClasses}
                     value={srfData.contact_person || ""}
@@ -334,7 +338,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
             </div>
             <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Phone</label>
-                {/* Matches: top-level telephone */}
                 <input
                     className={isReadOnly ? readOnlyInputClasses : editableInputClasses}
                     value={srfData.telephone || ""}
@@ -344,7 +347,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
             </div>
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                {/* Matches: top-level email */}
                 <input
                     type="email"
                     className={isReadOnly ? readOnlyInputClasses : editableInputClasses}
@@ -354,7 +356,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
                 />
             </div>
  
-            {/* Row 5: Certificate Info (Editable) */}
             <div className="lg:col-span-4 border-t border-slate-100 pt-2 mt-2">
                 <div className="flex items-center gap-2 mb-3">
                     <Lightbulb className="h-4 w-4 text-yellow-500" />
@@ -364,7 +365,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
            
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Certificate Issue Name</label>
-                {/* Matches: certificate_issue_name */}
                 <input
                     className={isReadOnly ? readOnlyInputClasses : editableInputClasses}
                     value={srfData.certificate_issue_name || ""}
@@ -375,7 +375,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
             </div>
             <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Certificate Issue Address</label>
-                {/* Matches: certificate_issue_address (normalized from JSON typo) */}
                 <textarea
                     rows={2}
                     className={isReadOnly ? readOnlyInputClasses : editableInputClasses}
@@ -389,7 +388,6 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
           </div>
         </section>
  
-        {/* --- Special Instructions Section --- */}
         <section className="border border-slate-200 rounded-xl">
             <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl"><div className="flex items-center gap-3"><BookOpen className="h-7 w-7 text-indigo-500" /><h3 className="text-xl font-semibold text-slate-800">Special Instructions</h3></div></div>
             <div className="p-6 space-y-8">
@@ -444,4 +442,3 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
 };
  
 export default CustomerSrfDetailView;
- 

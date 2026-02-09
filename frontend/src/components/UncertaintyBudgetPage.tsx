@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; // Added useLocation
 import { api } from "../api/config";
 import {
   ArrowLeft,
@@ -54,6 +54,7 @@ interface UncertaintyBudget {
 const UncertaintyBudgetPage: React.FC = () => {
   const { inwardId, equipmentId } = useParams<{ inwardId: string; equipmentId: string }>();
   const navigate = useNavigate();
+  const location = useLocation(); // Hook to access passed state
 
   const [loading, setLoading] = useState(true);
   const [budgets, setBudgets] = useState<UncertaintyBudget[]>([]);
@@ -99,8 +100,20 @@ const UncertaintyBudgetPage: React.FC = () => {
     }
   };
 
+  // --- UPDATED: Handle Back to maintain correct Tab ---
   const handleBack = () => {
-    navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
+    // 1. Get the tab we came from
+    const sourceTab = (location.state as any)?.activeTab;
+
+    // 2. Navigate back passing the tab
+    navigate("/engineer/jobs", { 
+        state: { 
+            viewJobId: Number(inwardId),
+            // Use the source tab (e.g., 'terminated' or 'completed'). 
+            // If undefined, let Jobs page decide (usually defaults to pending/in_progress).
+            activeTab: sourceTab 
+        } 
+    });
   };
 
   // --- FORMATTER FUNCTION ---

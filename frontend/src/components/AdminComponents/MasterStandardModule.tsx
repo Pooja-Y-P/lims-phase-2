@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom'; // 1. Import createPortal
+import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom'; // 1. Import useSearchParams
 import { api, ENDPOINTS } from '../../api/config';
 import { ExportMasterStandardPage } from './ExportMasterStandardPage';
 
-// --- IMPORT MANAGERS (Self-contained components) ---
-// Ensure these file paths are correct relative to this file
+// --- IMPORT MANAGERS ---
 import { HTWStandardUncertaintyManager } from './HTWStandardUncertaintyForm';
 import { HTWPressureGaugeResolutionManager } from './HTWPressureGaugeResolutionForm'; 
 import { HTWCoverageFactorManager } from './HTWCoverageFactorManager';
@@ -56,9 +56,30 @@ interface MenuCard {
 
 // --- MAIN MODULE COMPONENT ---
 export const MasterStandardModule: React.FC = () => {
-  const [selectedCalibration, setSelectedCalibration] = useState<string>('');
-  const [currentView, setCurrentView] = useState<string>('grid');
+  // 1. Setup URL Search Params
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // 2. Derive State from URL
+  const selectedCalibration = searchParams.get('calibration') || '';
+  const currentView = searchParams.get('view') || 'grid';
+  const activeItemId = searchParams.get('itemId') ? Number(searchParams.get('itemId')) : null;
+
+  // Local state for the item object (fetched or passed)
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [isFetchingItem, setIsFetchingItem] = useState(false);
+
+  // 3. Helper to update params without losing 'section' from parent
+  const updateParams = (updates: Record<string, string | null>) => {
+    const newParams = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null || value === undefined) {
+        newParams.delete(key);
+      } else {
+        newParams.set(key, value);
+      }
+    });
+    setSearchParams(newParams);
+  };
 
   const calibrationTypes = [
     "Hydraulic Torque Wrench",
@@ -74,59 +95,73 @@ export const MasterStandardModule: React.FC = () => {
       colorClass: "bg-blue-600", desc: "Manage core standard identification data", viewId: "master-standard-list"
     },
     {
-      // Wired to HTWManufacturerSpecsManager
       id: 2, title: "Manufacturer Specifications", icon: <Factory size={24} strokeWidth={2} />,
       colorClass: "bg-emerald-600", desc: "View and edit OEM specs and limits", viewId: "manufacturer-specs-manager"
     },
     {
-      // Wired to HTWStandardUncertaintyManager
       id: 3, title: "Interpolation Ranges", icon: <ArrowRightLeft size={24} strokeWidth={2} />,
       colorClass: "bg-purple-600", desc: "Configure range interpolation logic", viewId: "htw-uncertainty-manager"
     },
     {
-      // Wired to HTWNomenclatureRangeManager
       id: 4, title: "Nomenclature Range", icon: <Activity size={24} strokeWidth={2} />,
       colorClass: "bg-orange-500", desc: "Standard Range for Master Selection", viewId: "nomenclature-range-manager"
     },
     {
-      // Wired to HTWUnPGMasterManager
       id: 5, title: "Uncertainty of Pressure Gauge", sub: "(Un-PG)", icon: <Gauge size={24} strokeWidth={2} />,
       colorClass: "bg-cyan-500", desc: "Specific pressure gauge uncertainty metrics", viewId: "un-pg-manager"
     },
     {
-      // Wired to HTWCoverageFactorManager
       id: 6, title: "Coverage Factor (k)", icon: <Sigma size={24} strokeWidth={2} />,
       colorClass: "bg-rose-600", desc: "Define expansion coefficients and confidence", viewId: "coverage-factor-manager"
     },
     {
-      // Wired to HTWTDistributionManager
       id: 7, title: "Student t Table", icon: <LineChart size={24} strokeWidth={2} />,
       colorClass: "bg-teal-600", desc: "t Distribution data", viewId: "t-distribution-manager"
     },
     {
-      // Wired to HTWPressureGaugeResolutionManager
       id: 8, title: "Resolution of Pressure Gauge", icon: <ZoomIn size={24} strokeWidth={2} />,
       colorClass: "bg-slate-600", desc: "Define pressure gauge measurement resolution", viewId: "resolution-pg-manager"
     },
     {
-      // Wired to HTWCMCReferenceManager
       id: 9, title: "Hydraulic CMC Backup data", icon: <Database size={24} strokeWidth={2} />,
       colorClass: "bg-green-600", desc: "Access and maintain backup data for CMC ", viewId: "cmc-reference-manager"
     },
     {
-      // Wired to HTWToolTypeManager
       id: 10, title: "Tool Type", icon: <Layers size={24} strokeWidth={2} />,
       colorClass: "bg-amber-600", desc: "Maintain Tool Classification and Measurement Behaviour", viewId: "tool-type-manager"
     },
     {
-      // Wired to HTWMaxValMeasureErrorManager
       id: 11, title: "Max Val of Measurement Error", icon: <Target size={24} strokeWidth={2} />,
       colorClass: "bg-cyan-600", desc: "Maintain Maximum Value of Measurement Error", viewId: "max-val-of-measurement-err-manager"
     }
   ];
 
+  // 4. Handle Restore State on Refresh (Fetching Edit Item)
+  useEffect(() => {
+    // If we have an ID in URL but no object in state, fetch it
+    const restoreItemState = async () => {
+      if (activeItemId && !selectedItem && currentView === 'master-standard-form') {
+        setIsFetchingItem(true);
+        try {
+          // Fallback: Fetch list and find item since we might not have a specific GET /id endpoint exposed in config
+          const response = await api.get(ENDPOINTS.HTW_MASTER_STANDARDS.LIST);
+          const found = response.data.find((i: any) => i.id === activeItemId);
+          if (found) setSelectedItem(found);
+        } catch (e) {
+          console.error("Failed to restore item state", e);
+        } finally {
+          setIsFetchingItem(false);
+        }
+      }
+    };
+    restoreItemState();
+  }, [activeItemId, selectedItem, currentView]);
+
+  const handleCalibrationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateParams({ calibration: e.target.value });
+  };
+
   const handleCardClick = (viewId: string) => {
-    // Only allow specific modules access for Hydraulic Torque Wrench
     const restrictedViews = [
       'master-standard-list',
       'manufacturer-specs-manager',
@@ -146,24 +181,34 @@ export const MasterStandardModule: React.FC = () => {
         return;
       }
     }
-    setCurrentView(viewId);
     setSelectedItem(null);
+    updateParams({ view: viewId, itemId: null });
   };
 
   const handleBackToGrid = () => {
-    setCurrentView('grid');
     setSelectedItem(null);
+    updateParams({ view: 'grid', itemId: null });
   };
 
   const handleEditItem = (item: any, formViewId: string) => {
     setSelectedItem(item);
-    setCurrentView(formViewId);
+    updateParams({ view: formViewId, itemId: item.id.toString() });
   };
 
   const handleAddNewItem = (formViewId: string) => {
     setSelectedItem(null);
-    setCurrentView(formViewId);
+    updateParams({ view: formViewId, itemId: null });
   };
+
+  // Loading state for deep-linked edit views
+  if (isFetchingItem) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-4" />
+        <p className="text-gray-500">Restoring session...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto animate-fadeIn">
@@ -186,7 +231,7 @@ export const MasterStandardModule: React.FC = () => {
                 <select
                   className="w-full appearance-none bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 block p-3 pr-10 shadow-sm transition-all cursor-pointer"
                   value={selectedCalibration}
-                  onChange={(e) => setSelectedCalibration(e.target.value)}
+                  onChange={handleCalibrationChange}
                 >
                   <option value="" disabled>Select Type...</option>
                   {calibrationTypes.map((type) => (
@@ -245,7 +290,6 @@ export const MasterStandardModule: React.FC = () => {
 
       {/* --- RENDER LOGIC FOR DIFFERENT VIEWS --- */}
 
-      {/* 1. MASTER STANDARD DETAILS (Not Manager-based yet, uses local list/form) */}
       {currentView === 'master-standard-export' && <ExportMasterStandardPage onBack={handleBackToGrid} />}
 
       {currentView === 'master-standard-list' && (
@@ -253,63 +297,45 @@ export const MasterStandardModule: React.FC = () => {
           onBack={handleBackToGrid}
           onAddNew={() => handleAddNewItem('master-standard-form')}
           onEdit={(item) => handleEditItem(item, 'master-standard-form')}
-          onExportNavigate={() => setCurrentView('master-standard-export')}
+          onExportNavigate={() => updateParams({ view: 'master-standard-export', itemId: null })}
         />
       )}
 
       {currentView === 'master-standard-form' && (
         <MasterStandardForm
-          onBack={() => setCurrentView('master-standard-list')}
+          onBack={() => updateParams({ view: 'master-standard-list', itemId: null })}
           initialData={selectedItem}
         />
       )}
 
-      {/* 2. MANUFACTURER SPECS */}
+      {/* Sub-Managers */}
       {currentView === 'manufacturer-specs-manager' && (
         <HTWManufacturerSpecsManager onBack={handleBackToGrid} />
       )}
-
-      {/* 3. INTERPOLATION RANGES (Uncertainty) */}
       {currentView === 'htw-uncertainty-manager' && (
         <HTWStandardUncertaintyManager onBack={handleBackToGrid} />
       )}
-
-      {/* 4. NOMENCLATURE RANGE */}
       {currentView === 'nomenclature-range-manager' && (
         <HTWNomenclatureRangeManager onBack={handleBackToGrid} />
       )}
-
-      {/* 5. UNCERTAINTY PRESSURE GAUGE */}
       {currentView === 'un-pg-manager' && (
         <HTWUnPGMasterManager onBack={handleBackToGrid} />
       )}
-
-      {/* 6. COVERAGE FACTOR */}
       {currentView === 'coverage-factor-manager' && (
         <HTWCoverageFactorManager onBack={handleBackToGrid} />
       )}
-
-      {/* 7. STUDENT T DISTRIBUTION */}
       {currentView === 't-distribution-manager' && (
         <HTWTDistributionManager onBack={handleBackToGrid} />
       )}
-
-      {/* 8. RESOLUTION PRESSURE GAUGE */}
       {currentView === 'resolution-pg-manager' && (
         <HTWPressureGaugeResolutionManager onBack={handleBackToGrid} />
       )}
-
-      {/* 9. CMC Backup */}
       {currentView === 'cmc-reference-manager' && (
         <HTWCMCReferenceManager onBack={handleBackToGrid} />
       )}
-
-      {/* 10. Tool Type */}
       {currentView === 'tool-type-manager' && (
         <HTWToolTypeManager onBack={handleBackToGrid} />
       )}
-
-      {/* 11. Max Val Of Measurement Error */}
       {currentView === 'max-val-of-measurement-err-manager' && (
         <HTWMaxValMeasureErrorManager onBack={handleBackToGrid} />
       )}
@@ -320,8 +346,7 @@ export const MasterStandardModule: React.FC = () => {
 
 
 // ============================================================================
-// LOCAL SUB-COMPONENTS FOR MASTER STANDARD ONLY
-// (Other features delegate to imported Managers)
+// LOCAL SUB-COMPONENTS
 // ============================================================================
 
 // --- COMPONENT: Master Standard List ---
@@ -344,17 +369,13 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
   const [viewingStandard, setViewingStandard] = useState<MasterStandard | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
 
-  // Handle Scroll Locking
   useEffect(() => {
     if (showDeleteModal || showViewModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
-
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
+    return () => { document.body.style.overflow = 'unset'; };
   }, [showDeleteModal, showViewModal]);
 
   const fetchStandards = useCallback(async () => {
@@ -492,7 +513,6 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20"> 
-          {/* Added mb-20 for safe spacing with footer */}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -790,6 +810,13 @@ function MasterStandardForm({ onBack, initialData }: MasterStandardFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Sync formData if initialData arrives late (after restore fetch)
+  useEffect(() => {
+    if (initialData) {
+      setFormData(initialData);
+    }
+  }, [initialData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;

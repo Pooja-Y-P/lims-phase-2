@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; // Added useLocation
 import { api, ENDPOINTS } from "../api/config";
 import RepeatabilitySection from "../components/RepeatabilitySection";
 import ReproducibilitySection from "../components/ReproducibilitySection";
@@ -24,7 +24,8 @@ import {
   Gauge,
   Activity,
   Zap,
-  Anchor
+  Anchor,
+  XCircle 
 } from "lucide-react";
 
 // --- Custom CSS ---
@@ -302,6 +303,7 @@ const EnvironmentCheckSection: React.FC<{
 const CalibrationPage: React.FC = () => {
   const { inwardId, equipmentId } = useParams<{ inwardId: string; equipmentId: string }>();
   const navigate = useNavigate();
+  const location = useLocation(); // Hook to access the passed state
 
   // --- States ---
   const [loading, setLoading] = useState(true);
@@ -313,6 +315,10 @@ const CalibrationPage: React.FC = () => {
   const [validating, setValidating] = useState(false);
   const [isWorksheetSaved, setIsWorksheetSaved] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  
+  // --- Termination States ---
+  const [showTerminateModal, setShowTerminateModal] = useState(false);
+  const [terminating, setTerminating] = useState(false);
   
   const [preEnvValid, setPreEnvValid] = useState(false);
   const [postEnvValid, setPostEnvValid] = useState(false);
@@ -621,7 +627,21 @@ const CalibrationPage: React.FC = () => {
     } catch (err: any) { alert("Failed to save master standards."); } finally { setLoading(false); }
   };
 
-  const handleBack = () => { navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } }); };
+  // --- UPDATED: Handle Back to list with correct tab state (completed/terminated/in_progress) ---
+  const handleBack = () => { 
+      // 1. Try to get the tab we came from (passed from JobsManagementPage)
+      const previousTab = (location.state as any)?.activeTab;
+
+      // 2. If present use it, otherwise fallback to existing logic
+      const targetTab = previousTab || (jobId ? "in_progress" : "pending");
+
+      navigate("/engineer/jobs", { 
+          state: { 
+              viewJobId: Number(inwardId),
+              activeTab: targetTab
+          } 
+      }); 
+  };
 
   // --- Handle Finish and Exit with Uncertainty Calculation & Status Update ---
   const handleFinishAndExit = async () => {
@@ -640,8 +660,13 @@ const CalibrationPage: React.FC = () => {
             job_status: "Calibrated"
         });
 
-        // 3. Navigate back on success
-        navigate("/engineer/jobs", { state: { viewJobId: Number(inwardId) } });
+        // 3. Navigate back on success to COMPLETED tab
+        navigate("/engineer/jobs", { 
+            state: { 
+                viewJobId: Number(inwardId),
+                activeTab: "completed"
+            } 
+        });
     } catch (err: any) {
         console.error("Finish process failed:", err);
         const errorMsg = err.response?.data?.detail 
@@ -651,6 +676,32 @@ const CalibrationPage: React.FC = () => {
     } finally {
         setFinishing(false);
     }
+  };
+
+  // --- Handle Terminate Job ---
+  const handleTerminateConfirm = async () => {
+      if (!jobId) return;
+      setTerminating(true);
+      try {
+          // Update status to Terminated
+          await api.patch(`/htw-jobs/${jobId}`, {
+              job_status: "Terminated"
+          });
+          // Navigate back to TERMINATED tab
+          navigate("/engineer/jobs", { 
+              state: { 
+                  viewJobId: Number(inwardId),
+                  activeTab: "terminated"
+              } 
+          });
+      } catch (err: any) {
+          console.error("Termination failed:", err);
+          const errorMsg = err.response?.data?.detail || "Failed to terminate job";
+          alert(`Error: ${errorMsg}`);
+      } finally {
+          setTerminating(false);
+          setShowTerminateModal(false);
+      }
   };
 
   const goToNextStep = () => {
@@ -692,7 +743,7 @@ const CalibrationPage: React.FC = () => {
   if (!equipment) return null;
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 h-screen flex flex-col overflow-hidden">
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 h-screen flex flex-col overflow-hidden relative">
       <style>{customStyles}</style>
 
       {/* Header */}
@@ -707,7 +758,17 @@ const CalibrationPage: React.FC = () => {
                 {isValidated && (<span className="ml-3 flex items-center gap-1 text-green-600 bg-green-50 px-2 py-0.5 rounded-full text-[10px] font-bold border border-green-100"><CheckCircle className="h-3 w-3" /> JOB CREATED</span>)}
             </div>
           </div>
-          <button onClick={handleBack} className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm font-semibold text-gray-700 transition-colors"><ArrowLeft size={18} /> Exit Job</button>
+          <div className="flex items-center gap-2">
+            {jobId && (
+                <button 
+                    onClick={() => setShowTerminateModal(true)} 
+                    className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg text-sm font-semibold text-red-600 transition-colors"
+                >
+                    <XCircle size={18} /> Terminate Job
+                </button>
+            )}
+            <button onClick={handleBack} className="flex items-center gap-2 px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm font-semibold text-gray-700 transition-colors"><ArrowLeft size={18} /> Exit Job</button>
+          </div>
         </div>
       </div>
 
@@ -877,6 +938,46 @@ const CalibrationPage: React.FC = () => {
             <button className="px-5 py-2 text-sm bg-gray-300 text-white font-medium rounded-lg cursor-not-allowed flex items-center gap-2" disabled><Lock className="h-4 w-4" /> Save Worksheet</button>
         )}
       </div>
+
+      {/* Termination Confirmation Modal */}
+      {showTerminateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                <div className="p-6">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="p-3 bg-red-100 text-red-600 rounded-full">
+                            <AlertTriangle className="h-6 w-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">Terminate Job?</h3>
+                            <p className="text-sm text-gray-500">This action cannot be undone.</p>
+                        </div>
+                    </div>
+                    <p className="text-gray-600 mb-6">
+                        Are you sure you want to terminate this calibration job? The status will be marked as 
+                        <span className="font-bold text-red-600"> "Terminated"</span> and you will be returned to the job list.
+                    </p>
+                    <div className="flex justify-end gap-3">
+                        <button 
+                            onClick={() => setShowTerminateModal(false)}
+                            className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                            disabled={terminating}
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={handleTerminateConfirm}
+                            disabled={terminating}
+                            className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                        >
+                            {terminating ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                            {terminating ? "Terminating..." : "Confirm Terminate"}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };
