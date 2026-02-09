@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from render_certificate_page1 import get_certificate_data_from_inward, render_certificate_page1
 
-def test_api_connection(api_url="http://localhost:8000/api"):
+def test_api_connection(api_url="http://192.168.31.195:8000/api"):
     """Test if the API is accessible"""
     try:
         response = requests.get(f"{api_url}/staff/inwards", timeout=5)
@@ -26,7 +26,7 @@ def test_api_connection(api_url="http://localhost:8000/api"):
         return False, f"Error: {e}"
 
 def main():
-    api_url = "http://localhost:8000/api"
+    api_url = "http://192.168.31.195:8000/api"
     
     print("=" * 60)
     print("Certificate Rendering Test Script")

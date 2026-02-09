@@ -62,7 +62,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         try:
             inward_id = int(sys.argv[1])
-            api_url = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:8000/api"
+            api_url = sys.argv[2] if len(sys.argv) > 2 else "http://192.168.31.195:8000/api"
             
             print(f"Fetching inward equipment data for inward_id={inward_id}...")
             data = get_certificate_data_from_inward(inward_id, api_url)

@@ -7,7 +7,7 @@ import { BookOpen, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Ph
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const API_BASE = "http://localhost:8000/api/";
+const API_BASE = "http://192.168.31.195:8000/api/";
 
 // --- Interfaces ---
 interface SrfEquipmentDetail {

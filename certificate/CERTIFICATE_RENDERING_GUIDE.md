@@ -12,7 +12,7 @@ This guide explains how to render certificate pages using the Python scripts.
 ## Prerequisites
 
 - Python 3.x installed
-- Backend API running (default: http://localhost:8000/api)
+- Backend API running (default: http://192.168.31.195:8000/api)
 - Jinja2 installed: `pip install jinja2`
 - requests installed: `pip install requests`
 
@@ -113,7 +113,7 @@ python render_certificate_page1.py abc  # ✗ Wrong
 Make sure your backend API is running:
 ```bash
 # Check if API is accessible
-curl http://localhost:8000/api/staff/inwards/123
+curl http://192.168.31.195:8000/api/staff/inwards/123
 ```
 
 ### Import Error

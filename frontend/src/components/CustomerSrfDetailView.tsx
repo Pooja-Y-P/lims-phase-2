@@ -96,7 +96,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:8000/api/srfs/${srfId}`);
+      const response = await fetch(`http://192.168.31.195:8000/api/srfs/${srfId}`);
       if (!response.ok) throw new Error("Failed to fetch SRF details");
       const data: SrfData = await response.json();
       

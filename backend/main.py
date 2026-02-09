@@ -62,22 +62,35 @@ for attempt in range(max_retries):
 # Initialize FastAPI app
 app = FastAPI(title="LIMS Backend", version="1.0")
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    # allow_origins=[
-    #     "http://localhost:3000",
-    #     "http://127.0.0.1:3000",
-    #     "http://localhost:5173",
-    #     "http://127.0.0.1:5173",
-    #     "http://localhost:5174",
-    #     "http://127.0.0.1:5174"
-    # ],
-    allow_origins = ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# # CORS middleware
+# app.add_middleware(
+#     CORSMiddleware,
+#     # allow_origins=[
+#     #     "http://localhost:3000",
+#     #     "http://127.0.0.1:3000",
+#     #     "http://localhost:5173",
+#     #     "http://127.0.0.1:5173",
+#     #     "http://localhost:5174",
+#     #     "http://127.0.0.1:5174"
+#     # ],
+#     allow_origins = ["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+
+origins = [    "http://localhost:3000",
+               "http://127.0.0.1:3000", 
+             "http://192.168.1.15:3000", # The Host IP   
+               "*", # Allow all (Easiest for local LAN testing)
+        ]
+app.add_middleware(    
+    CORSMiddleware,   
+      allow_origins=origins, # OR use allow_origins=["*"]    
+      allow_credentials=True,    
+      allow_methods=["*"],   
+    allow_headers=["*"],)
 
 # Serve uploaded files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

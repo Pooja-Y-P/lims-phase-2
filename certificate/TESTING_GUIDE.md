@@ -5,7 +5,7 @@ This guide explains how to test the certificate rendering script that fetches in
 ## Prerequisites
 
 1. **Backend API Server Running**
-   - The FastAPI backend must be running on `http://localhost:8000`
+   - The FastAPI backend must be running on `http://192.168.31.195:8000`
    - Database must be accessible and contain inward equipment data
 
 2. **Python Dependencies**
@@ -51,10 +51,10 @@ You need an `inward_id` that exists in your database. You can find one using:
 **Option A: Check the API directly**
 ```bash
 # Open browser or use curl
-curl http://localhost:8000/api/staff/inwards
+curl http://192.168.31.195:8000/api/staff/inwards
 
 # Or visit in browser:
-http://localhost:8000/api/staff/inwards
+http://192.168.31.195:8000/api/staff/inwards
 ```
 
 **Option B: Check the database directly**
@@ -63,7 +63,7 @@ SELECT inward_id FROM inward LIMIT 1;
 ```
 
 **Option C: Use the API docs**
-- Visit: http://localhost:8000/docs
+- Visit: http://192.168.31.195:8000/docs
 - Find the `/api/staff/inwards` endpoint
 - Click "Try it out" and execute
 - Look for an `inward_id` in the response
@@ -86,7 +86,7 @@ source ../venv/bin/activate
 python render_certificate_page1.py 123
 
 # Or specify a custom API URL
-python render_certificate_page1.py 123 http://localhost:8000/api
+python render_certificate_page1.py 123 http://192.168.31.195:8000/api
 ```
 
 ### Step 4: Verify the Output
@@ -132,7 +132,7 @@ from render_certificate_page1 import get_certificate_data_from_inward, render_ce
 # Fetch equipment data
 data = get_certificate_data_from_inward(
     inward_id=123, 
-    api_base_url='http://localhost:8000/api'
+    api_base_url='http://192.168.31.195:8000/api'
 )
 
 # Check the data
@@ -184,7 +184,7 @@ from render_certificate_page1 import get_certificate_data_from_inward, render_ce
 
 # Test API connection
 try:
-    response = requests.get("http://localhost:8000/api/staff/inwards", timeout=5)
+    response = requests.get("http://192.168.31.195:8000/api/staff/inwards", timeout=5)
     if response.status_code == 200:
         inwards = response.json()
         if inwards and len(inwards) > 0:
@@ -211,7 +211,7 @@ try:
         print(f"⚠ API returned status code: {response.status_code}")
 except Exception as e:
     print(f"✗ Error connecting to API: {e}")
-    print("  Make sure the backend server is running on http://localhost:8000")
+    print("  Make sure the backend server is running on http://192.168.31.195:8000")
 ```
 
 Run it:
