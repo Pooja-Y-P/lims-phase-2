@@ -1,13 +1,11 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import type { AxiosResponse } from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import axios from "axios";
 import { BookOpen, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Phone, Mail, FileText, MapPin, Building, Award, Home } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-
-const API_BASE = "http://192.168.31.195:8000/api/";
+import { api, ENDPOINTS } from "../api/config"; // IMPORTED CONFIG
 
 // --- Interfaces ---
 interface SrfEquipmentDetail {
@@ -101,12 +99,13 @@ const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
 const getTodayDateString = (): string => new Date().toISOString().split("T")[0];
 
 // Function to fetch unit from manufacturer specs
-// FIX: Removed generic type from .get() call since axiosAuth is typed as 'any'
-const fetchUnitForMakeModel = async (make: string, model: string, axiosAuth: any): Promise<string> => {
+// FIX: Uses 'api' instance directly
+const fetchUnitForMakeModel = async (make: string, model: string): Promise<string> => {
   if (!make || !model) return '';
   try {
-    const response = await axiosAuth.get(
-      `staff/inwards/manufacturer/range`,
+    // Note: Assuming this endpoint exists relative to API_BASE_URL
+    const response = await api.get(
+      `/staff/inwards/manufacturer/range`,
       { params: { make, model } }
     );
     return response.data.unit || '';
@@ -136,16 +135,6 @@ export const SrfDetailPage: React.FC = () => {
   const isNewSrfFromUrl = paramSrfId?.startsWith("new-");
   const inwardIdFromUrl = isNewSrfFromUrl ? parseInt(paramSrfId!.split("new-")[1]) : undefined;
 
-  const token = localStorage.getItem("token");
-  const axiosAuth = useMemo(
-    () =>
-      axios.create({
-        baseURL: API_BASE,
-        headers: { Authorization: token ? `Bearer ${token}` : "" },
-      }),
-    [token]
-  );
-
   // --- PDF Generation ---
   const generatePDF = useCallback(() => {
     if (!srfData) return;
@@ -171,7 +160,6 @@ export const SrfDetailPage: React.FC = () => {
 
     const tableColumn = ["Equipment", "Make/Model", "Serial No", "Range", "Unit", "Cal Points", "Mode of Calibration"];
     
-    // --- FIX: Added fallback '|| "-"' to all optional fields to prevent undefined errors ---
     const tableRows = srfData.inward?.equipments.map((eq) => [
       eq.material_description || "",
       `${eq.make || ""} / ${eq.model || ""}`,
@@ -181,7 +169,6 @@ export const SrfDetailPage: React.FC = () => {
       eq.srf_equipment?.no_of_calibration_points || "-",
       eq.srf_equipment?.mode_of_calibration || "-"
     ]) || [];
-    // ---------------------------------------------------------------------------------------
 
     const tableStartY = startY + 15 + (billToLines.length * 5);
 
@@ -203,7 +190,8 @@ export const SrfDetailPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await axiosAuth.get<SrfDetail>(`/srfs/${id}`, { signal } as any);
+        // FIX: Use 'api' and 'ENDPOINTS'
+        const response = await api.get<SrfDetail>(`${ENDPOINTS.SRFS}${id}`, { signal });
         const data = response.data;
         const rawData = data as any;
 
@@ -219,7 +207,7 @@ export const SrfDetailPage: React.FC = () => {
               eq.srf_equipment.unit = (eq as any).unit;
             } else {
               // Otherwise fetch from manufacturer specs
-              const unit = await fetchUnitForMakeModel(eq.make, eq.model, axiosAuth);
+              const unit = await fetchUnitForMakeModel(eq.make, eq.model);
               if (unit) {
                 eq.srf_equipment.unit = unit;
               }
@@ -268,7 +256,7 @@ export const SrfDetailPage: React.FC = () => {
         if (!signal.aborted) setLoading(false);
       }
     },
-    [axiosAuth]
+    []
   );
 
   // --- Initial Load Effect ---
@@ -280,9 +268,10 @@ export const SrfDetailPage: React.FC = () => {
       setLoading(true);
       const fetchInwardData = async () => {
         try {
-          const response: AxiosResponse<InwardDetail> = await axiosAuth.get<InwardDetail>(
-            `staff/inwards/${inwardIdFromUrl}`,
-            { signal: controller.signal } as any
+          // FIX: Use 'api' and 'ENDPOINTS'
+          const response: AxiosResponse<InwardDetail> = await api.get<InwardDetail>(
+            `${ENDPOINTS.STAFF.INWARDS}/${inwardIdFromUrl}`,
+            { signal: controller.signal }
           );
           const inward = response.data;
 
@@ -298,7 +287,7 @@ export const SrfDetailPage: React.FC = () => {
                 eq.srf_equipment.unit = (eq as any).unit;
               } else {
                 // Otherwise fetch from manufacturer specs
-                const unit = await fetchUnitForMakeModel(eq.make, eq.model, axiosAuth);
+                const unit = await fetchUnitForMakeModel(eq.make, eq.model);
                 if (unit) {
                   eq.srf_equipment.unit = unit;
                 }
@@ -328,7 +317,7 @@ export const SrfDetailPage: React.FC = () => {
             email: inward.customer?.email || "",
             certificate_issue_name: inward.customer?.customer_details || inward.customer_details || "",
             certificate_issue_adress: "",
-            status: "draft", // CHANGED: Initialize as "draft" instead of "created"
+            status: "draft", 
             inward: inward,
             calibration_frequency: "As per Standard",
             statement_of_conformity: false,
@@ -364,7 +353,7 @@ export const SrfDetailPage: React.FC = () => {
     }
 
     return () => controller.abort();
-  }, [paramSrfId, isNewSrfFromUrl, inwardIdFromUrl, loadSrfData, axiosAuth]);
+  }, [paramSrfId, isNewSrfFromUrl, inwardIdFromUrl, loadSrfData]);
 
   // --- Handle Changes ---
   const handleSrfChange = (key: keyof SrfDetail, value: any) => {
@@ -436,18 +425,16 @@ export const SrfDetailPage: React.FC = () => {
           })),
         };
 
-        console.log("Saving SRF Payload:", payload);
-
+        // FIX: Use 'api' and 'ENDPOINTS'
         if (activeSrfId || (srfData.srf_id && srfData.srf_id > 0)) {
           const targetId = activeSrfId || srfData.srf_id;
-          await axiosAuth.put(`/srfs/${targetId}`, payload);
+          await api.put(`${ENDPOINTS.SRFS}/${targetId}`, payload);
           setSrfData((prev) => (prev ? { ...prev, status: newStatus } : prev));
         } else {
-          const res = await axiosAuth.post(`/srfs/`, payload);
+          const res = await api.post(`${ENDPOINTS.SRFS}`, payload); // Note: No trailing slash
           const newId = res.data.srf_id;
           
-          // Optionally call PUT immediately to confirm full data persistence if POST is partial
-          await axiosAuth.put(`/srfs/${newId}`, payload);
+          await api.put(`${ENDPOINTS.SRFS}/${newId}`, payload);
           
           justCreatedRef.current = true;
           setActiveSrfId(newId);
@@ -474,7 +461,7 @@ export const SrfDetailPage: React.FC = () => {
         setAutoSaving(false);
       }
     },
-    [axiosAuth, activeSrfId, srfData, navigate]
+    [activeSrfId, srfData, navigate]
   );
 
   // --- Auto-Save Effect ---
@@ -484,7 +471,6 @@ export const SrfDetailPage: React.FC = () => {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      // CHANGED: If status is 'created' or 'draft', force it to save as 'draft'
       const statusToSave = (srfData.status === "created" || srfData.status === "draft") ? "draft" : srfData.status;
       handleSaveSrf(statusToSave, false);
     }, 1200);
@@ -893,7 +879,6 @@ export const SrfDetailPage: React.FC = () => {
             <button className="px-5 py-2.5 rounded-lg font-medium text-gray-800 bg-gray-200 hover:bg-gray-300 transition" onClick={() => navigate("/engineer/srfs")}>Cancel</button>
             <button
                 className="px-5 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
-                // CHANGED: Check for 'draft' as well when deciding to submit as 'inward_completed'
                 onClick={() => handleSaveSrf((srfData.status === "created" || srfData.status === "draft") ? "inward_completed" : srfData.status, true)}
                 disabled={autoSaving}
             >

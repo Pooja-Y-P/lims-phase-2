@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, Filter, X } from "lucide-react";
+import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, X } from "lucide-react"; // Removed 'Filter'
 import { api, ENDPOINTS } from "../api/config";
 
 // 1. Interface for Fresh Inwards (from /inwards/updated)
@@ -10,6 +10,9 @@ interface PendingInward {
   customer_name: string | null;
   date: string;
   status: "updated";
+  // Added optional fields to fix TypeScript errors in console.log
+  equipments?: any[]; 
+  inward_equipments?: any[];
 }
 
 // 2. Interface for SRFs - WITH NESTED INWARD STATUS
@@ -69,16 +72,17 @@ export const SrfListPage: React.FC = () => {
         const inwardsResponse = await api.get<PendingInward[]>(
           `${ENDPOINTS.STAFF.INWARDS}/updated`
         );
-  console.log("✅ RAW INWARD API RESPONSE:", inwardsResponse.data);
+        console.log("✅ RAW INWARD API RESPONSE:", inwardsResponse.data);
 
-if (Array.isArray(inwardsResponse.data)) {
-  inwardsResponse.data.forEach((inward, index) => {
-    console.log(`🟡 INWARD[${index}] FULL OBJECT:`, inward);
-    console.log(`   ➤ inward.status:`, inward.status);
-    console.log(`   ➤ inward.equipments:`, inward.equipments);
-    console.log(`   ➤ inward.inward_equipments:`, inward.inward_equipments);
-  });
-}
+        if (Array.isArray(inwardsResponse.data)) {
+          inwardsResponse.data.forEach((inward, index) => {
+            console.log(`🟡 INWARD[${index}] FULL OBJECT:`, inward);
+            console.log(`   ➤ inward.status:`, inward.status);
+            // These lines caused errors before because they weren't in the interface
+            console.log(`   ➤ inward.equipments:`, inward.equipments);
+            console.log(`   ➤ inward.inward_equipments:`, inward.inward_equipments);
+          });
+        }
 
         // 2. Fetch SRFs (contains nested inward info)
         const srfsResponse = await api.get<SrfSummary[]>(
@@ -98,42 +102,37 @@ if (Array.isArray(inwardsResponse.data)) {
         // Logic: Inward exists in 'updated' list AND has NO SRF in the SRF table.
         // ---------------------------------------------------------
        const freshInwards: WorkItem[] = inwardsResponse.data
-  .filter((inward) => {
-    const idLabel = `Inward SRF-${inward.srf_no}`;
-    console.log("--------------------------------------------------");
-    console.log(`🔍 CHECKING ${idLabel}`);
-    console.log("FULL INWARD OBJECT:", inward);
-    console.log("inward.status =", inward.status);
+        .filter((inward) => {
+          const idLabel = `Inward SRF-${inward.srf_no}`;
+          console.log("--------------------------------------------------");
+          console.log(`🔍 CHECKING ${idLabel}`);
+          console.log("FULL INWARD OBJECT:", inward);
+          console.log("inward.status =", inward.status);
 
-    // ✅ CONDITION 1: Inward status MUST be "updated"
-    if (inward.status?.toLowerCase() !== "updated") {
-      console.warn(`[REJECTED] ${idLabel} → inward.status = ${inward.status}`);
-      return false;
-    }
+          // ✅ CONDITION 1: Inward status MUST be "updated"
+          if (inward.status?.toLowerCase() !== "updated") {
+            console.warn(`[REJECTED] ${idLabel} → inward.status = ${inward.status}`);
+            return false;
+          }
 
-    // ✅ CONDITION 2: SRF must NOT already exist
-    if (srfByNo.has(String(inward.srf_no))) {
-      console.warn(`[REJECTED] ${idLabel} → SRF already exists`);
-      return false;
-    }
+          // ✅ CONDITION 2: SRF must NOT already exist
+          if (srfByNo.has(String(inward.srf_no))) {
+            console.warn(`[REJECTED] ${idLabel} → SRF already exists`);
+            return false;
+          }
 
-    /**
-     * ✅ ✅ ✅ FINAL FIX (OPTION 1)
-     * Backend already validates equipment statuses.
-     * Frontend MUST NOT perform equipment validation.
-     */
-    console.log(`[ACCEPTED ✅] ${idLabel} → Trusted by backend (status = updated)`);
-    return true;
-  })
-  .map((inward) => ({
-    id: inward.inward_id,
-    type: "inward" as const,
-    displayNumber: `SRF No: ${inward.srf_no}`,
-    customer_name: inward.customer_name,
-    date: inward.date,
-    status: STATUS_KEYS.PENDING,
-    isDraft: false,
-  }));
+          console.log(`[ACCEPTED ✅] ${idLabel} → Trusted by backend (status = updated)`);
+          return true;
+        })
+        .map((inward) => ({
+          id: inward.inward_id,
+          type: "inward" as const,
+          displayNumber: `SRF No: ${inward.srf_no}`,
+          customer_name: inward.customer_name,
+          date: inward.date,
+          status: STATUS_KEYS.PENDING,
+          isDraft: false,
+        }));
 
 
         // ---------------------------------------------------------
@@ -144,7 +143,6 @@ if (Array.isArray(inwardsResponse.data)) {
         
         if (Array.isArray(srfsResponse.data)) {
             srfsResponse.data.forEach(srf => {
-              console.log("Full SRF Object:", srf);
                 // 1. Handle DRAFTS (Pending Tab)
                 // ✅ STRICT CHECK: srf.status = 'draft' AND inward.status = 'updated'
                 if (srf.status === 'draft') {
@@ -166,8 +164,6 @@ if (Array.isArray(inwardsResponse.data)) {
                 }
 
                 // 2. Handle OTHER Statuses (Approved, Rejected, Review)
-                // We do NOT check inward.status here, because approved SRFs usually 
-                // have completed inwards that are no longer "updated".
                 let workItemStatus: StatusKey | null = null;
 
                 if (srf.status === "inward_completed" || srf.status === "generated") {

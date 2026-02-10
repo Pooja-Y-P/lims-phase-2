@@ -62,7 +62,7 @@ for attempt in range(max_retries):
 # Initialize FastAPI app
 app = FastAPI(title="LIMS Backend", version="1.0")
 
-# # CORS middleware
+
 # app.add_middleware(
 #     CORSMiddleware,
 #     # allow_origins=[

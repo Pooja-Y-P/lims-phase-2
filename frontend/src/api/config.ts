@@ -62,6 +62,7 @@ export const ENDPOINTS = {
   DEVIATIONS: `/deviations`,
   NOTIFICATIONS: `/notifications`,
   SRFS: `/srfs/`,
+  GET_SRF: (id: number) => `/srfs/${id}`,
 
   // SRF Drafts
   SRF_DRAFTS: {

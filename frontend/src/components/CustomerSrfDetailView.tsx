@@ -13,6 +13,7 @@ import {
   Wrench,
   ChevronLeft,
 } from "lucide-react";
+import { api, ENDPOINTS } from '../api/config';
 
 // --- Interfaces ---
 type SrfStatus = 'approved' | 'rejected' | 'pending' | 'inward_completed' | 'created';
@@ -47,7 +48,7 @@ interface InwardData {
   customer_dc_no?: string;
   customer_dc_date?: string;
   material_inward_date?: string;
-  inward_srf_flag?: boolean; // Added field
+  inward_srf_flag?: boolean;
   customer?: CustomerData;
   equipments?: EquipmentData[];
 }
@@ -96,9 +97,11 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://192.168.31.195:8000/api/srfs/${srfId}`);
-      if (!response.ok) throw new Error("Failed to fetch SRF details");
-      const data: SrfData = await response.json();
+      // FIX: Use 'api' instance and fix string interpolation
+      // If ENDPOINTS.GET_SRF exists in config, use: api.get(ENDPOINTS.GET_SRF(Number(srfId)))
+      // Otherwise use:
+      const response = await api.get(`${ENDPOINTS.SRFS}${srfId}`);
+      const data: SrfData = response.data;
       
       // Data Normalization
       if (data.date) data.date = data.date.split("T")[0];
@@ -125,7 +128,12 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       setSrfData(data);
     } catch (err: any) {
       console.error("Error loading SRF:", err);
-      setError(err.message || "Error loading SRF details");
+      // specific check for 404 which might return HTML if API base URL is wrong
+      if (err.response?.headers?.['content-type']?.includes('text/html')) {
+         setError("API Configuration Error: Server returned HTML. Check API_BASE_URL.");
+      } else {
+         setError(err.response?.data?.detail || err.message || "Error loading SRF details");
+      }
     } finally {
       setLoading(false);
     }
@@ -164,39 +172,24 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         remark_special_instructions: srfData.remark_special_instructions,
       };
 
-      const srfResponse = await fetch(`http://localhost:8000/api/srfs/${srfData.srf_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(srfPayload),
-      });
-
-      if (!srfResponse.ok) {
-        const errorData = await srfResponse.json();
-        throw new Error(errorData.detail || `Failed to ${status} SRF`);
-      }
+      // FIX: Use api.put instead of fetch
+      await api.put(`${ENDPOINTS.SRFS}/${srfData.srf_id}`, srfPayload);
       
       // ---------------------------------------------------------
       // 2. IF REJECTED: Update Inward Table (inward_srf_flag -> True)
       // ---------------------------------------------------------
       if (status === 'rejected' && srfData.inward?.inward_id) {
         const inwardId = srfData.inward.inward_id;
-        // Adjusted URL to match backend router prefix (/staff/inwards)
-        const url = `http://localhost:8000/api/staff/inwards/${inwardId}`;
         
         try {
-            const inwardResponse = await fetch(url, {
-                method: "PATCH", 
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ 
-                    inward_srf_flag: true 
-                }),
+            // FIX: Use api.patch and ENDPOINTS constant
+            // Assuming ENDPOINTS.STAFF.INWARDS maps to /staff/inwards
+            await api.patch(`${ENDPOINTS.STAFF.INWARDS}/${inwardId}`, { 
+                inward_srf_flag: true 
             });
-
-            if (!inwardResponse.ok) {
-                console.warn("SRF status updated, but failed to update inward flag.");
-            }
         } catch (inwardErr) {
             console.error("Network error updating inward flag:", inwardErr);
+            // We don't stop the flow here, just log warning
         }
       }
 
@@ -218,7 +211,10 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       }
 
       setSrfData(updatedSrfData);
-      onStatusChange(srfData.srf_id, status);
+      
+      if(onStatusChange) {
+        onStatusChange(srfData.srf_id, status);
+      }
       
       if (status === 'rejected') {
         setShowRejectionModal(false);
@@ -226,7 +222,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
       }
       alert(`SRF ${status} successfully!`);
     } catch (err: any) {
-      alert(err.message || "Error updating SRF");
+      alert(err.response?.data?.detail || err.message || "Error updating SRF");
     } finally {
       setIsSubmitting(false);
     }
