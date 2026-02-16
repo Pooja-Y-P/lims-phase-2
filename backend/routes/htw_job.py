@@ -5,6 +5,11 @@ from ..db import get_db
 from ..schemas.htw_job import HTWJobCreate, HTWJobResponse, JobStatusUpdate
 from ..services import htw_job as service
 
+# --- NEW IMPORT ---
+# We import the LockGuard from the generalized service file
+from ..services.lock_service import LockGuard
+# ------------------
+
 router = APIRouter(prefix="/htw-jobs", tags=["HTW Jobs"])
 
 @router.post("/", response_model=HTWJobResponse)
@@ -40,10 +45,18 @@ def read_htw_job(job_id: int, db: Session = Depends(get_db)):
     return job
 
 
-@router.patch("/{job_id}", response_model=HTWJobResponse)
+# --- UPDATE HERE ---
+# We added dependencies=[Depends(LockGuard(...))]
+# This runs BEFORE the function logic. 
+# If locked by another user, it throws 409 Conflict immediately.
+@router.patch("/{job_id}", 
+    response_model=HTWJobResponse,
+    dependencies=[Depends(LockGuard(entity_type="HTW_JOB", id_param_name="job_id"))]
+)
 def update_job_status(job_id: int, status_data: JobStatusUpdate, db: Session = Depends(get_db)):
     """
     Update the status of a specific HTW Job.
+    Protected by Concurrency Lock.
     """
     # Fetch the job
     job = service.get_job_by_id(db, job_id=job_id)

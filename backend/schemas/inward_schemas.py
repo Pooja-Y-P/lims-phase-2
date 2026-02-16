@@ -201,6 +201,7 @@ class InwardResponse(BaseModel):
     status: str
     customer: Optional[CustomerSchema] = None
     equipments: List[InwardEquipmentResponse] = []
+    inward_srf_flag : bool = False
 
     @field_validator('srf_no', mode='before')
     @classmethod

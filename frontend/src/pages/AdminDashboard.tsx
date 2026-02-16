@@ -41,6 +41,91 @@ interface InvitationResponse {
   message: string;
 }
 
+// --- SKELETON LOADING COMPONENT ---
+const AdminSkeleton: React.FC<{ type: 'dashboard' | 'users' }> = ({ type }) => {
+  if (type === 'dashboard') {
+    return (
+      <div className="animate-pulse space-y-8 w-full">
+        {/* Header */}
+        <div className="space-y-3">
+          <div className="h-10 w-64 bg-slate-200 rounded-lg"></div>
+          <div className="h-5 w-96 bg-slate-200 rounded-lg"></div>
+        </div>
+        
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 rounded-2xl bg-white border border-gray-100 p-8 shadow-sm">
+              <div className="flex justify-between items-start mb-6">
+                 <div className="h-14 w-14 rounded-xl bg-slate-200"></div>
+                 <div className="h-10 w-16 bg-slate-200 rounded"></div>
+              </div>
+              <div className="space-y-2">
+                 <div className="h-6 w-32 bg-slate-200 rounded"></div>
+                 <div className="h-4 w-48 bg-slate-200 rounded"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick Actions Panel */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+           <div className="h-24 bg-slate-200/80"></div>
+           <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                 <div key={i} className="h-32 bg-slate-100 rounded-xl border border-slate-200"></div>
+              ))}
+           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Users Skeleton
+  return (
+    <div className="animate-pulse h-full flex flex-col w-full">
+       <div className="mb-6 space-y-2">
+          <div className="h-10 w-64 bg-slate-200 rounded-lg"></div>
+          <div className="h-4 w-96 bg-slate-200 rounded"></div>
+       </div>
+
+       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex-1">
+          {/* Header & Tabs */}
+          <div className="border-b border-gray-200 p-6 pb-0">
+             <div className="h-8 w-48 bg-slate-200 rounded mb-4"></div>
+             <div className="flex gap-4 mt-6">
+                {[1, 2, 3, 4].map(i => <div key={i} className="h-10 w-32 bg-slate-100 rounded-t-lg"></div>)}
+             </div>
+          </div>
+          
+          {/* Toolbar */}
+          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex gap-4">
+             <div className="h-10 w-64 bg-slate-200 rounded-lg"></div>
+             <div className="h-10 w-48 bg-slate-200 rounded-lg hidden sm:block"></div>
+          </div>
+
+          {/* Table Rows */}
+          <div className="p-0">
+             {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+                   <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-slate-200"></div>
+                      <div className="space-y-2">
+                         <div className="h-4 w-40 bg-slate-200 rounded"></div>
+                         <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                      </div>
+                   </div>
+                   <div className="h-6 w-24 bg-slate-200 rounded hidden md:block"></div>
+                   <div className="h-6 w-20 bg-slate-200 rounded hidden md:block"></div>
+                   <div className="h-8 w-24 bg-slate-200 rounded"></div>
+                </div>
+             ))}
+          </div>
+       </div>
+    </div>
+  );
+};
+
 // --- SHARED UI COMPONENTS ---
 
 const StatCard: React.FC<{ 
@@ -997,17 +1082,6 @@ const AdminDashboard: React.FC = () => {
   const userName = user?.full_name || user?.username || 'User';
   const userRole = user?.role || 'Admin';
 
-  if (loading && activeSection === 'dashboard') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600 font-medium">Loading Dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col min-h-screen bg-[#f8f9fc] font-sans text-gray-900">
       
@@ -1042,7 +1116,7 @@ const AdminDashboard: React.FC = () => {
 
               {/* --- Dashboard Home Section --- */}
               {activeSection === 'dashboard' && (
-                <AdminDashboardHome users={users} onNavigate={handleNavigate} />
+                loading ? <AdminSkeleton type="dashboard" /> : <AdminDashboardHome users={users} onNavigate={handleNavigate} />
               )}
 
               {/* --- Invite Users Section --- */}
@@ -1054,25 +1128,27 @@ const AdminDashboard: React.FC = () => {
 
               {/* --- User Management Section --- */}
               {activeSection === 'users' && (
-                <div className="animate-fadeIn h-full flex flex-col">
-                  <div className="mb-6">
-                    <h2 className="text-3xl font-bold text-gray-900">User Management</h2>
-                    <p className="text-gray-500 mt-1">View and manage all registered system users.</p>
+                loading ? <AdminSkeleton type="users" /> : (
+                  <div className="animate-fadeIn h-full flex flex-col">
+                    <div className="mb-6">
+                      <h2 className="text-3xl font-bold text-gray-900">User Management</h2>
+                      <p className="text-gray-500 mt-1">View and manage all registered system users.</p>
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      {statusMessage && (
+                          <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center shadow-sm ${statusMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                          <Info size={16} className="mr-2"/>{statusMessage.text}
+                          </div>
+                      )}
+                      <UserManagementSystem 
+                          users={users} 
+                          updatingUserId={updatingUserId} 
+                          onToggleStatus={handleToggleStatus}
+                          onRefreshData={fetchData} 
+                      />
+                    </div>
                   </div>
-                  <div className="flex-1 min-h-0">
-                    {statusMessage && (
-                        <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center shadow-sm ${statusMessage.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
-                        <Info size={16} className="mr-2"/>{statusMessage.text}
-                        </div>
-                    )}
-                    <UserManagementSystem 
-                        users={users} 
-                        updatingUserId={updatingUserId} 
-                        onToggleStatus={handleToggleStatus}
-                        onRefreshData={fetchData} 
-                    />
-                  </div>
-                </div>
+                )
               )}
 
               {activeSection === 'master-standard' && <div className="animate-slideUp"><MasterStandardModule /></div>}

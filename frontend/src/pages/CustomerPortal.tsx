@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Routes, Route, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { Srf, DashboardProps } from "../types";
@@ -13,9 +13,9 @@ import {
   Search,
   Download,
   ArrowRight,
-  X,
-  Info,
-  Clock
+  Clock,
+  Bell,
+  CheckCircle
 } from "lucide-react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
@@ -23,7 +23,6 @@ import { api } from '../api/config';
 import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
 import CustomerSrfDetailView from "../components/CustomerSrfDetailView"; 
 import CustomerSrfListView from "../components/CustomerSrfListView";
-// --- IMPORT THE NEW SEPARATE COMPONENT ---
 import TrackStatusPage from "../components/TrackStatusPage";
 
 // --- LOCAL TYPE DEFINITIONS ---
@@ -59,6 +58,58 @@ const formatSafeDate = (dateStr?: string | null) => {
     month: 'short',
     year: 'numeric'
   });
+};
+
+// --- SKELETON LOADING COMPONENT ---
+const DashboardSkeleton = () => {
+  return (
+    <div className="animate-pulse w-full">
+      {/* Header Section Skeleton */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 bg-slate-200 rounded-2xl"></div>
+          <div className="space-y-3">
+            <div className="h-8 w-64 bg-slate-200 rounded"></div>
+            <div className="h-4 w-40 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+        <div className="h-12 w-12 bg-slate-200 rounded-full self-end md:self-auto"></div>
+      </div>
+
+      {/* Stats Grid Skeleton */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 mt-6">
+        {[1, 2, 3].map((item) => (
+          <div key={item} className="bg-white rounded-xl p-6 shadow-md border border-gray-100 h-36">
+            <div className="flex justify-between items-start mb-4">
+              <div className="h-12 w-12 bg-slate-200 rounded-xl"></div>
+              <div className="h-10 w-16 bg-slate-200 rounded"></div>
+            </div>
+            <div className="space-y-2">
+              <div className="h-5 w-32 bg-slate-200 rounded"></div>
+              <div className="h-3 w-24 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick Actions Skeleton */}
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <div className="h-8 w-48 bg-slate-200 rounded mb-6 border-b pb-3"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((item) => (
+            <div key={item} className="p-6 rounded-2xl border border-gray-100 bg-white flex items-center">
+              <div className="h-14 w-14 bg-slate-200 rounded-xl mr-4 shadow-sm"></div>
+              <div className="flex-1 space-y-3">
+                <div className="h-6 w-32 bg-slate-200 rounded"></div>
+                <div className="h-4 w-48 bg-slate-200 rounded"></div>
+              </div>
+              <div className="ml-4 h-6 w-6 bg-slate-200 rounded-full"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 // --- SUB-PAGES ---
@@ -134,58 +185,120 @@ const CertificatesPage = () => <div className="p-8 bg-white rounded-2xl shadow-m
 
 // --- DASHBOARD COMPONENTS ---
 
-// 1. Dismissible Portal Message Component
-const PortalMessage: React.FC<{
-    title: string;
-    message: string;
-    type?: 'warning' | 'info' | 'pending';
-    actionLabel?: string;
-    onAction?: () => void;
-}> = ({ title, message, type = 'warning', actionLabel, onAction }) => {
-    const [isVisible, setIsVisible] = useState(true);
+// 1. Notification Center
+const NotificationCenter: React.FC<{ stats: DashboardStats }> = ({ stats }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
 
-    if (!isVisible) return null;
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-    let styles = { bg: '', border: '', textTitle: '', textBody: '', btnBg: '', icon: <div /> };
-    
-    switch (type) {
-        case 'warning':
-            styles = { bg: 'bg-orange-50', border: 'border-orange-200', textTitle: 'text-orange-900', textBody: 'text-orange-800', btnBg: 'bg-orange-600 hover:bg-orange-700', icon: <AlertTriangle className="h-6 w-6 text-orange-600 mt-1 flex-shrink-0" /> };
-            break;
-        case 'pending': 
-            styles = { bg: 'bg-yellow-50', border: 'border-yellow-200', textTitle: 'text-yellow-900', textBody: 'text-yellow-800', btnBg: 'bg-yellow-600 hover:bg-yellow-700', icon: <Clock className="h-6 w-6 text-yellow-600 mt-1 flex-shrink-0" /> };
-            break;
-        case 'info':
-        default:
-            styles = { bg: 'bg-blue-50', border: 'border-blue-200', textTitle: 'text-blue-900', textBody: 'text-blue-800', btnBg: 'bg-blue-600 hover:bg-blue-700', icon: <Info className="h-6 w-6 text-blue-600 mt-1 flex-shrink-0" /> };
-            break;
-    }
+    const totalNotifications = stats.firsForReview + stats.draftSrfs;
+
+    const handleNavigate = (path: string) => {
+        setIsOpen(false);
+        navigate(path);
+    };
 
     return (
-        <div className={`${styles.bg} border ${styles.border} rounded-xl p-6 mb-4 shadow-sm relative transition-all duration-300`}>
+        <div className="relative" ref={dropdownRef}>
+            {/* Bell Button */}
             <button 
-                onClick={() => setIsVisible(false)}
-                className="absolute top-4 right-4 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-black/5 transition-colors"
-                aria-label="Dismiss message"
+                onClick={() => setIsOpen(!isOpen)}
+                className="p-3 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all relative group"
             >
-                <X className="h-5 w-5" />
+                <Bell className={`h-6 w-6 ${isOpen ? 'text-blue-600' : 'text-gray-600 group-hover:text-blue-600'}`} />
+                {totalNotifications > 0 && (
+                    <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[20px] shadow-sm border-2 border-white transform translate-x-1/4 -translate-y-1/4">
+                        {totalNotifications}
+                    </span>
+                )}
             </button>
 
-            <div className="flex items-start gap-4 pr-8">
-                {styles.icon}
-                <div className="flex-1">
-                    <h3 className={`text-lg font-semibold ${styles.textTitle} mb-1`}>{title}</h3>
-                    <p className={`${styles.textBody} text-sm mb-3`}>{message}</p>
-                    {actionLabel && onAction && (
-                        <button 
-                            onClick={onAction}
-                            className={`${styles.btnBg} text-white px-4 py-2 rounded-lg font-semibold transition-colors text-sm`}
-                        >
-                            {actionLabel}
+            {/* Dropdown Panel */}
+            {isOpen && (
+                <div className="absolute right-0 mt-3 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 overflow-hidden ring-1 ring-black ring-opacity-5 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="p-4 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="font-bold text-gray-800">Notifications</h3>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                            {totalNotifications} New
+                        </span>
+                    </div>
+
+                    <div className="max-h-[400px] overflow-y-auto">
+                        {totalNotifications === 0 ? (
+                            <div className="p-8 text-center flex flex-col items-center text-gray-400">
+                                <CheckCircle className="h-10 w-10 mb-2 opacity-20" />
+                                <p className="text-sm">You're all caught up!</p>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-gray-100">
+                                {/* FIR Notification Item */}
+                                {stats.firsForReview > 0 && (
+                                    <div 
+                                        onClick={() => handleNavigate('/customer/view-firs')}
+                                        className="p-4 hover:bg-orange-50 transition-colors cursor-pointer group flex items-start gap-3"
+                                    >
+                                        <div className="p-2 bg-orange-100 rounded-lg shrink-0 mt-1">
+                                            <AlertTriangle className="h-5 w-5 text-orange-600" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-gray-800">
+                                                Action Required
+                                            </p>
+                                            <p className="text-xs text-gray-600 mt-1 mb-3">
+                                                You have <span className="font-bold text-orange-600">{stats.firsForReview}</span> First Inspection Report(s) awaiting your review.
+                                            </p>
+                                            {/* Button Style Link */}
+                                            <span className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg shadow-sm group-hover:bg-blue-700 transition-colors">
+                                                View Details
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Draft/Pending SRF Notification Item */}
+                                {stats.draftSrfs > 0 && (
+                                    <div 
+                                        onClick={() => handleNavigate('/customer/view-srf')}
+                                        className="p-4 hover:bg-yellow-50 transition-colors cursor-pointer group flex items-start gap-3"
+                                    >
+                                        <div className="p-2 bg-yellow-100 rounded-lg shrink-0 mt-1">
+                                            <Clock className="h-5 w-5 text-yellow-600" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-gray-800">
+                                                Approval Pending
+                                            </p>
+                                            <p className="text-xs text-gray-600 mt-1 mb-3">
+                                                You have <span className="font-bold text-yellow-600">{stats.draftSrfs}</span> SRF(s) pending approval or in draft.
+                                            </p>
+                                            {/* Button Style Link */}
+                                            <span className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg shadow-sm group-hover:bg-blue-700 transition-colors">
+                                                View Details
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 text-center border-t border-gray-100">
+                        <button onClick={() => setIsOpen(false)} className="text-xs text-gray-500 hover:text-gray-800 font-medium">
+                            Close
                         </button>
-                    )}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -251,37 +364,23 @@ const CustomerDashboardHome: React.FC<{ stats: DashboardStats }> = ({ stats }) =
 
     return ( 
         <div> 
-            {/* Header Section */}
-            <div className="flex items-center gap-4 mb-8"> 
-                <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
-                    <ClipboardList className="h-10 w-10 text-white" />
-                </div> 
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Customer Portal</h1> 
-                    <p className="mt-1 text-base text-gray-600">Welcome back, {user?.full_name || user?.username || "Customer"}</p>
-                </div> 
-            </div> 
+            {/* Header Section with Notification Bell */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8"> 
+                <div className="flex items-center gap-4">
+                    <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl shadow-lg">
+                        <ClipboardList className="h-10 w-10 text-white" />
+                    </div> 
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Customer Portal</h1> 
+                        <p className="mt-1 text-base text-gray-600">Welcome back, {user?.full_name || user?.username || "Customer"}</p>
+                    </div>
+                </div>
 
-            {/* --- NOTIFICATIONS SECTION --- */}
-            {stats.firsForReview > 0 && (
-                <PortalMessage 
-                    type="warning"
-                    title="Action Required"
-                    message={`You have ${stats.firsForReview} First Inspection Report(s) awaiting your review.`}
-                    actionLabel="Review Reports"
-                    onAction={() => navigate('/customer/view-firs')}
-                />
-            )}
-            
-            {stats.draftSrfs > 0 && (
-                <PortalMessage 
-                    type="pending"
-                    title="Approval Pending"
-                    message={`You have ${stats.draftSrfs} pending Service Request Form(s) for approval.`}
-                    actionLabel="View SRFs"
-                    onAction={() => navigate('/customer/view-srf')}
-                />
-            )}
+                {/* Notification Bell Component positioned here */}
+                <div className="flex items-center gap-4 self-end md:self-auto">
+                    <NotificationCenter stats={stats} />
+                </div>
+            </div> 
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 mt-6"> 
@@ -423,23 +522,25 @@ const CustomerPortal: React.FC<DashboardProps> = ({ onLogout }) => {
         firsForReview: firs.length,
     };
 
-    if (loading) return <div className="p-8 text-lg text-center text-gray-500">Loading your portal...</div>;
-
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             <Header onLogout={onLogout} username={user?.full_name || user?.username || "Customer"} role="Customer" />
             
             <main className="flex-1 max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 w-full">
-                <Routes>
-                    <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
-                    <Route path="track-status" element={<TrackStatusPage />} />
-                    <Route path="view-srf" element={<CustomerSrfListView srfs={srfs as any[]} />} />
-                    <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
-                    <Route path="view-firs" element={<FirListView firs={firs} />} />
-                    <Route path="fir-remarks/:inwardId" element={<CustomerRemarksPortal />} />
-                    <Route path="deviations" element={<ViewDeviationsPage />} />
-                    <Route path="certificates" element={<CertificatesPage />} />
-                </Routes>
+                {loading ? (
+                    <DashboardSkeleton />
+                ) : (
+                    <Routes>
+                        <Route path="/" element={<CustomerDashboardHome stats={dashboardStats} />} />
+                        <Route path="track-status" element={<TrackStatusPage />} />
+                        <Route path="view-srf" element={<CustomerSrfListView srfs={srfs as any[]} />} />
+                        <Route path="srfs/:srfId" element={<CustomerSrfDetailView onStatusChange={handleStatusChange} />} />
+                        <Route path="view-firs" element={<FirListView firs={firs} />} />
+                        <Route path="fir-remarks/:inwardId" element={<CustomerRemarksPortal />} />
+                        <Route path="deviations" element={<ViewDeviationsPage />} />
+                        <Route path="certificates" element={<CertificatesPage />} />
+                    </Routes>
+                )}
             </main>
             
             <Footer />

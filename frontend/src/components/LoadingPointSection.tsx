@@ -26,6 +26,59 @@ interface LoadingPointResponse {
   }[];
 }
 
+// --- Skeleton Component ---
+const LoadingPointSkeleton: React.FC = () => {
+  return (
+    <div className="flex flex-col w-full bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6 mb-12 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="h-6 w-1/3 bg-gray-200 rounded"></div>
+        <div className="h-4 w-20 bg-gray-200 rounded"></div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="overflow-x-auto rounded-lg border border-gray-300">
+        <div className="w-full min-w-[900px]">
+          {/* Table Head */}
+          <div className="flex bg-gray-100 border-b border-gray-300 p-2">
+            <div className="w-[100px] h-4 bg-gray-300 rounded mr-2"></div>
+            <div className="w-[80px] h-4 bg-gray-300 rounded mr-2"></div>
+            <div className="flex-1 h-4 bg-gray-200 rounded mr-2"></div>
+            <div className="w-[100px] h-4 bg-gray-300 rounded"></div>
+          </div>
+          
+          {/* Table Body - 2 Rows */}
+          {[1, 2].map((i) => (
+            <div key={i} className="flex border-b border-gray-100 p-2 items-center">
+              <div className="w-[100px] h-8 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="flex-1 flex gap-2 mr-2">
+                 {[...Array(10)].map((_, j) => (
+                    <div key={j} className="h-8 w-full bg-gray-100 rounded"></div>
+                 ))}
+              </div>
+              <div className="w-[100px] h-8 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+
+          {/* Footer Row */}
+          <div className="bg-blue-50 border-t-2 border-blue-100 p-4 flex justify-center items-center gap-4">
+             <div className="h-4 w-48 bg-gray-300 rounded"></div>
+             <div className="h-8 w-24 bg-white rounded border border-gray-200"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Actions Skeleton */}
+      <div className="flex justify-between items-center mt-3 h-8">
+        <div className="h-8 w-20 bg-gray-200 rounded"></div>
+        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
 const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
@@ -195,12 +248,7 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
   const inputCell = "border border-gray-300 p-0 h-9 min-w-[50px] relative";
 
   if (loading && !dataLoaded) {
-    return (
-        <div className="h-48 flex flex-col items-center justify-center text-gray-400 border border-gray-200 rounded-xl bg-gray-50 mt-6">
-            <Loader2 className="h-6 w-6 animate-spin mb-2" />
-            <span className="text-xs">Loading Loading Point Data...</span>
-        </div>
-    );
+    return <LoadingPointSkeleton />;
   }
 
   return (

@@ -11,11 +11,9 @@ import {
   Trash2
 } from "lucide-react";
 import useDebounce from "../hooks/useDebounce";
- 
+
 interface RepeatabilitySectionProps {
   jobId: number;
-  // Callback to trigger standard re-selection in parent
-  // (Naming note: This refreshes standards whether adding OR removing steps)
   onStepAdded?: () => Promise<void>; 
 }
  
@@ -48,7 +46,60 @@ interface RepeatabilityResponse {
   results: any[];
   defaults?: Record<string, SpecDefaultValues>;
 }
+
+// --- Skeleton Component ---
+const RepeatabilitySkeleton: React.FC = () => {
+  return (
+    <div className="flex flex-col w-full bg-white border border-gray-200 rounded-xl shadow-sm p-4 relative animate-pulse">
+      {/* Header Skeleton */}
+      <div className="mb-4 flex flex-wrap justify-between items-center gap-4">
+        <div className="h-6 w-1/4 bg-gray-200 rounded"></div>
+        <div className="flex items-center gap-4">
+           <div className="h-8 w-40 bg-gray-200 rounded"></div>
+           <div className="h-8 w-32 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="overflow-x-auto rounded-lg border border-gray-300">
+        <div className="w-full min-w-[850px]">
+          {/* Table Head */}
+          <div className="flex bg-gray-100 border-b border-gray-300 p-2">
+            {[...Array(14)].map((_, i) => (
+              <div key={i} className={`h-4 bg-gray-300 rounded mx-1 ${i < 3 ? 'w-[70px]' : 'flex-1'}`}></div>
+            ))}
+          </div>
+          
+          {/* Table Body - 5 Rows */}
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex border-b border-gray-100 p-2 items-center">
+              <div className="w-[70px] h-8 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="flex-1 flex gap-2 mr-2">
+                 {[...Array(5)].map((_, j) => (
+                    <div key={j} className="h-8 w-full bg-gray-100 rounded"></div>
+                 ))}
+              </div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[70px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[60px] h-6 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Footer Skeleton */}
+      <div className="mt-2 flex justify-end">
+         <div className="h-3 w-32 bg-gray-200 rounded"></div>
+      </div>
+    </div>
+  );
+};
  
+// --- Main Component ---
 const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onStepAdded }) => {
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -204,27 +255,19 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
  
   // --- 4. STEP MANAGEMENT HANDLERS ---
  
-  // Updated Handle Toggle (Used for Both 40/80 checkboxes AND Trash icon deletion)
   const handleToggleStep = async (targetPercent: number) => {
     const exists = tableData.some((r) => Number(r.step_percent) === targetPercent);
  
     if (exists) {
-      // --- DELETION LOGIC ---
-      // 1. Update UI Immediately
       setTableData((prev) => prev.filter((r) => Number(r.step_percent) !== targetPercent));
       
       try {
         setSaveStatus("saving");
-        
-        // 2. Delete from DB immediately and WAIT
         await api.delete("/htw-calculations/repeatability/step", {
           data: { job_id: jobId, step_percent: targetPercent },
         });
-        
         setSaveStatus("saved");
 
-        // 3. Trigger Parent to Re-select Standards 
-        // (Now that the step is gone from DB, backend can shrink the range if needed)
         if (onStepAdded) {
             await onStepAdded();
         }
@@ -233,10 +276,8 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
       } catch (err) {
         console.error("Failed to delete step", err);
         setSaveStatus("error");
-        // Optional: You could revert the UI change here if you wanted strict consistency
       }
     } else {
-      // --- ADDITION LOGIC (For 40/80 Checkboxes) ---
       setTableData((prev) => {
         const key = targetPercent.toString();
         const defs = specDefaults[key];
@@ -257,15 +298,9 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
         const newData = [...prev, newRow];
         return newData.sort((a, b) => a.step_percent - b.step_percent);
       });
-      
-      // Note: For checkbox addition, we rely on the useEffect debouncer to save 
-      // and subsequent backend logic, OR we could force save here too. 
-      // Given the requirement usually focuses on custom steps, the debouncer is fine here,
-      // but deleting needs immediate action to update standards correctly.
     }
   };
  
-  // Handles adding a CUSTOM step from Modal
   const handleAddCustomStep = async () => {
     const stepVal = parseFloat(customInput.step);
     const pressVal = parseFloat(customInput.pressure);
@@ -297,12 +332,10 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
       torque_unit: baseRow ? baseRow.torque_unit : torqueUnit,
     };
  
-    // 1. Update Local UI immediately
     const updatedData = [...tableData, newRow].sort((a, b) => a.step_percent - b.step_percent);
     setTableData(updatedData);
 
     try {
-      // 2. FORCE SAVE TO DB IMMEDIATELY
       await api.post("/htw-calculations/repeatability/draft", {
         job_id: jobId,
         steps: updatedData.map((r) => ({
@@ -315,7 +348,6 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
 
       setSaveStatus("saved");
 
-      // 3. Trigger Parent to Re-select Standards
       if (onStepAdded) {
         await onStepAdded();
       }
@@ -345,12 +377,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
   };
  
   if (loading) {
-    return (
-      <div className="h-48 flex flex-col items-center justify-center text-gray-400 border border-gray-200 rounded-xl bg-gray-50">
-        <Loader2 className="h-6 w-6 animate-spin mb-2" />
-        <span className="text-xs">Loading Specs...</span>
-      </div>
-    );
+    return <RepeatabilitySkeleton />;
   }
  
   return (

@@ -1,17 +1,11 @@
-# backend/main.py
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from backend.db import Base, engine
-from backend import models  # Ensure models are registered before create_all
 import time
-import logging 
+import logging
 
-
-# Import routers
-# These imports are likely being aliased in backend/routes/__init__.py
-# For example: from .user_routes import router as user_routes
+# --- ROUTER IMPORTS ---
 from backend.routes import (
     user_routes,
     inward_router,
@@ -27,7 +21,7 @@ from backend.routes.htw_nomenclature_range_router import router as htw_nomenclat
 from backend.routes.htw_job_standard import router as htw_job_standard_router
 from backend.routes.htw_job import router as htw_job
 from backend.routes.htw_standard_uncertanity_reference_router import router as htw_standard_uncertanity_reference_router
-from backend.routes.htw_job_environment_router  import router as htw_job_environment_router
+from backend.routes.htw_job_environment_router import router as htw_job_environment_router
 from backend.routes.htw_repeatability_router import router as htw_repeatability_router
 from backend.routes.htw_const_coverage_factor_router import router as htw_const_coverage_factor_router
 from backend.routes.htw_t_distribution_router import router as htw_t_distribution_router
@@ -37,11 +31,13 @@ from backend.routes.htw_tool_type_router import router as htw_tool_type_router
 from backend.routes.htw_max_val_measure_err_router import router as htw_max_val_measure_err_router
 from backend.routes.htw_uncertanity_budget_router import router as htw_uncertanity_budget_router
 
+# [NEW] Import Lock Router
+from backend.routes.lock_router import router as lock_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Create tables with retry logic
+# --- DB TABLES CREATION ---
 max_retries = 5
 retry_delay = 2
 
@@ -59,52 +55,33 @@ for attempt in range(max_retries):
             logger.error(f"Failed to create tables after {max_retries} attempts: {e}")
             raise
 
-# Initialize FastAPI app
+# --- FASTAPI APP INIT ---
 app = FastAPI(title="LIMS Backend", version="1.0")
 
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     # allow_origins=[
-#     #     "http://localhost:3000",
-#     #     "http://127.0.0.1:3000",
-#     #     "http://localhost:5173",
-#     #     "http://127.0.0.1:5173",
-#     #     "http://localhost:5174",
-#     #     "http://127.0.0.1:5174"
-#     # ],
-#     allow_origins = ["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-
-origins = [    "http://localhost:3000",
-               "http://127.0.0.1:3000", 
-             "http://192.168.1.15:3000", # The Host IP   
-               "*", # Allow all (Easiest for local LAN testing)
-        ]
-app.add_middleware(    
-    CORSMiddleware,   
-      allow_origins=origins, # OR use allow_origins=["*"]    
-      allow_credentials=True,    
-      allow_methods=["*"],   
-    allow_headers=["*"],)
+# --- CORS CONFIGURATION (FIXED FOR LAN) ---
+# allow_origins=["*"] is the safest way to ensure 192.168.x.x works without issues
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Serve uploaded files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+# --- ROUTER REGISTRATION ---
+# All routers are prefixed with "/api"
 
-# === FIX IS HERE ===
-# Include routers with the /api prefix
-# Remove the unnecessary ".router" from each line
 app.include_router(user_routes.router, prefix="/api")
 app.include_router(inward_router.router, prefix="/api")
 app.include_router(customer_routes.router, prefix="/api")
 app.include_router(srf_router.router, prefix="/api")
 app.include_router(password_reset_router.router, prefix="/api")
 app.include_router(invitation_routes.router, prefix="/api")
+
+# HTW Routers
 app.include_router(htw_master_standard_router, prefix="/api")
 app.include_router(htw_manufacturer_spec_router, prefix="/api")
 app.include_router(htw_pressure_gauge_res_router, prefix="/api")
@@ -121,6 +98,10 @@ app.include_router(htw_tool_type_router, prefix="/api")
 app.include_router(htw_max_val_measure_err_router, prefix="/api")
 app.include_router(htw_standard_uncertanity_reference_router, prefix="/api")
 app.include_router(htw_uncertanity_budget_router, prefix="/api")
+
+# [NEW] Lock Router
+# IMPORTANT: This creates the URL: /api/locks/acquire
+app.include_router(lock_router, prefix="/api")
 
 @app.get("/")
 def root():

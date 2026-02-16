@@ -26,13 +26,70 @@ const formatDate = (dateString?: string | null) => {
   return parsedDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
+// --- SKELETON COMPONENT ---
+const ExportMasterStandardSkeleton = () => {
+  return (
+    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex flex-wrap items-center justify-between border-b pb-6 mb-8 gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-slate-200 h-14 w-14"></div>
+          <div className="space-y-3">
+            <div className="h-8 w-64 bg-slate-200 rounded"></div>
+            <div className="h-4 w-96 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+        <div className="h-10 w-24 bg-slate-200 rounded-lg"></div>
+      </div>
+
+      {/* Toolbar Skeleton */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-6">
+        <div className="h-5 w-32 bg-slate-200 rounded"></div>
+        <div className="h-10 w-48 bg-slate-200 rounded-lg"></div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="overflow-x-auto border border-gray-100 rounded-lg">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              {[...Array(8)].map((_, i) => (
+                <th key={i} className="px-4 py-4">
+                  <div className="h-4 bg-slate-200 rounded w-full max-w-[100px]"></div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {[...Array(6)].map((_, i) => (
+              <tr key={i}>
+                <td className="px-4 py-4"><div className="h-5 w-5 bg-slate-200 rounded"></div></td>
+                <td className="px-4 py-4"><div className="h-5 w-48 bg-slate-200 rounded"></div></td>
+                <td className="px-4 py-4 space-y-2">
+                  <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                  <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                </td>
+                <td className="px-4 py-4"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                <td className="px-4 py-4"><div className="h-4 w-32 bg-slate-200 rounded font-mono"></div></td>
+                <td className="px-4 py-4"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                <td className="px-4 py-4"><div className="h-6 w-16 bg-slate-200 rounded-full"></div></td>
+                <td className="px-4 py-4"><div className="h-9 w-24 bg-slate-200 rounded-lg"></div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 interface ExportMasterStandardPageProps {
   onBack: () => void;
 }
 
 export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> = ({ onBack }) => {
   const [standards, setStandards] = useState<ExportMasterStandardItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Default to true for initial load
   const [error, setError] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [selectedStandards, setSelectedStandards] = useState<Set<number>>(new Set());
@@ -53,7 +110,8 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
       const message = error instanceof Error ? error.message : "An unknown error occurred.";
       setError(`Failed to load master standard records: ${message}`);
     } finally {
-      setLoading(false);
+      // Artificial delay to smooth out the skeleton transition (optional)
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -116,7 +174,6 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
     try {
       setError(null);
       setExportingId(standardId);
-      // Use POST batch endpoint for individual export to ensure consistency
       const response = await api.post(
         ENDPOINTS.HTW_MASTER_STANDARDS.EXPORT_BATCH,
         { standard_ids: [standardId] },
@@ -157,7 +214,6 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
       setError(null);
       setBatchExporting(true);
       
-      // Use POST endpoint for batch export if available, otherwise use GET with query params
       const response = await api.post(
         ENDPOINTS.HTW_MASTER_STANDARDS.EXPORT_BATCH,
         { standard_ids: standardIds },
@@ -186,6 +242,10 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
       setBatchExporting(false);
     }
   }, [batchExporting, selectedStandards]);
+
+  if (loading) {
+    return <ExportMasterStandardSkeleton />;
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
@@ -253,7 +313,7 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   checked={standards.length > 0 && allSelected}
                   onChange={handleSelectAll}
-                  disabled={loading || batchExporting || standards.length === 0}
+                  disabled={batchExporting || standards.length === 0}
                   aria-label="Select all master standards"
                 />
               </th>
@@ -281,76 +341,68 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
-            {loading && (
-              <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                  Loading master standard records...
-                </td>
-              </tr>
-            )}
-            {!loading && standards.length === 0 && (
+            {standards.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
                   No master standard records found.
                 </td>
               </tr>
             )}
-            {!loading &&
-              standards.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`hover:bg-gray-50 ${selectedStandards.has(item.id) ? "bg-blue-50" : ""}`}
-                >
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      checked={selectedStandards.has(item.id)}
-                      onChange={() => handleToggleSelection(item.id)}
-                      disabled={loading || batchExporting}
-                      aria-label={`Select master standard ${item.id}`}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nomenclature}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    <div className="font-medium">{item.manufacturer || "—"}</div>
-                    <div className="text-xs text-gray-400">{item.model_serial_no || "—"}</div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {item.range_min || "—"} - {item.range_max || "—"} {item.range_unit || ""}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 font-mono">{item.certificate_no || "—"}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{formatDate(item.calibration_valid_upto)}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        item.is_active
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {item.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => handleExport(item.id)}
-                      disabled={exportingId === item.id || batchExporting}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
-                    >
-                      {exportingId === item.id ? (
-                        "Exporting..."
-                      ) : (
-                        <>
-                          <Download className="h-4 w-4" />
-                          Export
-                        </>
-                      )}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+            {standards.map((item) => (
+              <tr
+                key={item.id}
+                className={`hover:bg-gray-50 ${selectedStandards.has(item.id) ? "bg-blue-50" : ""}`}
+              >
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={selectedStandards.has(item.id)}
+                    onChange={() => handleToggleSelection(item.id)}
+                    disabled={batchExporting}
+                    aria-label={`Select master standard ${item.id}`}
+                  />
+                </td>
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nomenclature}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">
+                  <div className="font-medium">{item.manufacturer || "—"}</div>
+                  <div className="text-xs text-gray-400">{item.model_serial_no || "—"}</div>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">
+                  {item.range_min || "—"} - {item.range_max || "—"} {item.range_unit || ""}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600 font-mono">{item.certificate_no || "—"}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{formatDate(item.calibration_valid_upto)}</td>
+                <td className="px-4 py-3 text-sm">
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      item.is_active
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {item.is_active ? "Active" : "Inactive"}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => handleExport(item.id)}
+                    disabled={exportingId === item.id || batchExporting}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-green-300"
+                  >
+                    {exportingId === item.id ? (
+                      "Exporting..."
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4" />
+                        Export
+                      </>
+                    )}
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -359,4 +411,3 @@ export const ExportMasterStandardPage: React.FC<ExportMasterStandardPageProps> =
 };
 
 export default ExportMasterStandardPage;
-

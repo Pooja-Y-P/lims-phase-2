@@ -23,6 +23,44 @@ interface HTWPressureGaugeResolutionManagerProps {
   onBack: () => void;
 }
 
+// --- SKELETON COMPONENT ---
+const HTWPressureGaugeResolutionSkeleton = () => {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20 animate-pulse">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              {[...Array(5)].map((_, i) => (
+                <th key={i} className="px-6 py-4">
+                  <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {[...Array(5)].map((_, i) => (
+              <tr key={i}>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-12 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-24 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-6 w-20 bg-slate-200 rounded-full"></div></td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ============================================================================
 // MAIN MANAGER COMPONENT
 // ============================================================================
@@ -72,7 +110,8 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to load resolutions');
     } finally {
-      setLoading(false);
+      // Artificial delay for smoother skeleton transition
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -182,10 +221,7 @@ export const HTWPressureGaugeResolutionManager: React.FC<HTWPressureGaugeResolut
 
       {/* Table */}
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-4" />
-          <p className="text-gray-500">Loading resolutions...</p>
-        </div>
+        <HTWPressureGaugeResolutionSkeleton />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
           {/* Added mb-20 for safe spacing */}
@@ -400,7 +436,6 @@ const AddResolutionPage: React.FC<AddPageProps> = ({ onCancel, onSave, submittin
             <div className="flex items-center h-full pt-6">
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="sr-only peer" />
-                {/* FIXED TYPO BELOW: translate-x-full instead of tranblue-x-full */}
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 <span className="ml-3 text-sm font-medium text-gray-900">{formData.is_active ? 'Active' : 'Inactive'}</span>
               </label>
@@ -535,7 +570,6 @@ const EditResolutionModal: React.FC<EditModalProps> = ({ item, onCancel, onSave,
             <div className="flex items-center h-full pt-6">
               <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" name="is_active" checked={formData.is_active} onChange={handleChange} className="sr-only peer" />
-                {/* FIXED TYPO BELOW: translate-x-full instead of tranblue-x-full */}
                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 <span className="ml-3 text-sm font-medium text-gray-900">{formData.is_active ? 'Active' : 'Inactive'}</span>
               </label>

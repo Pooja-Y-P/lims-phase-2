@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, FormEvent } from 'react';
-import { createPortal } from 'react-dom'; // 1. Import createPortal
+import { createPortal } from 'react-dom'; 
 import { 
   Loader2, Plus, ArrowLeft, CheckCircle, 
   PowerOff, Edit, AlertCircle, Save, Scale,
@@ -21,6 +21,43 @@ export interface HTWCMCReference {
 interface HTWCMCReferenceManagerProps {
   onBack: () => void;
 }
+
+// --- SKELETON COMPONENT ---
+const HTWCMCReferenceSkeleton = () => {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-pulse mb-20">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              {[...Array(5)].map((_, i) => (
+                <th key={i} className="px-6 py-4">
+                  <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {[...Array(5)].map((_, i) => (
+              <tr key={i}>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-12 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-6 w-20 bg-slate-200 rounded-full"></div></td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 // ============================================================================
 // MAIN MANAGER COMPONENT
@@ -64,7 +101,8 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to load CMC reference data');
     } finally {
-      setLoading(false);
+      // Artificial delay for smoother skeleton transition
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -167,10 +205,7 @@ export const HTWCMCReferenceManager: React.FC<HTWCMCReferenceManagerProps> = ({ 
 
       {/* Table */}
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500 mb-4" />
-          <p className="text-gray-500">Loading records...</p>
-        </div>
+        <HTWCMCReferenceSkeleton />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
           {/* Added mb-20 to ensure content isn't hidden if footer overlaps before modal opens */}

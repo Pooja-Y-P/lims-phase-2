@@ -54,6 +54,77 @@ interface MenuCard {
   viewId: string;
 }
 
+// --- SKELETON COMPONENT ---
+const MasterStandardListSkeleton = () => {
+  return (
+    <div className="animate-pulse">
+      {/* Header Skeleton */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div className="flex items-center">
+          <div className="mr-4 h-10 w-10 bg-slate-200 rounded-lg"></div>
+          <div className="space-y-2">
+            <div className="h-6 w-48 bg-slate-200 rounded"></div>
+            <div className="h-4 w-32 bg-slate-200 rounded"></div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-64 bg-slate-200 rounded hidden md:block"></div>
+          <div className="h-10 w-32 bg-slate-200 rounded"></div>
+          <div className="h-10 w-24 bg-slate-200 rounded"></div>
+        </div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                {[...Array(6)].map((_, i) => (
+                  <th key={i} className="px-6 py-4">
+                    <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {[...Array(5)].map((_, i) => (
+                <tr key={i}>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center">
+                      <div className="h-10 w-10 bg-slate-200 rounded-lg mr-3"></div>
+                      <div className="space-y-2">
+                        <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                        <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="space-y-2">
+                      <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                      <div className="h-3 w-16 bg-slate-200 rounded"></div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                  <td className="px-6 py-4"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                  <td className="px-6 py-4"><div className="h-6 w-16 bg-slate-200 rounded-full"></div></td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2">
+                      <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                      <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                      <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- MAIN MODULE COMPONENT ---
 export const MasterStandardModule: React.FC = () => {
   // 1. Setup URL Search Params
@@ -389,7 +460,8 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
       setError(err.response?.data?.detail || 'Failed to load master standards');
       setStandards([]);
     } finally {
-      setLoading(false);
+      // Small delay to prevent flicker if API is very fast
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -467,6 +539,7 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
 
   return (
     <div className="animate-fadeIn">
+      {/* Header logic included in Skeleton, but reproduced here for data view */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div className="flex items-center">
           <button onClick={onBack} className="mr-4 p-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 shadow-sm"><ArrowLeft size={20} /></button>
@@ -507,10 +580,7 @@ function MasterStandardList({ onBack, onAddNew, onEdit, onExportNavigate }: Mast
       )}
 
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-4" />
-          <p className="text-gray-500">Loading master standards...</p>
-        </div>
+        <MasterStandardListSkeleton />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20"> 
           <div className="overflow-x-auto">

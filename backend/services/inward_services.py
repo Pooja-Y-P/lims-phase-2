@@ -582,6 +582,7 @@ class InwardService:
                     db_eq.barcode = eqp_model.barcode
                     db_eq.engineer_remarks = eqp_model.engineer_remarks
                     db_eq.photos = photo_paths
+                    
 
                     if incoming_status:
                         db_eq.status = incoming_status

@@ -1,21 +1,19 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, X } from "lucide-react"; // Removed 'Filter'
+import { Link, useNavigate, useLocation } from "react-router-dom"; 
+import { FileText, Inbox, ChevronRight, ArrowLeft, Clock, Edit3, Download, Search, X } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 
-// 1. Interface for Fresh Inwards (from /inwards/updated)
+// --- Interfaces ---
 interface PendingInward {
   inward_id: number;
   srf_no: number;
   customer_name: string | null;
   date: string;
   status: "updated";
-  // Added optional fields to fix TypeScript errors in console.log
   equipments?: any[]; 
   inward_equipments?: any[];
 }
 
-// 2. Interface for SRFs - WITH NESTED INWARD STATUS
 interface SrfSummary {
   srf_id: number;
   srf_no: string;
@@ -23,7 +21,6 @@ interface SrfSummary {
   date: string;
   status: "draft" | "inward_completed" | "generated" | "approved" | "rejected" | null;
   created_at?: string;
-  // ✅ We access the inward status here
   inward?: {
     inward_id: number;
     status: string; 
@@ -49,13 +46,82 @@ const STATUS_KEYS = {
 
 type StatusKey = (typeof STATUS_KEYS)[keyof typeof STATUS_KEYS];
 
+// --- Skeleton Component ---
+const SrfListSkeleton: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-10 animate-pulse">
+      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
+        
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between gap-4 mb-8 border-b border-gray-200 pb-5">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 bg-gray-200 rounded-full"></div>
+            <div className="space-y-2">
+              <div className="h-8 w-64 bg-gray-300 rounded"></div>
+              <div className="h-4 w-96 bg-gray-200 rounded"></div>
+            </div>
+          </div>
+          <div className="h-10 w-36 bg-gray-200 rounded-lg"></div>
+        </div>
+
+        {/* Tabs Skeleton */}
+        <div className="flex flex-wrap gap-3 border-b border-gray-200 mb-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-10 w-40 bg-gray-200 rounded-t-md"></div>
+          ))}
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex-1 h-10 bg-gray-200 rounded-lg"></div> {/* Search */}
+            <div className="w-32 h-10 bg-gray-200 rounded-lg"></div>   {/* Start Date */}
+            <div className="w-32 h-10 bg-gray-200 rounded-lg"></div>   {/* End Date */}
+            <div className="w-24 h-10 bg-gray-200 rounded-lg"></div>   {/* Export Button */}
+          </div>
+        </div>
+
+        {/* List Items Skeleton */}
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex items-center justify-between p-5 bg-gray-50 border border-gray-200 rounded-xl">
+              <div className="flex items-start gap-4 w-full">
+                {/* Icon */}
+                <div className="mt-1 h-10 w-10 bg-gray-200 rounded-full flex-shrink-0"></div>
+                
+                {/* Text Content */}
+                <div className="w-full space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="h-5 w-32 bg-gray-300 rounded"></div>
+                    <div className="h-4 w-16 bg-gray-200 rounded-full"></div>
+                  </div>
+                  <div className="h-4 w-64 bg-gray-200 rounded"></div>
+                </div>
+              </div>
+              {/* Arrow */}
+              <div className="h-5 w-5 bg-gray-200 rounded-full"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
 export const SrfListPage: React.FC = () => {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<StatusKey>(STATUS_KEYS.PENDING);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Initialize based on returned state, or default to PENDING
+  const [activeTab, setActiveTab] = useState<StatusKey>(() => {
+    const state = location.state as { activeTab?: StatusKey } | null;
+    return state?.activeTab || STATUS_KEYS.PENDING;
+  });
   
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -68,28 +134,9 @@ export const SrfListPage: React.FC = () => {
       setError(null);
   
       try {
-        // 1. Fetch Fresh Inwards
-        const inwardsResponse = await api.get<PendingInward[]>(
-          `${ENDPOINTS.STAFF.INWARDS}/updated`
-        );
-        console.log("✅ RAW INWARD API RESPONSE:", inwardsResponse.data);
-
-        if (Array.isArray(inwardsResponse.data)) {
-          inwardsResponse.data.forEach((inward, index) => {
-            console.log(`🟡 INWARD[${index}] FULL OBJECT:`, inward);
-            console.log(`   ➤ inward.status:`, inward.status);
-            // These lines caused errors before because they weren't in the interface
-            console.log(`   ➤ inward.equipments:`, inward.equipments);
-            console.log(`   ➤ inward.inward_equipments:`, inward.inward_equipments);
-          });
-        }
-
-        // 2. Fetch SRFs (contains nested inward info)
-        const srfsResponse = await api.get<SrfSummary[]>(
-          `${ENDPOINTS.SRFS}`
-        );
+        const inwardsResponse = await api.get<PendingInward[]>(`${ENDPOINTS.STAFF.INWARDS}/updated`);
+        const srfsResponse = await api.get<SrfSummary[]>(`${ENDPOINTS.SRFS}`);
   
-        // Helper: Map SRF Number -> SRF Object (to filter out fresh inwards that already have SRFs)
         const srfByNo = new Map<string, SrfSummary>();
         if (Array.isArray(srfsResponse.data)) {
           srfsResponse.data.forEach((srf) => {
@@ -97,31 +144,10 @@ export const SrfListPage: React.FC = () => {
           });
         }
 
-        // ---------------------------------------------------------
-        // PART A: FRESH INWARDS (Pending)
-        // Logic: Inward exists in 'updated' list AND has NO SRF in the SRF table.
-        // ---------------------------------------------------------
        const freshInwards: WorkItem[] = inwardsResponse.data
         .filter((inward) => {
-          const idLabel = `Inward SRF-${inward.srf_no}`;
-          console.log("--------------------------------------------------");
-          console.log(`🔍 CHECKING ${idLabel}`);
-          console.log("FULL INWARD OBJECT:", inward);
-          console.log("inward.status =", inward.status);
-
-          // ✅ CONDITION 1: Inward status MUST be "updated"
-          if (inward.status?.toLowerCase() !== "updated") {
-            console.warn(`[REJECTED] ${idLabel} → inward.status = ${inward.status}`);
-            return false;
-          }
-
-          // ✅ CONDITION 2: SRF must NOT already exist
-          if (srfByNo.has(String(inward.srf_no))) {
-            console.warn(`[REJECTED] ${idLabel} → SRF already exists`);
-            return false;
-          }
-
-          console.log(`[ACCEPTED ✅] ${idLabel} → Trusted by backend (status = updated)`);
+          if (inward.status?.toLowerCase() !== "updated") return false;
+          if (srfByNo.has(String(inward.srf_no))) return false;
           return true;
         })
         .map((inward) => ({
@@ -134,17 +160,10 @@ export const SrfListPage: React.FC = () => {
           isDraft: false,
         }));
 
-
-        // ---------------------------------------------------------
-        // PART B: EXISTING SRFS (Drafts & Others)
-        // Logic: Iterate the SRF list and apply your rules
-        // ---------------------------------------------------------
         const srfItems: WorkItem[] = [];
         
         if (Array.isArray(srfsResponse.data)) {
             srfsResponse.data.forEach(srf => {
-                // 1. Handle DRAFTS (Pending Tab)
-                // ✅ STRICT CHECK: srf.status = 'draft' AND inward.status = 'updated'
                 if (srf.status === 'draft') {
                     if (srf.inward?.status === 'srf_created') {
                         srfItems.push({
@@ -156,16 +175,11 @@ export const SrfListPage: React.FC = () => {
                             status: STATUS_KEYS.PENDING,
                             isDraft: true,
                         });
-                    } else {
-                        // Optional: Log if a draft is hidden because inward is not updated
-                        console.log(`Hidden Draft ${srf.srf_no}: Inward status is ${srf.inward?.status}`);
                     }
-                    return; // Done with this item
+                    return;
                 }
 
-                // 2. Handle OTHER Statuses (Approved, Rejected, Review)
                 let workItemStatus: StatusKey | null = null;
-
                 if (srf.status === "inward_completed" || srf.status === "generated") {
                     workItemStatus = STATUS_KEYS.REVIEW;
                 } else if (srf.status === "approved") {
@@ -192,11 +206,7 @@ export const SrfListPage: React.FC = () => {
 
       } catch (err: any) {
         console.error("Failed to fetch data:", err);
-        setError(
-          err.response?.data?.detail ||
-            err.message ||
-            "Could not load data. Please try again."
-        );
+        setError(err.response?.data?.detail || err.message || "Could not load data.");
       } finally {
         setLoading(false);
       }
@@ -204,7 +214,7 @@ export const SrfListPage: React.FC = () => {
   
     fetchAllData();
   }, []);
- 
+
   const statuses: StatusKey[] = [
     STATUS_KEYS.PENDING,
     STATUS_KEYS.REVIEW,
@@ -310,12 +320,9 @@ export const SrfListPage: React.FC = () => {
     [STATUS_KEYS.REJECTED]: "text-red-600 border-red-500",
   };
  
-  if (loading)
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center text-gray-600 text-lg">Loading Data...</div>
-      </div>
-    );
+  if (loading) {
+    return <SrfListSkeleton />;
+  }
  
   if (error)
     return (
@@ -375,10 +382,9 @@ export const SrfListPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Filters and Export Section */}
+        {/* Filters Section */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex flex-wrap items-end gap-4">
-            {/* Search Filter */}
+            <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Search
@@ -394,8 +400,6 @@ export const SrfListPage: React.FC = () => {
                 />
               </div>
             </div>
-
-            {/* Date Filters */}
             <div className="flex gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -420,8 +424,6 @@ export const SrfListPage: React.FC = () => {
                 />
               </div>
             </div>
-
-            {/* Action Buttons */}
             <div className="flex gap-2">
               {hasActiveFilters && (
                 <button
@@ -442,8 +444,6 @@ export const SrfListPage: React.FC = () => {
               </button>
             </div>
           </div>
-          
-          {/* Filter Summary */}
           {hasActiveFilters && (
             <div className="mt-3 text-sm text-gray-600">
               Showing {currentWorkItems.length} of {(groupedWorkItems[activeTab] || []).length} items
@@ -463,6 +463,7 @@ export const SrfListPage: React.FC = () => {
                     ? `/engineer/srfs/new-${item.id}`
                     : `/engineer/srfs/${item.id}`
                 }
+                state={{ activeTab }}
                 className="flex items-center justify-between p-5 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl transition-all duration-200 group shadow-sm hover:shadow-md"
               >
                 <div className="flex items-start gap-4">

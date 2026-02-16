@@ -13,6 +13,7 @@ import EngineerPortal from '../pages/EngineerPortal';
 import CustomerPortal from '../pages/CustomerPortal';
 import { CustomerRemarksPortal } from '../components/CustomerRemarksPortal';
 
+
 const RootRedirect = () => {
   const { user, bootstrapped } = useAuth();
   

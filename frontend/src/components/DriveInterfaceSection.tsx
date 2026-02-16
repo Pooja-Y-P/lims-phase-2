@@ -26,6 +26,59 @@ interface DriveInterfaceResponse {
   }[];
 }
 
+// --- Skeleton Component ---
+const DriveInterfaceSkeleton: React.FC = () => {
+  return (
+    <div className="flex flex-col w-full bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6 animate-pulse">
+      {/* Header Skeleton */}
+      <div className="mb-4 flex justify-between items-center">
+        <div className="h-6 w-1/3 bg-gray-200 rounded"></div>
+        <div className="h-4 w-20 bg-gray-200 rounded"></div>
+      </div>
+
+      {/* Table Skeleton */}
+      <div className="overflow-x-auto rounded-lg border border-gray-200 shadow-inner">
+        <div className="w-full min-w-[1100px]">
+          {/* Table Head */}
+          <div className="flex bg-gray-100 border-b border-gray-300 p-2">
+            <div className="w-[100px] h-4 bg-gray-300 rounded mr-2"></div>
+            <div className="w-[80px] h-4 bg-gray-300 rounded mr-2"></div>
+            <div className="flex-1 h-4 bg-gray-200 rounded mr-2"></div>
+            <div className="w-[100px] h-4 bg-gray-300 rounded"></div>
+          </div>
+          
+          {/* Table Body - 4 Rows */}
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex border-b border-gray-100 p-2 items-center">
+              <div className="w-[100px] h-8 bg-gray-200 rounded mr-2"></div>
+              <div className="w-[80px] h-6 bg-gray-200 rounded mr-2"></div>
+              <div className="flex-1 flex gap-2 mr-2">
+                 {[...Array(10)].map((_, j) => (
+                    <div key={j} className="h-8 w-full bg-gray-100 rounded"></div>
+                 ))}
+              </div>
+              <div className="w-[100px] h-8 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+
+          {/* Footer Row */}
+          <div className="bg-indigo-50 border-t-2 border-indigo-100 p-4 flex justify-center items-center gap-4">
+             <div className="h-4 w-48 bg-gray-300 rounded"></div>
+             <div className="h-8 w-24 bg-white rounded border border-gray-200"></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Actions Skeleton */}
+      <div className="flex justify-between items-center mt-4">
+        <div className="h-8 w-20 bg-gray-200 rounded"></div>
+        <div className="h-3 w-32 bg-gray-200 rounded"></div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
 const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
@@ -199,7 +252,7 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
     }
   };
 
-  if (loading) return <div className="p-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-600"/></div>;
+  if (loading) return <DriveInterfaceSkeleton />;
 
   return (
     <div className="flex flex-col w-full animate-in fade-in duration-500 bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6">

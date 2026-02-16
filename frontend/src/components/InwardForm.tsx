@@ -3,15 +3,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { 
   Plus, Trash2, Eye, Save, FileText, Loader2, X, ArrowLeft, 
   Camera, Clock, Send, Wrench, AlertCircle, CheckCircle2, 
-  Download, UserPlus, MapPin, Receipt, PackagePlus, MessageSquare, Printer
+  Download, UserPlus, MapPin, Receipt, PackagePlus, MessageSquare, Lock
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { InwardForm as InwardFormType, EquipmentDetail as BaseEquipmentDetail, InwardDetail } from '../types/inward';
-import { EquipmentDetailsModal } from './EquipmentDetailsModal';
+// import { EquipmentDetailsModal } from './EquipmentDetailsModal';
 import { api, ENDPOINTS, BACKEND_ROOT_URL } from '../api/config';
 import { useAuth } from '../auth/AuthProvider';
 import { generateStandardInwardPDF } from '../utils/InwardPDFHelper'; 
+import { useRecordLock } from '../hooks/useRecordLock'; 
 
 // --- TYPE DEFINITIONS ---
 
@@ -28,6 +27,9 @@ interface EquipmentDetail extends Omit<BaseEquipmentDetail, 'inspe_notes' | 'cal
   accessories_included?: string;
   remarks_and_decision?: string | null;
   status?: string; 
+  existingPhotoUrls?: string[];
+  photos?: File[];
+  photoPreviews?: string[];
 }
 
 interface CustomerDropdownItem {
@@ -78,7 +80,9 @@ interface DraftLoadResponse {
 }
 
 type InwardFormProps = {
-  initialDraftId: number | null;
+  initialDraftId?: number | null;
+  onDraftUpdate?: () => void;
+  onBack?: () => void; 
 };
 
 const INITIAL_MATERIAL_DESCRIPTIONS = [
@@ -99,7 +103,7 @@ const safeDate = (dateStr: string | null | undefined): string => {
 };
 
 // --- HELPER COMPONENT FOR TOOLTIPS ---
-const TruncatedTooltip = ({ text, type }: { text: string; type: 'input' | 'display' }) => {
+const TruncatedTooltip = ({ text }: { text: string; type: 'input' | 'display' }) => {
   if (!text) return null;
   
   return (
@@ -114,11 +118,17 @@ const TruncatedTooltip = ({ text, type }: { text: string; type: 'input' | 'displ
 };
 
 // --- COMPONENT ---
-export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
+export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId, onDraftUpdate, onBack }) => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
   const isEditMode = Boolean(editId);
   const { user } = useAuth();
+
+  const lockId = isEditMode && editId ? parseInt(editId) : null;
+  const { isLocked } = useRecordLock("INWARD", lockId);
+
+  // --- REF TO TRACK INITIALIZATION (Prevents Double Fetch in StrictMode) ---
+  const lastLoadedIdRef = useRef<string | number | null>('__NOT_LOADED__');
 
   const [formData, setFormData] = useState<ExtendedInwardFormType>({
     srf_no: 'Loading...', 
@@ -135,7 +145,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const hiddenEquipmentsRef = useRef<EquipmentDetail[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingData, setIsLoadingData] = useState(isEditMode || Boolean(initialDraftId));
+  
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modals & Flow State
@@ -143,6 +155,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  
+  // NEW: State for Row Deletion Modal
+  const [rowToDelete, setRowToDelete] = useState<number | null>(null);
    
   const [materialOptions, setMaterialOptions] = useState<string[]>(INITIAL_MATERIAL_DESCRIPTIONS);
   const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
@@ -173,7 +188,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const previewUrlsRef = useRef<string[]>([]);
 
   const [draftSaveStatus, setDraftSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsaved'>('idle');
-  const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId);
+  
+  // Ensure initialDraftId is never undefined when passed to useState
+  const [currentDraftId, setCurrentDraftId] = useState<number | null>(initialDraftId ?? null);
   const [lastAutoSaveTime, setLastAutoSaveTime] = useState<Date | null>(null);
 
   const [customers, setCustomers] = useState<CustomerDropdownItem[]>([]);
@@ -231,6 +248,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     [formData, equipmentList]
   );
 
+  const notifyDraftUpdate = useCallback(() => {
+    if (onDraftUpdate) {
+        onDraftUpdate();
+    }
+    window.dispatchEvent(new Event('drafts-updated'));
+  }, [onDraftUpdate]);
+
   const fetchMaterials = useCallback(async () => {
     try {
         const response = await api.get<string[]>(`${ENDPOINTS.STAFF.INWARDS}/materials-history?t=${Date.now()}`);
@@ -265,7 +289,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   }, []);
 
-  // Manufacturer dropdown API calls
   const fetchMakes = useCallback(async () => {
     try {
       const response = await api.get<string[]>(`${ENDPOINTS.STAFF.INWARDS}/manufacturer/makes`);
@@ -278,8 +301,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   }, []);
 
   const fetchModelsForMake = async (make: string) => {
-    if (!make || modelCache[make]) return; // Use cache if available
-    
+    if (!make || modelCache[make]) return;
     try {
       const response = await api.get<string[]>(`${ENDPOINTS.STAFF.INWARDS}/manufacturer/models`, {
         params: { make }
@@ -316,12 +338,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const loadInwardData = async (inwardId: number) => {
-    setIsLoadingData(true);
     try {
       const response = await api.get<InwardDetail>(`${ENDPOINTS.STAFF.INWARDS}/${inwardId}`);
       const inward = response.data;
       
-      // Determine receiver: Use from DB or fallback to current user
       const receiverName = inward.receiver || user?.full_name || user?.username || '';
 
       setFormData({
@@ -329,17 +349,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         material_inward_date: safeDate(inward.material_inward_date),
         customer_dc_date: safeDate(inward.customer_dc_date),
         customer_dc_no: (inward as any).customer_dc_no ?? '',
-        receiver: receiverName, // Use the determined receiver name
+        receiver: receiverName,
         customer_id: inward.customer_id,
         customer_details: inward.customer_details,
         status: inward.status
       });
-      setSelectedCustomerId(inward.customer_id);
       
-      if (inward.customer_id && customers.length > 0) {
-         const found = customers.find(c => c.customer_id === inward.customer_id);
-         if (found?.email) setSelectedCustomerEmail(found.email);
-      }
+      setSelectedCustomerId(inward.customer_id);
 
       const usedMaterials = new Set((inward.equipments || []).map(eq => eq.material_description));
       setMaterialOptions(prev => {
@@ -361,7 +377,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           ? eq.photos.filter((path): path is string => typeof path === 'string' && path.trim().length > 0)
           : [];
 
-        // Pre-fetch models for existing makes
         if (eq.make) {
           fetchModelsForMake(eq.make);
         }
@@ -431,11 +446,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const loadDraftData = async (draftId: number) => {
-    setIsLoadingData(true);
     try {
       const response = await api.get<DraftLoadResponse>(`${ENDPOINTS.STAFF.DRAFTS}/${draftId}`);
       const draftData = response.data.draft_data;
-      const nextSrf = await fetchNextSrfNo();
+      
+      const nextSrf = "TBD";
 
       if (draftData) {
         const newFormData: ExtendedInwardFormType = {
@@ -464,7 +479,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
             return [];
           })().filter((path: unknown): path is string => typeof path === 'string' && path.trim().length > 0);
           
-          // Pre-fetch models for existing makes in draft
           if (eq.make) {
             fetchModelsForMake(eq.make);
           }
@@ -477,12 +491,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
           };
         });
         setFormData(newFormData);
-        setSelectedCustomerId(newFormData.customer_id);
         
-        if (newFormData.customer_id && customers.length > 0) {
-            const foundCust = customers.find(c => c.customer_id === newFormData.customer_id);
-            if (foundCust && foundCust.email) setSelectedCustomerEmail(foundCust.email);
-        }
+        setSelectedCustomerId(newFormData.customer_id);
 
         cleanupAllPreviews();
         setEquipmentList(newEquipmentList);
@@ -512,7 +522,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     setSelectedCustomerEmail('');
     
     try {
-      const displaySrf = await fetchNextSrfNo();
+      const displaySrf = "TBD";
       
       const newFormData: ExtendedInwardFormType = {
         srf_no: displaySrf,
@@ -554,18 +564,47 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  // --- [FIX] Sync Customer Email Effect ---
   useEffect(() => {
-    fetchCustomers();
-    fetchMaterials();
-    fetchMakes(); // Load manufacturer makes on mount
-    
-    if (isEditMode && editId) {
-      loadInwardData(parseInt(editId));
-    } else if (initialDraftId) {
-      loadDraftData(initialDraftId);
-    } else {
-      initializeForm();
+    if (selectedCustomerId && customers.length > 0) {
+      const customer = customers.find(c => c.customer_id === selectedCustomerId);
+      if (customer && customer.email) {
+        setSelectedCustomerEmail(customer.email);
+      }
+    } else if (!selectedCustomerId) {
+        setSelectedCustomerEmail('');
     }
+  }, [selectedCustomerId, customers]);
+
+  // --- INITIALIZATION EFFECT ---
+  // Updated to include Ref check for StrictMode double-fetch prevention
+  useEffect(() => {
+    // 1. Determine the key for the current operation
+    const currentKey = isEditMode && editId ? editId : (initialDraftId ?? 'new');
+
+    // 2. If we already initialized this specific form ID/type, skip
+    if (lastLoadedIdRef.current === currentKey) {
+        return;
+    }
+    
+    // 3. Mark as loaded
+    lastLoadedIdRef.current = currentKey;
+
+    const init = async () => {
+        setIsLoadingData(true); 
+        await fetchCustomers();
+        await fetchMaterials();
+        await fetchMakes(); 
+        
+        if (isEditMode && editId) {
+          await loadInwardData(parseInt(editId));
+        } else if (initialDraftId) {
+          await loadDraftData(initialDraftId);
+        } else {
+          await initializeForm();
+        }
+    };
+    init();
 
     const handleBeforeUnloadLocal = (e: BeforeUnloadEvent) => handleBeforeUnload(e);
     window.addEventListener('beforeunload', handleBeforeUnloadLocal);
@@ -577,10 +616,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       }
       cleanupAllPreviews();
     };
-  }, [isEditMode, editId, initialDraftId, fetchCustomers, fetchMaterials]);
+  }, [isEditMode, editId, initialDraftId]); 
 
   useEffect(() => {
-    if (!isEditMode && isFormReady && hasFormData) {
+    if (!isEditMode && isFormReady && hasFormData && !isLocked) {
       const currentData = serializeDraftState();
       if (currentData !== lastSavedDataRef.current) {
         setDraftSaveStatus('unsaved');
@@ -588,9 +627,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         autoSaveTimeoutRef.current = setTimeout(() => triggerAutoSave(), 2000);
       }
     }
-  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode, serializeDraftState]);
+  }, [formData, equipmentList, isFormReady, hasFormData, isEditMode, serializeDraftState, isLocked]);
 
-  // ... [Handlers: handleBeforeUnload, handleBackToPortal, triggerAutoSave, etc.] ...
   const handleBeforeUnload = (e: BeforeUnloadEvent) => {
     const currentData = JSON.stringify({ formData, equipmentList });
     if (hasFormData && !isEditMode && currentData !== lastSavedDataRef.current) {
@@ -600,21 +638,28 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     }
   };
 
+  // [FIX] Updated Back Logic
   const handleBackToPortal = () => {
-    if (hasFormData && !isEditMode && JSON.stringify({ formData, equipmentList }) !== lastSavedDataRef.current) {
+    
+    if (hasFormData && !isEditMode && JSON.stringify({ formData, equipmentList }) !== lastSavedDataRef.current && !isLocked) {
       if(!window.confirm('You have unsaved changes. Are you sure you want to go back?')) {
         return;
       }
     }
+    
     if (isEditMode) {
       navigate('/engineer/view-inward');
     } else {
-      navigate('/engineer/create-inward');
+      if (onBack) {
+        onBack(); 
+        return;
+      }
+      navigate('/engineer/create-inward') ; 
     }
   };
 
   const triggerAutoSave = async () => {
-    if (!isFormReady || isEditMode) return;
+    if (!isFormReady || isEditMode || isLocked) return; 
     setDraftSaveStatus('saving');
     try {
       const equipmentDraftPayload = equipmentList.map(({ photos, photoPreviews, existingPhotoUrls, ...rest }) => {
@@ -639,11 +684,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         const newDraftId = response.data.inward_id;
         if (!currentDraftId) {
           setCurrentDraftId(newDraftId);
-          navigate(`/engineer/create-inward?draft=${newDraftId}`, { replace: true });
+          const newUrl = `${window.location.pathname}?draft=${newDraftId}`;
+          window.history.replaceState({ path: newUrl }, '', newUrl);
         }
         setDraftSaveStatus('saved');
         setLastAutoSaveTime(new Date());
         lastSavedDataRef.current = serializeDraftState({ formData, equipmentList });
+        
+        notifyDraftUpdate();
       }
     } catch (error) {
       console.error('Auto-save failed:', error);
@@ -673,6 +721,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   // ... [Standard Form Handlers] ...
   const handleAddCustomMaterial = (e: React.FormEvent) => {
+    if (isLocked) return; 
     e.preventDefault();
     if (!newMaterialInput.trim()) return;
     const newItem = newMaterialInput.trim();
@@ -690,6 +739,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const handleNewCustomerChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (isLocked) return; 
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
@@ -708,6 +758,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
+    if (isLocked) return; 
     e.preventDefault();
     setIsCreatingCustomer(true);
     try {
@@ -731,7 +782,6 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         setCustomers(updatedCustomersRes.data);
         setFormData(prev => ({ ...prev, customer_id: newCust.customer_id, customer_details: newCust.customer_details }));
         setSelectedCustomerId(newCust.customer_id);
-        setSelectedCustomerEmail(newCust.email || '');
       }
     } catch (error: any) {
       console.error("Failed to create customer", error);
@@ -743,6 +793,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
   // ... [Equipment Table Handlers] ...
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    if (isLocked) return; 
     const { name, value } = e.target;
     if (name === 'customer_id') {
       if (value === 'new') {
@@ -757,13 +808,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         customer_details: selectedCustomer ? selectedCustomer.customer_details : ''
       }));
       setSelectedCustomerId(customerId);
-      setSelectedCustomerEmail(selectedCustomer?.email || '');
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleEquipmentChange = async (index: number, field: keyof EquipmentDetail, value: string | number) => {
+    if (isLocked) return; 
     // Immediate state update
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
@@ -823,6 +874,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const addEquipmentRow = () => {
+    if (isLocked) return; 
     setEquipmentList(currentList => {
       const newIndex = currentList.length + 1;
       const neplId = `${formData.srf_no}-${newIndex}`;
@@ -844,8 +896,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     });
   };
 
-  const removeEquipmentRow = (indexToRemove: number) => {
-    if (!window.confirm('Are you sure you want to delete this equipment row? This action cannot be undone.')) return;
+  // --- NEW: REPLACED OLD DELETE LOGIC WITH MODAL HANDLERS ---
+  const confirmDeleteRow = () => {
+    if (rowToDelete === null) return;
+    const indexToRemove = rowToDelete;
+
+    if (isLocked) return; 
+    
+    // Original cleanup logic
     const equipmentToRemove = equipmentList[indexToRemove];
     if (equipmentToRemove?.photoPreviews?.length) {
         equipmentToRemove.photoPreviews.forEach(url => {
@@ -856,9 +914,12 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     const updatedList = equipmentList.filter((_, i) => i !== indexToRemove).map((item, i) => ({ ...item, nepl_id: `${formData.srf_no}-${i + 1}` }));
     if (updatedList.length === 0) addEquipmentRow();
     else setEquipmentList(updatedList);
+
+    setRowToDelete(null); // Close modal
   };
 
   const handlePhotoChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLocked) return; 
     if (!e.target.files || e.target.files.length === 0) return;
     const newFiles = Array.from(e.target.files);
     const newPreviews = newFiles.map(file => URL.createObjectURL(file));
@@ -876,6 +937,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   const handleRemovePhoto = (eqIndex: number, photoIndex: number) => {
+    if (isLocked) return; 
     let previewToRemove: string | undefined;
     setEquipmentList(currentList => {
       const updatedList = [...currentList];
@@ -897,22 +959,30 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   const viewEquipmentDetails = (index: number) => setSelectedEquipment(equipmentList[index]);
 
   // --- NEW: HANDLER FOR STANDARD PDF DOWNLOAD ---
-  const handleStandardDownload = (e: React.MouseEvent) => {
+  const handleStandardDownload = async (e: React.MouseEvent) => {
     e.preventDefault();
-    if (!formData.srf_no || formData.srf_no === 'Loading...') {
+    
+    // [FIX] If SRF is TBD, fetch the next number just for PDF generation (do not save to state)
+    let displaySrf = formData.srf_no;
+    if (displaySrf === 'TBD' || displaySrf === 'Loading...') {
+       displaySrf = await fetchNextSrfNo();
+    }
+
+    if (!displaySrf || displaySrf === 'Loading...') {
       showMessage('error', 'Cannot download PDF: SRF Number not ready.');
       return;
     }
     
-    // Create a temporary list with correct NEPL IDs just for the PDF
+    // Create a temporary list with correct NEPL IDs just for the PDF using the fetched SRF
     const formattedList = equipmentList.map((eq, index) => ({
       ...eq,
-      nepl_id: `${formData.srf_no}-${index + 1}`
+      nepl_id: `${displaySrf}-${index + 1}`
     }));
 
     // Include full customer details from selectedCustomerData for PDF
     const pdfFormData = {
       ...formData,
+      srf_no: displaySrf, // Use the proper SRF No here
       contact_person: selectedCustomerData?.contact_person || '',
       phone: selectedCustomerData?.phone || '',
       email: selectedCustomerData?.email || '',
@@ -930,8 +1000,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   };
 
   // --- SUBMIT HANDLERS ---
-  const handlePreviewClick = (e: React.FormEvent) => {
+  const handlePreviewClick = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return; 
     if (!formData.receiver || formData.customer_id === null) {
         showMessage('error', 'Please fill in Receiver and select a Company.');
         return;
@@ -940,10 +1011,19 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         showMessage('error', 'Fill in Material Desc, Make, and Model for all equipment.');
         return;
     }
+
+    // [NEW] If not editing, fetch the next available SRF number for the preview
+    if (!isEditMode && formData.srf_no === "TBD") {
+      const nextSrf = await fetchNextSrfNo();
+      setFormData(prev => ({ ...prev, srf_no: nextSrf }));
+    }
+
     setShowPreviewModal(true);
   };
 
+  // Fixed: Removed unused 'source' parameter from payload generation logic inside here
   const handleFinalSubmit = async () => {
+    if (isLocked) return; 
     setShowPreviewModal(false);
     setIsLoading(true);
     
@@ -963,7 +1043,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       submissionData.append('customer_id', formData.customer_id.toString());
       submissionData.append('customer_details', formData.customer_details);
 
-      const formatItemForPayload = (item: EquipmentDetail, idx: number, source: string) => {
+      const formatItemForPayload = (item: EquipmentDetail, idx: number) => {
         const isOutsource = item.calibration_by === 'Outsource';
         let statusToSend = item.status || 'created';
         if (isEditMode) statusToSend = 'updated';
@@ -989,11 +1069,17 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         };
       };
 
-      const visiblePayload = equipmentList.map((eq, idx) => formatItemForPayload(eq, idx, 'visible'));
-      const hiddenPayload = hiddenEquipmentsRef.current.map((eq, idx) => ({
-          ...formatItemForPayload(eq, idx, 'hidden'),
-          status: eq.status 
-      }));
+      // Map visible items
+      const visiblePayload = equipmentList.map((eq, idx) => formatItemForPayload(eq, idx));
+      
+      // Map hidden items (from hiddenEquipmentsRef)
+      const hiddenPayload = hiddenEquipmentsRef.current.map((eq, idx) => {
+          // Adjust index for hidden items to continue sequence or handle as needed
+          // For simplicity in this fix, reusing the formatter, though index might clash if not careful.
+          // In real app, you might want to preserve their original NEPL IDs or append.
+          // Assuming strict append logic for now:
+          return formatItemForPayload(eq, equipmentList.length + idx);
+      });
       
       const fullPayload = [...visiblePayload, ...hiddenPayload];
       submissionData.append('equipment_list', JSON.stringify(fullPayload));
@@ -1009,6 +1095,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         submissionData.append('inward_id', editId); 
         response = await api.put<InwardResponse>(`${ENDPOINTS.STAFF.INWARDS}/${editId}`, submissionData, { headers: { 'Content-Type': 'multipart/form-data' } });
         showMessage('success', 'Inward updated successfully!');
+        notifyDraftUpdate(); 
         navigate('/engineer/view-inward');
       } else {
         if (currentDraftId) submissionData.append('inward_id', currentDraftId.toString());
@@ -1019,7 +1106,9 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         setLastSavedSrfNo(realSrfNo);
         setReportEmails([selectedCustomerEmail || '']);
         setFormData(prev => ({ ...prev, srf_no: realSrfNo })); 
-        // We can auto-generate the standard PDF here as well if needed
+        
+        notifyDraftUpdate(); 
+
         setTimeout(() => { 
           try { 
             const pdfData = { 
@@ -1031,7 +1120,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
               ship_to_address: selectedCustomerData?.ship_to_address || '',
               bill_to_address: selectedCustomerData?.bill_to_address || ''
             };
-            generateStandardInwardPDF(pdfData, equipmentList); 
+            
+            const finalEquipmentList = equipmentList.map((eq, idx) => ({
+               ...eq,
+               nepl_id: `${realSrfNo}-${idx + 1}`
+            }));
+
+            generateStandardInwardPDF(pdfData, finalEquipmentList); 
           } catch (err) { 
             console.error("PDF Generation failed", err); 
           } 
@@ -1069,7 +1164,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         emails: validEmails, send_later: false 
       });
       showMessage('success', `FIR sent successfully!`);
-      navigate('/engineer/create-inward', { replace: true });
+      // [FIX] Changed navigation to Dashboard/Portal
+      navigate('/engineer'); 
     } catch (error: any) {
       showMessage('error', 'Failed to send FIR.');
     }
@@ -1080,7 +1176,8 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
     try {
       await api.post(`${ENDPOINTS.STAFF.INWARDS}/${lastSavedInwardId}/send-report`, { send_later: true });
       showMessage('success', `FIR Scheduled.`);
-      navigate('/engineer/create-inward', { replace: true });
+      // [FIX] Changed navigation to Dashboard/Portal
+      navigate('/engineer');
     } catch (error: any) {
       showMessage('error', 'Failed to schedule FIR.');
     }
@@ -1089,21 +1186,238 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
   // ... [Render Helpers] ...
   const renderAddMaterialModal = () => { if (!showAddMaterialModal) return null; return ( <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-60 p-4"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-y-auto relative"> <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl"> <div className="flex items-center gap-2"> <PackagePlus className="text-blue-600" size={20} /> <h2 className="text-lg font-bold text-gray-800">Add New Material</h2> </div> <button onClick={() => setShowAddMaterialModal(false)} className="text-gray-400 hover:text-red-500 transition-colors"> <X size={20} /> </button> </div> <form onSubmit={handleAddCustomMaterial} className="p-6 space-y-4"> <div> <label className="block text-sm font-semibold text-gray-700 mb-2">Material Name</label> <input type="text" autoFocus value={newMaterialInput} onChange={(e) => setNewMaterialInput(e.target.value)} placeholder="e.g. Digital Multimeter" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> <p className="text-xs text-gray-500 mt-2">This will be added to the history list after you submit the form.</p> </div> <div className="flex gap-2 pt-2"> <button type="button" onClick={() => setShowAddMaterialModal(false)} className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700">Cancel</button> <button type="submit" disabled={!newMaterialInput.trim()} className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-300">Add Item</button> </div> </form> </div> </div> ); };
   const renderAddCustomerModal = () => { if (!showAddCustomerModal) return null; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative"> <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-blue-50 rounded-t-xl"> <div className="flex items-center gap-3"> <UserPlus className="text-blue-600" size={24} /> <h2 className="text-xl font-bold text-gray-800">Register New Company</h2> </div> <button onClick={() => setShowAddCustomerModal(false)} className="text-gray-400 hover:text-red-500 transition-colors"> <X size={24} /> </button> </div> <form onSubmit={handleCreateCustomer} className="p-6 space-y-5"> <div className="space-y-4"> <div> <label className="block text-sm font-semibold text-gray-700 mb-1">Company Name *</label> <input name="company_name" required value={newCustomerData.company_name} onChange={handleNewCustomerChange} placeholder="e.g., ACME Industries Pvt Ltd" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> </div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div><label className="block text-sm font-semibold text-gray-700 mb-1">Contact Person *</label><input name="contact_person" required value={newCustomerData.contact_person} onChange={handleNewCustomerChange} placeholder="Full Name" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /></div> <div><label className="block text-sm font-semibold text-gray-700 mb-1">Phone Number *</label><input name="phone" required value={newCustomerData.phone} onChange={handleNewCustomerChange} placeholder="Mobile/Landline" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /></div> </div> <div> <label className="block text-sm font-semibold text-gray-700 mb-1">Email (for Invitation) *</label> <input type="email" name="email" required value={newCustomerData.email} onChange={handleNewCustomerChange} placeholder="admin@company.com" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none" /> <p className="text-xs text-gray-500 mt-1">An invitation to access the portal will be sent here.</p> </div> <div className="pt-2 border-t"> <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2"><MapPin size={16} className="text-gray-500"/> Ship To Address *</label> <textarea name="ship_to_address" required value={newCustomerData.ship_to_address} onChange={handleNewCustomerChange} rows={2} placeholder="Shipping location..." className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none" /> </div> <div> <div className="flex items-center justify-between mb-1"> <label className="block text-sm font-semibold text-gray-700">Bill To Address *</label> <label className="flex items-center space-x-2 text-sm text-blue-600 cursor-pointer"> <input type="checkbox" name="same_as_ship" checked={newCustomerData.same_as_ship} onChange={handleNewCustomerChange} className="rounded text-blue-600 focus:ring-blue-500" /> <span>Same as Ship To</span> </label> </div> <textarea name="bill_to_address" required value={newCustomerData.bill_to_address} onChange={handleNewCustomerChange} disabled={newCustomerData.same_as_ship} rows={2} placeholder="Billing location..." className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-200 outline-none resize-none ${newCustomerData.same_as_ship ? 'bg-gray-100 text-gray-500' : ''}`} /> </div> </div> <div className="flex gap-3 pt-2"> <button type="button" onClick={() => setShowAddCustomerModal(false)} className="flex-1 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700">Cancel</button> <button type="submit" disabled={isCreatingCustomer} className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-blue-400 flex justify-center items-center gap-2"> {isCreatingCustomer ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />} <span>Register & Invite</span> </button> </div> </form> </div> </div> ); };
-  const renderPreviewModal = () => { if (!showPreviewModal) return null; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4 overflow-y-auto"> <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl my-8 flex flex-col max-h-[90vh]"> <div className="flex justify-between items-center p-6 border-b bg-gray-50 rounded-t-lg"> <div className="flex items-center gap-3"> <FileText className="text-blue-600" size={28} /> <h2 className="text-2xl font-bold text-gray-800">Inward Receipt Preview</h2> </div> <button onClick={() => setShowPreviewModal(false)} className="text-gray-400 hover:text-red-500"> <X size={28} /> </button> </div> <div className="p-8 overflow-y-auto bg-gray-50"> <div className="bg-white p-8 shadow-sm border border-gray-200 mx-auto max-w-[210mm] min-h-[297mm]"> <div className="text-center border-b pb-4 mb-6"><h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wider">NextAge Engineering Pvt Ltd</h1><p className="text-gray-600 text-sm mt-1">Material Inward Receipt</p></div> <div className="flex justify-between text-sm mb-8 gap-8"> <div className="w-1/2 space-y-2"> <div className="flex"><span className="font-semibold w-32">Inward Date:</span> <span>{formData.material_inward_date}</span></div> <div className="flex"><span className="font-semibold w-32">SRF No:</span> <span className="text-blue-600 font-bold">{formData.srf_no} (Provisional)</span></div> <div className="flex"><span className="font-semibold w-32">Received By:</span> <span>{formData.receiver}</span></div> </div> <div className="w-1/2 space-y-2"> <div className="flex"><span className="font-semibold w-32">Customer DC:</span> <span>{formData.customer_dc_no}</span></div> <div className="flex"><span className="font-semibold w-32">DC Date:</span> <span>{formData.customer_dc_date || '-'}</span></div> </div> </div> <div className="mb-8 p-4 bg-gray-50 rounded border border-gray-100"> <h3 className="font-bold text-gray-700 mb-2 text-sm uppercase">Customer Details</h3> <p className="text-gray-800 whitespace-pre-line text-sm">{formData.customer_details}</p> </div> <table className="w-full text-sm border-collapse border border-gray-300 mb-8"> <thead> <tr className="bg-blue-50 text-blue-900"> <th className="border border-gray-300 p-2 w-12 text-center">#</th> <th className="border border-gray-300 p-2 text-left">Description</th> <th className="border border-gray-300 p-2 text-left">Make / Model</th> <th className="border border-gray-300 p-2 text-left">Serial No</th> <th className="border border-gray-300 p-2 text-center w-16">Qty</th> <th className="border border-gray-300 p-2 text-left">Accessories</th> <th className="border border-gray-300 p-2 text-left">Visual</th> {showEngineerRemarksColumn && <th className="border border-gray-300 p-2 text-left">Eng. Remarks</th>} </tr> </thead> <tbody> {equipmentList.map((eq, idx) => ( <tr key={idx} className="hover:bg-gray-50"> <td className="border border-gray-300 p-2 text-center">{idx + 1}</td> <td className="border border-gray-300 p-2">{eq.material_desc}</td> <td className="border border-gray-300 p-2">{eq.make} / {eq.model}</td> <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td> <td className="border border-gray-300 p-2 text-center">{eq.qty}</td> <td className="border border-gray-300 p-2 text-gray-600 italic">{eq.accessories_included || '-'}</td> <td className="border border-gray-300 p-2"><span className={eq.inspe_status === 'Not OK' ? 'text-red-600 font-bold' : 'text-green-600'}>{eq.inspe_status}</span></td> {showEngineerRemarksColumn && <td className="border border-gray-300 p-2 text-gray-600 text-xs">{eq.engineer_remarks || '-'}</td>} </tr> ))} </tbody> </table> <div className="mt-12 pt-4 border-t border-gray-300 flex justify-between items-end"> <div className="text-xs text-gray-400">Generated via NEPL Portal</div> <div className="text-center"><div className="h-12"></div><p className="text-sm font-semibold border-t border-gray-400 px-8 pt-1">Authorized Signature</p></div> </div> </div> </div> <div className="p-6 border-t bg-gray-50 flex justify-end gap-4 rounded-b-lg"> <button onClick={() => setShowPreviewModal(false)} className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium">Cancel / Edit</button> <button onClick={handleFinalSubmit} className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md"> <Download size={20} /> <span>{isEditMode ? 'Update' : 'Submit & Download PDF'}</span> </button> </div> </div> </div> ); };
-  const renderEmailModal = () => !showEmailModal ? null : ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70"> <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative"> <button onClick={() => navigate('/engineer/create-inward', { replace: true })} className="absolute top-4 right-4 text-gray-400 hover:text-red-500"><X size={24} /></button> <div className="flex items-center space-x-4 mb-4"><Send className="text-green-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">Submission Successful!</h2></div> <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> has been created.<br/>The PDF receipt has been downloaded. You can now email the FIR to the customer.</p> <div className="space-y-6"> <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50"> <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label> <div className="space-y-2"> {reportEmails.map((email, index) => ( <div key={index} className="flex gap-2"> <input type="email" value={email} onChange={(e) => { const newEmails = [...reportEmails]; newEmails[index] = e.target.value; setReportEmails(newEmails); }} required placeholder="Customer email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" /> {reportEmails.length > 1 && (<button type="button" onClick={() => removeEmailField(index)} className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"><X size={16} /></button>)} </div> ))} <div className="flex gap-2"> <button type="button" onClick={addEmailField} className="px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">+ Add Email</button> <button type="submit" className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold"><Send size={18} /><span>Send FIR</span></button> </div> </div> </form> <div className="p-4 border rounded-lg bg-gray-50"> <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Schedule for Later</span></button> </div> </div> </div> </div> );
+  const renderPreviewModal = () => { 
+    if (!showPreviewModal) return null; 
+    
+    // Logic to close modal and reset SRF to TBD if not editing
+    const handleClosePreview = () => {
+        setShowPreviewModal(false);
+        if (!isEditMode) {
+            setFormData(prev => ({ ...prev, srf_no: 'TBD' }));
+        }
+    };
+
+    return ( 
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4 overflow-y-auto"> 
+        <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl my-8 flex flex-col max-h-[90vh]"> 
+          <div className="flex justify-between items-center p-6 border-b bg-gray-50 rounded-t-lg"> 
+            <div className="flex items-center gap-3"> 
+              <FileText className="text-blue-600" size={28} /> 
+              <h2 className="text-2xl font-bold text-gray-800">Inward Receipt Preview</h2> 
+            </div> 
+            
+            {/* UPDATED: Added logic to reset to TBD on close */}
+            <button onClick={handleClosePreview} className="text-gray-400 hover:text-red-500"> 
+              <X size={28} /> 
+            </button> 
+          </div> 
+          
+          <div className="p-8 overflow-y-auto bg-gray-50"> 
+            {!isEditMode && (
+                <div className="max-w-[210mm] mx-auto mb-4 bg-amber-50 border border-amber-200 rounded-md p-4 flex items-start gap-3">
+                   <AlertCircle className="text-amber-500 mt-0.5 flex-shrink-0" size={20} />
+                   <p className="text-sm text-amber-800 font-medium">
+                     Please note: SRF Number and NEPL Number are subject to change if another submission is made before yours.
+                   </p>
+                </div>
+            )}
+        
+            <div className="bg-white p-8 shadow-sm border border-gray-200 mx-auto max-w-[210mm] min-h-[297mm]"> 
+              <div className="text-center border-b pb-4 mb-6"><h1 className="text-2xl font-bold text-blue-900 uppercase tracking-wider">NextAge Engineering Pvt Ltd</h1><p className="text-gray-600 text-sm mt-1">Material Inward Receipt</p></div> 
+              <div className="flex justify-between text-sm mb-8 gap-8"> 
+                <div className="w-1/2 space-y-2"> 
+                  <div className="flex"><span className="font-semibold w-32">Inward Date:</span> <span>{formData.material_inward_date}</span></div> 
+                  <div className="flex"><span className="font-semibold w-32">SRF No:</span> <span className="text-blue-600 font-bold">{formData.srf_no} (Provisional)</span></div> 
+                  <div className="flex"><span className="font-semibold w-32">Received By:</span> <span>{formData.receiver}</span></div> 
+                </div> 
+                <div className="w-1/2 space-y-2"> 
+                  <div className="flex"><span className="font-semibold w-32">Customer DC:</span> <span>{formData.customer_dc_no}</span></div> 
+                  <div className="flex"><span className="font-semibold w-32">DC Date:</span> <span>{formData.customer_dc_date || '-'}</span></div> 
+                </div> 
+              </div> 
+              <div className="mb-8 p-4 bg-gray-50 rounded border border-gray-100"> 
+                <h3 className="font-bold text-gray-700 mb-2 text-sm uppercase">Customer Details</h3> 
+                <p className="text-gray-800 whitespace-pre-line text-sm">{formData.customer_details}</p> 
+              </div> 
+              <table className="w-full text-sm border-collapse border border-gray-300 mb-8"> 
+                <thead> 
+                  <tr className="bg-blue-50 text-blue-900"> 
+                    <th className="border border-gray-300 p-2 w-12 text-center">#</th> 
+                    <th className="border border-gray-300 p-2 text-left">NEPL ID</th> 
+                    <th className="border border-gray-300 p-2 text-left">Description</th> 
+                    <th className="border border-gray-300 p-2 text-left">Make / Model</th> 
+                    <th className="border border-gray-300 p-2 text-left">Serial No</th> 
+                    <th className="border border-gray-300 p-2 text-center w-16">Qty</th> 
+                    <th className="border border-gray-300 p-2 text-left">Accessories</th> 
+                    <th className="border border-gray-300 p-2 text-left">Visual</th> 
+                    {showEngineerRemarksColumn && <th className="border border-gray-300 p-2 text-left">Eng. Remarks</th>} 
+                  </tr> 
+                </thead> 
+                <tbody> 
+                  {equipmentList.map((eq, idx) => ( 
+                    <tr key={idx} className="hover:bg-gray-50"> 
+                      <td className="border border-gray-300 p-2 text-center">{idx + 1}</td> 
+                      <td className="border border-gray-300 p-2 font-semibold text-blue-700">{formData.srf_no}-{idx + 1}</td> 
+                      <td className="border border-gray-300 p-2">{eq.material_desc}</td> 
+                      <td className="border border-gray-300 p-2">{eq.make} / {eq.model}</td> 
+                      <td className="border border-gray-300 p-2">{eq.serial_no || '-'}</td> 
+                      <td className="border border-gray-300 p-2 text-center">{eq.qty}</td> 
+                      <td className="border border-gray-300 p-2 text-gray-600 italic">{eq.accessories_included || '-'}</td> 
+                      <td className="border border-gray-300 p-2"><span className={eq.inspe_status === 'Not OK' ? 'text-red-600 font-bold' : 'text-green-600'}>{eq.inspe_status}</span></td> 
+                      {showEngineerRemarksColumn && <td className="border border-gray-300 p-2 text-gray-600 text-xs">{eq.engineer_remarks || '-'}</td>} 
+                    </tr> 
+                  ))} 
+                </tbody> 
+              </table> 
+              <div className="mt-12 pt-4 border-t border-gray-300 flex justify-between items-end"> 
+                <div className="text-xs text-gray-400">Generated via NEPL Portal</div> 
+                <div className="text-center"><div className="h-12"></div><p className="text-sm font-semibold border-t border-gray-400 px-8 pt-1">Authorized Signature</p></div> 
+              </div> 
+            </div> 
+          </div> 
+          <div className="p-6 border-t bg-gray-50 flex justify-end gap-4 rounded-b-lg"> 
+            
+            {/* UPDATED: Using the helper function here too */}
+            <button onClick={handleClosePreview} className="px-6 py-3 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 font-medium">Cancel / Edit</button> 
+            
+            <button onClick={handleFinalSubmit} className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-md"> 
+              <Download size={20} /> <span>{isEditMode ? 'Update' : 'Submit & Download PDF'}</span> 
+            </button> 
+          </div> 
+        </div> 
+      </div> 
+    ); 
+  };
+  
+  // Updated Render Email Modal to call handleScheduleFir on close (which now navigates to portal)
+  const renderEmailModal = () => !showEmailModal ? null : ( 
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70"> 
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4 p-8 relative"> 
+            <button 
+                onClick={handleScheduleFir} 
+                className="absolute top-4 right-4 text-gray-400 hover:text-red-500"
+            >
+                <X size={24} />
+            </button> 
+            <div className="flex items-center space-x-4 mb-4"><Send className="text-green-600" size={36} /><h2 className="text-2xl font-bold text-gray-800">Submission Successful!</h2></div> 
+            <p className="text-gray-600 mb-6">Inward SRF <strong>{lastSavedSrfNo}</strong> has been created.<br/>The PDF receipt has been downloaded. You can now email the FIR to the customer.</p> 
+            <div className="space-y-6"> 
+                <form onSubmit={handleSendFir} className="p-4 border rounded-lg bg-gray-50"> 
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Send FIR Immediately</label> 
+                    <div className="space-y-2"> 
+                        {reportEmails.map((email, index) => ( 
+                            <div key={index} className="flex gap-2"> 
+                                <input type="email" value={email} onChange={(e) => { const newEmails = [...reportEmails]; newEmails[index] = e.target.value; setReportEmails(newEmails); }} required placeholder="Customer email..." className="flex-grow px-4 py-2 border border-gray-300 rounded-lg" /> 
+                                {reportEmails.length > 1 && (<button type="button" onClick={() => removeEmailField(index)} className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg"><X size={16} /></button>)} 
+                            </div> 
+                        ))} 
+                        <div className="flex gap-2"> 
+                            <button type="button" onClick={addEmailField} className="px-4 py-2 text-blue-600 bg-blue-50 rounded-lg">+ Add Email</button> 
+                            <button type="submit" className="flex items-center space-x-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold"><Send size={18} /><span>Send FIR</span></button> 
+                        </div> 
+                    </div> 
+                </form> 
+                <div className="p-4 border rounded-lg bg-gray-50"> 
+                    <button type="button" onClick={handleScheduleFir} className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-orange-700 bg-orange-100 border border-orange-300 rounded-lg hover:bg-orange-200 font-medium"><Clock size={20} /><span>Schedule for Later</span></button> 
+                </div> 
+            </div> 
+        </div> 
+    </div> 
+  );
+
   const getModalEquipment = (): BaseEquipmentDetail | null => { if (!selectedEquipment) return null; const { inspe_status, inspe_remarks, accessories_included, ...rest } = selectedEquipment; const modalEquipment: BaseEquipmentDetail = { ...rest, calibration_by: selectedEquipment.calibration_by === 'On-Site' ? 'Out Lab' : selectedEquipment.calibration_by, inspe_notes: inspe_status === 'OK' ? 'OK' : (inspe_status === 'Not OK' ? 'Not OK' : inspe_remarks), }; return modalEquipment; }
+
+  // --- [NEW] Style for Locked State ---
+  const formOpacity = isLocked ? "opacity-70 pointer-events-none select-none" : "opacity-100";
 
   if (isLoadingData) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="animate-spin text-blue-600" size={48} />
-        <span className="ml-4 text-xl text-gray-700">Loading Form...</span>
+      <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100 relative overflow-hidden animate-in fade-in duration-300">
+        {/* Header Skeleton */}
+        <div className="flex flex-wrap items-center justify-between border-b pb-4 mb-6 gap-4">
+          <div className="flex items-center space-x-4">
+            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+            <div>
+              <div className="h-8 w-64 bg-gray-200 rounded animate-pulse mb-2" />
+            </div>
+          </div>
+          <div className="h-10 w-24 bg-gray-200 rounded-lg animate-pulse" />
+        </div>
+
+        {/* Basic Info Grid Skeleton */}
+        <div className="mb-8">
+          <div className="h-6 w-40 bg-gray-200 rounded mb-4 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6 bg-gray-50 rounded-lg border border-gray-100">
+             {/* Simulate 6 input fields */}
+             {[...Array(6)].map((_, i) => (
+               <div key={i}>
+                  <div className="h-4 w-32 bg-gray-200 rounded mb-2 animate-pulse" />
+                  <div className="h-10 w-full bg-white border border-gray-200 rounded-lg animate-pulse" />
+               </div>
+             ))}
+             {/* Simulate Textarea */}
+             <div className="md:col-span-2 lg:col-span-3 mt-2">
+                <div className="h-4 w-48 bg-gray-200 rounded mb-2 animate-pulse" />
+                <div className="h-20 w-full bg-white border border-gray-200 rounded-lg animate-pulse" />
+             </div>
+          </div>
+        </div>
+
+        {/* Equipment Table Skeleton */}
+        <div className="mb-6">
+           <div className="flex justify-between items-center mb-4">
+             <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+           </div>
+           <div className="overflow-hidden border rounded-lg bg-white shadow-sm">
+              {/* Table Header */}
+              <div className="bg-slate-100 p-3 flex gap-4 border-b border-slate-200">
+                 {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-4 bg-slate-300 rounded animate-pulse flex-1" />
+                 ))}
+              </div>
+              {/* Table Rows (Simulate 3 rows) */}
+              {[...Array(3)].map((_, rowIdx) => (
+                <div key={rowIdx} className="p-3 flex gap-4 border-b border-slate-100 items-center h-16">
+                   <div className="h-4 w-8 bg-gray-100 rounded animate-pulse" /> {/* Index */}
+                   <div className="h-8 flex-1 bg-gray-100 rounded animate-pulse" /> {/* Input */}
+                   <div className="h-8 flex-1 bg-gray-100 rounded animate-pulse" /> {/* Input */}
+                   <div className="h-8 flex-1 bg-gray-100 rounded animate-pulse" /> {/* Input */}
+                   <div className="h-8 w-24 bg-gray-100 rounded animate-pulse" /> {/* Qty */}
+                   <div className="h-8 w-16 bg-gray-100 rounded animate-pulse" /> {/* Actions */}
+                </div>
+              ))}
+           </div>
+           {/* Add Button Skeleton */}
+           <div className="mt-4 h-12 w-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg animate-pulse" />
+        </div>
+
+        {/* Footer Actions Skeleton */}
+        <div className="flex justify-end pt-6 border-t mt-8 gap-4">
+           <div className="h-12 w-40 bg-gray-200 rounded-lg animate-pulse" />
+           <div className="h-12 w-40 bg-gray-300 rounded-lg animate-pulse" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100">
+    <div className="bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-gray-100 relative overflow-hidden">
+      
+      {/* --- [NEW] LOCKED BANNER --- */}
+      {isLocked && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3 relative z-10 mb-4 rounded-lg">
+            <div className="p-1.5 bg-amber-100 rounded-full text-amber-600">
+                <Lock className="h-5 w-5 animate-pulse" />
+            </div>
+            <div>
+                <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Read-Only Mode</h3>
+                <p className="text-xs text-amber-700">
+                    This record is currently being edited by another user. You cannot make changes until they finish.
+                </p>
+            </div>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="flex flex-wrap items-center justify-between border-b pb-4 mb-6 gap-4">
         <div className="flex items-center space-x-4">
@@ -1116,7 +1430,11 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
               {getDraftStatusIcon()} <span className="font-medium">{getDraftStatusText()}</span>
             </div>
            )}
-          <button onClick={handleBackToPortal} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm">
+          <button 
+            type="button" 
+            onClick={handleBackToPortal} 
+            className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm"
+          >
             <ArrowLeft size={18} /> <span>Back</span>
           </button>
         </div>
@@ -1140,8 +1458,13 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         </div>
       )}
 
-      {/* Main Form */}
-      <form onSubmit={handlePreviewClick}>
+      {/* Main Form - Applied Opacity Class */}
+      {/* [FIX] Added onKeyDown to prevent Enter key submission */}
+      <form 
+        onSubmit={handlePreviewClick} 
+        className={formOpacity}
+        onKeyDown={(e) => { if (e.key === 'Enter' && (e.target as any).type !== 'textarea') e.preventDefault(); }}
+      >
         {/* ... [Basic Info Block - Same as before] ... */}
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Basic Information</h2>
@@ -1155,14 +1478,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
              </div>
              
              {/* Other Fields */}
-             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Material Inward Date *</label><input type="date" name="material_inward_date" value={formData.material_inward_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" /></div>
-             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC No. *</label><input type="text" name="customer_dc_no" value={formData.customer_dc_no} onChange={handleFormChange} required placeholder="Enter Customer DC Number" className="w-full px-4 py-2 border rounded-lg" /></div>
-             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} className="w-full px-4 py-2 border rounded-lg" /></div>
-             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Material Inward Date *</label><input type="date" name="material_inward_date" value={formData.material_inward_date} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg" disabled={isLocked} /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC No. *</label><input type="text" name="customer_dc_no" value={formData.customer_dc_no} onChange={handleFormChange} required placeholder="Enter Customer DC Number" className="w-full px-4 py-2 border rounded-lg" disabled={isLocked} /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Customer DC Date</label><input type="date" name="customer_dc_date" value={formData.customer_dc_date} onChange={handleFormChange} className="w-full px-4 py-2 border rounded-lg" disabled={isLocked} /></div>
+             <div><label className="block text-sm font-semibold text-gray-700 mb-2">Receiver *</label><input type="text" name="receiver" value={formData.receiver} onChange={handleFormChange} required placeholder="Enter receiver username" className="w-full px-4 py-2 border rounded-lg" disabled={isLocked} /></div>
              
              <div className="md:col-span-2 lg:col-span-3">
               <label className="block text-sm font-semibold text-gray-700 mb-2">Company Name & Address *</label>
-              <select name="customer_id" value={selectedCustomerId || ''} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg bg-white" disabled={isEditMode}>
+              <select name="customer_id" value={selectedCustomerId || ''} onChange={handleFormChange} required className="w-full px-4 py-2 border rounded-lg bg-white" disabled={isEditMode || isLocked}>
                 <option value="">Select Company</option>
                 {customers.map(c => <option key={c.customer_id} value={c.customer_id}>{c.customer_details}</option>)}
                 <option value="new" className="font-bold text-blue-600 bg-blue-50">+ Add New Company</option>
@@ -1259,6 +1582,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                               }} 
                               required 
                               className="w-full px-4 py-2.5 text-sm font-medium text-gray-900 bg-white border border-gray-300 rounded-lg"
+                              disabled={isLocked}
                             >
                                 <option value="">Select...</option>
                                 {materialOptions.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1271,6 +1595,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                             onChange={e => handleEquipmentChange(index, 'make', e.target.value)} 
                             required 
                             className="w-full px-2 py-1.5 border rounded-md bg-white"
+                            disabled={isLocked}
                           >
                             <option value="">Select Make</option>
                             {makeOptions.map(make => (
@@ -1283,7 +1608,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                             value={equipment.model} 
                             onChange={e => handleEquipmentChange(index, 'model', e.target.value)} 
                             required 
-                            disabled={!equipment.make}
+                            disabled={!equipment.make || isLocked}
                             className="w-full px-2 py-1.5 border rounded-md bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
                             <option value="">{equipment.make ? 'Select Model' : 'Select Make first'}</option>
@@ -1300,10 +1625,10 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                             placeholder={equipment.model ? 'Auto-filled from spec' : 'Select Model first'}
                           />
                         </td>
-                        <td className="p-2"><input value={equipment.serial_no} onChange={e=>handleEquipmentChange(index,'serial_no',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
-                        <td className="p-2"><input type="number" value={equipment.qty} min={1} onChange={e=>handleEquipmentChange(index,'qty',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md text-center" /></td>
+                        <td className="p-2"><input value={equipment.serial_no} onChange={e=>handleEquipmentChange(index,'serial_no',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" disabled={isLocked} /></td>
+                        <td className="p-2"><input type="number" value={equipment.qty} min={1} onChange={e=>handleEquipmentChange(index,'qty',e.target.value)} required className="w-full px-2 py-1.5 border rounded-md text-center" disabled={isLocked} /></td>
                         <td className="p-2">
-                           <select value={equipment.calibration_by} onChange={e=>handleEquipmentChange(index,'calibration_by',e.target.value)} className="w-full px-2 py-1.5 border rounded-md">
+                           <select value={equipment.calibration_by} onChange={e=>handleEquipmentChange(index,'calibration_by',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" disabled={isLocked}>
                              <option value="In Lab">In Lab</option>
                              <option value="Outsource">Outsource</option>
                              <option value="On-Site">On-Site</option>
@@ -1311,16 +1636,16 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                         </td>
                         {equipment.calibration_by === 'Outsource' ? (
                           <>
-                            <td className="p-2"><input placeholder="Supplier" value={(equipment as any).supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
-                            <td className="p-2"><input placeholder="In DC" value={(equipment as any).in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
-                            <td className="p-2"><input placeholder="Out DC" value={(equipment as any).out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" /></td>
+                            <td className="p-2"><input placeholder="Supplier" value={(equipment as any).supplier || ''} onChange={(e) => handleEquipmentChange(index, 'supplier' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" disabled={isLocked} /></td>
+                            <td className="p-2"><input placeholder="In DC" value={(equipment as any).in_dc || ''} onChange={(e) => handleEquipmentChange(index, 'in_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" disabled={isLocked} /></td>
+                            <td className="p-2"><input placeholder="Out DC" value={(equipment as any).out_dc || ''} onChange={(e) => handleEquipmentChange(index, 'out_dc' as any, e.target.value)} className="w-full px-2 py-1.5 border rounded-md" disabled={isLocked} /></td>
                           </>
                         ) : ( isAnyOutsourced && <td colSpan={3} className="p-2 bg-slate-50"></td> )}
                         
-                        <td className="p-2"><input value={equipment.accessories_included} onChange={e=>handleEquipmentChange(index,'accessories_included',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" placeholder="e.g. Carry Case" /></td>
+                        <td className="p-2"><input value={equipment.accessories_included} onChange={e=>handleEquipmentChange(index,'accessories_included',e.target.value)} className="w-full px-2 py-1.5 border rounded-md" placeholder="e.g. Carry Case" disabled={isLocked} /></td>
                         
                         <td className="p-2 align-top">
-                             <select value={equipment.inspe_status} onChange={e=>handleEquipmentChange(index,'inspe_status',e.target.value)} className={`w-full px-2 py-1.5 border rounded-md ${equipment.inspe_status === 'Not OK' ? 'bg-red-50 border-red-300' : ''}`}>
+                             <select value={equipment.inspe_status} onChange={e=>handleEquipmentChange(index,'inspe_status',e.target.value)} className={`w-full px-2 py-1.5 border rounded-md ${equipment.inspe_status === 'Not OK' ? 'bg-red-50 border-red-300' : ''}`} disabled={isLocked}>
                                  <option value="OK">OK</option>
                                  <option value="Not OK">Not OK</option>
                              </select>
@@ -1335,6 +1660,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
                                         value={equipment.engineer_remarks || ''} 
                                         onChange={e => handleEquipmentChange(index, 'engineer_remarks', e.target.value)} 
                                         className="w-full h-10 px-2 py-1.5 border border-slate-300 rounded-md text-xs bg-yellow-50 focus:ring-2 focus:ring-yellow-200 resize-none overflow-hidden whitespace-nowrap" 
+                                        disabled={isLocked}
                                      />
                                      <TruncatedTooltip text={equipment.engineer_remarks || ''} type="input" />
                                     </>
@@ -1366,18 +1692,18 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
                         <td className="p-2">
                            <div className="flex items-center gap-2">
-                             <label htmlFor={`photo-${index}`} className="cursor-pointer bg-gray-200 px-2 py-1 rounded text-xs flex items-center gap-1"><Camera size={12}/> Attach</label>
-                             <input id={`photo-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={e=>handlePhotoChange(index,e)}/>
+                             <label htmlFor={`photo-${index}`} className={`cursor-pointer bg-gray-200 px-2 py-1 rounded text-xs flex items-center gap-1 ${isLocked ? 'pointer-events-none opacity-50' : ''}`}><Camera size={12}/> Attach</label>
+                             <input id={`photo-${index}`} type="file" multiple accept="image/*" className="hidden" onChange={e=>handlePhotoChange(index,e)} disabled={isLocked} />
                            </div>
                            {/* Preview Images */}
                            <div className="flex flex-wrap gap-1 mt-1">
                              {equipment.existingPhotoUrls?.map((url, i) => (
-                                 <a key={`ex-${i}`} href={resolvePhotoUrl(url)} target="_blank" rel="noreferrer" className="w-8 h-8 border"><img src={resolvePhotoUrl(url)} className="w-full h-full object-cover"/></a>
+                                 <a key={`ex-${i}`} href={resolvePhotoUrl(url)} target="_blank" rel="noreferrer" className="w-8 h-8 border pointer-events-auto"><img src={resolvePhotoUrl(url)} className="w-full h-full object-cover"/></a>
                              ))}
                              {equipment.photoPreviews?.map((url, i) => (
-                                 <div key={`new-${i}`} className="relative w-8 h-8 border">
+                                 <div key={`new-${i}`} className="relative w-8 h-8 border pointer-events-auto">
                                     <img src={url} className="w-full h-full object-cover"/>
-                                    <button onClick={()=>handleRemovePhoto(index,i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={8}/></button>
+                                    {!isLocked && <button type="button" onClick={()=>handleRemovePhoto(index,i)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={8}/></button>}
                                  </div>
                              ))}
                            </div>
@@ -1385,8 +1711,14 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
                         <td className="sticky right-0 z-10 p-2 text-center bg-white group-hover:bg-slate-50">
                            <div className="flex justify-center gap-2">
-                             <button type="button" onClick={() => viewEquipmentDetails(index)} className="text-blue-600 hover:bg-blue-100 p-1 rounded"><Eye size={16}/></button>
-                             {!isEditMode && <button type="button" onClick={() => removeEquipmentRow(index)} className="text-red-600 hover:bg-red-100 p-1 rounded"><Trash2 size={16}/></button>}
+                             <button type="button" onClick={() => viewEquipmentDetails(index)} className="text-blue-600 hover:bg-blue-100 p-1 rounded pointer-events-auto"><Eye size={16}/></button>
+                             
+                             {/* UPDATED: Only show Trash icon if not edit/locked, and now opens Modal */}
+                             {!isEditMode && !isLocked && (
+                                <button type="button" onClick={() => setRowToDelete(index)} className="text-red-600 hover:bg-red-100 p-1 rounded">
+                                    <Trash2 size={16}/>
+                                </button>
+                             )}
                            </div>
                         </td>
                       </tr>
@@ -1397,7 +1729,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
            </div>
            
            {/* Add Equipment Button Below Table - Only show if creating new (not edit mode) */}
-           {!isEditMode && (
+           {!isEditMode && !isLocked && (
              <button 
                 type="button" 
                 onClick={addEquipmentRow} 
@@ -1410,8 +1742,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
         </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-wrap justify-end pt-6 border-t mt-8 gap-4">
-          {/* NEW STANDARD PDF BUTTON */}
+        <div className="flex flex-wrap justify-end pt-6 border-t mt-8 gap-4 pointer-events-auto opacity-100"> 
           <button
             type="button"
             onClick={handleStandardDownload}
@@ -1424,7 +1755,7 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
 
           <button 
             type="submit" 
-            disabled={!isFormReady || isLoading} 
+            disabled={!isFormReady || isLoading || isLocked} 
             className="flex items-center space-x-3 bg-green-600 hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed text-white font-bold px-8 py-3 rounded-lg text-lg shadow-lg transition-all transform hover:scale-105"
           >
             {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Save size={24} />}
@@ -1434,11 +1765,41 @@ export const InwardForm: React.FC<InwardFormProps> = ({ initialDraftId }) => {
       </form>
 
       {/* Modals */}
-      {selectedEquipment && <EquipmentDetailsModal equipment={getModalEquipment()!} onClose={() => setSelectedEquipment(null)} />}
+      {/* {selectedEquipment && <EquipmentDetailsModal equipment={getModalEquipment()!} onClose={() => setSelectedEquipment(null)} />} */}
       {renderPreviewModal()}
       {renderEmailModal()}
       {renderAddCustomerModal()}
       {renderAddMaterialModal()}
+
+      {/* NEW: Delete Row Confirmation Modal */}
+      {rowToDelete !== null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+            <div className="p-6 pb-0 flex justify-between items-start">
+              <div className="p-3 bg-red-100 rounded-full">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
+              <button onClick={() => setRowToDelete(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Equipment Row?</h3>
+              <p className="text-gray-600">
+                Are you sure you want to delete this equipment item? This action cannot be undone.
+              </p>
+            </div>
+            <div className="p-6 pt-0 flex gap-3">
+              <button onClick={() => setRowToDelete(null)} className="flex-1 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmDeleteRow} className="flex-1 px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

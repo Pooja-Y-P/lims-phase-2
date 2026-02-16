@@ -1,290 +1,303 @@
-// src/utils/InwardPDFHelper.ts
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+interface jsPDFCustom extends jsPDF {
+  lastAutoTable?: {
+    finalY: number;
+  };
+}
+
 export const generateStandardInwardPDF = (formData: any, equipmentList: any[]) => {
-  // Initialize PDF in Landscape A4 for better table visibility
-  const doc = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
+  // 1. Initialize A4 LANDSCAPE (Required for 17 separate columns)
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' }) as jsPDFCustom;
   
-  const pageWidth = doc.internal.pageSize.width;
-  const pageHeight = doc.internal.pageSize.height;
-  const leftMargin = 15;
-  const rightMargin = pageWidth - 15;
+  const pageWidth = doc.internal.pageSize.width;  // 297mm
+  const pageHeight = doc.internal.pageSize.height; // 210mm
+  const margin = 10;
   
-  let cursorY = 20;
+  // Professional Corporate Color Palette
+  const THEME = {
+    primary: [41, 128, 185],    // Professional Blue
+    headerBg: [241, 245, 249],  // Light Grey-Blue Background
+    textDark: [30, 41, 59],     // Dark Slate
+    textLight: [100, 116, 139], // Light Slate
+    border: [203, 213, 225],    // Subtle Border
+    white: [255, 255, 255]
+  };
 
-  // --- HEADER ---
+  let cursorY = 0;
+
+  // ==========================================
+  // 1. HEADER STRIP
+  // ==========================================
+  doc.setFillColor(THEME.primary[0], THEME.primary[1], THEME.primary[2]);
+  doc.rect(0, 0, pageWidth, 5, 'F');
+  
+  cursorY = 15;
+
+  // ==========================================
+  // 2. COMPANY & DOCUMENT INFO
+  // ==========================================
+  
+  // Company Name
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(44, 62, 80); // Dark Blue/Grey
-  doc.text("Nextage Engineering Private Limited\n", pageWidth / 2, cursorY, { align: 'center' });
-  
+  doc.setFontSize(20);
+  doc.setTextColor(THEME.textDark[0], THEME.textDark[1], THEME.textDark[2]);
+  doc.text("Nextage Engineering Pvt. Ltd.", margin, cursorY);
+
+  // Document Title (Right Aligned)
+  doc.setFontSize(14);
+  doc.setTextColor(THEME.primary[0], THEME.primary[1], THEME.primary[2]);
+  doc.text("MATERIAL INWARD RECEIPT", pageWidth - margin, cursorY, { align: 'right' });
+
+  // Address
   cursorY += 6;
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(80, 80, 80);
-  
-  // Address - Split into lines if too long, but centered
+  doc.setTextColor(THEME.textLight[0], THEME.textLight[1], THEME.textLight[2]);
   const address = "GF-01, Emerald Icon, Outer Ring Road, 104, 5BC III Block, HRBR Layout, Kalyan Nagar, Bangalore – 560043";
-  const splitAddress = doc.splitTextToSize(address, pageWidth - 40);
-  doc.text(splitAddress, pageWidth / 2, cursorY, { align: 'center' });
-  
-  // Adjust cursor based on address height
-  cursorY += (splitAddress.length * 4) + 6;
-  
-  // --- TITLE BOX ---
-  doc.setDrawColor(0, 0, 0);
+  doc.text(address, margin, cursorY);
+
+  // Divider Line
+  cursorY += 5;
+  doc.setDrawColor(THEME.border[0], THEME.border[1], THEME.border[2]);
   doc.setLineWidth(0.5);
-  doc.setFillColor(240, 240, 240); // Light Grey
-  doc.rect(leftMargin, cursorY, pageWidth - 30, 10, 'FD');
-  
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(0, 0, 0);
-  doc.text("MATERIAL INWARD RECEIPT", pageWidth / 2, cursorY + 6.5, { align: 'center' });
-  
-  cursorY += 18;
+  doc.line(margin, cursorY, pageWidth - margin, cursorY);
 
-  // --- INFO GRID (SRF, Dates, Customer) ---
-  // We use two columns: Left for Internal details, Right for Customer details
+  // ==========================================
+  // 3. DETAILS CARDS (SEPARATE SECTIONS)
+  // ==========================================
+  cursorY += 8;
   
-  const col1X = leftMargin;
-  const col2X = pageWidth / 2 + 5;
-  
-  doc.setFontSize(10);
-  
-  // -- Left Column (Internal Info) --
-  doc.setFont("helvetica", "bold");
-  doc.text("Internal Details:", col1X, cursorY);
-  doc.setLineWidth(0.2);
-  doc.line(col1X, cursorY + 1, col1X + 30, cursorY + 1); // Underline header
-  
-  const leftColStartY = cursorY;
-  cursorY += 6;
-  doc.setFont("helvetica", "normal");
-  doc.text("SRF No:", col1X, cursorY);
-  doc.setFont("helvetica", "bold");
-  doc.text(formData.srf_no || '-', col1X + 35, cursorY);
-  
-  cursorY += 6;
-  doc.setFont("helvetica", "normal");
-  doc.text("Inward Date:", col1X, cursorY);
-  doc.setFont("helvetica", "bold");
-  doc.text(formData.material_inward_date || '-', col1X + 35, cursorY);
+  const gap = 8;
+  const boxWidth = (pageWidth - (margin * 2) - gap) / 2;
+  const boxHeight = 42;
 
-  cursorY += 6;
-  doc.setFont("helvetica", "normal");
-  doc.text("Received By:", col1X, cursorY);
-  doc.text(formData.receiver || '-', col1X + 35, cursorY);
-  
-  cursorY += 6;
-  doc.text("Customer DC No:", col1X, cursorY);
-  doc.text(formData.customer_dc_no || '-', col1X + 35, cursorY);
-  
-  cursorY += 6;
-  doc.text("Customer DC Date:", col1X, cursorY);
-  doc.text(formData.customer_dc_date || '-', col1X + 35, cursorY);
+  // Helper function to draw professional rounded cards
+  const drawSectionCard = (x: number, title: string, contentCallback: () => void) => {
+    // Card Border
+    doc.setDrawColor(THEME.border[0], THEME.border[1], THEME.border[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(x, cursorY, boxWidth, boxHeight, 3, 3, 'S');
 
-  // Save the Y position after the left column
-  const leftColumnBottomY = cursorY;
+    // Header Strip inside Card
+    doc.setFillColor(THEME.headerBg[0], THEME.headerBg[1], THEME.headerBg[2]);
+    doc.roundedRect(x, cursorY, boxWidth, 8, 3, 3, 'F');
+    doc.rect(x, cursorY + 5, boxWidth, 3, 'F'); // Square off bottom corners of header
 
-  // Reset Y for Right Column (start at same height as left column header)
-  cursorY = leftColStartY;
-
-  // -- Right Column (Customer Info) --
-  doc.setFont("helvetica", "bold");
-  doc.text("Customer Details:", col2X, cursorY);
-  doc.line(col2X, cursorY + 1, col2X + 35, cursorY + 1); // Underline header
-
-  cursorY += 6;
-  doc.setFont("helvetica", "normal");
-  
-  // Handle multiline customer details/name
-  const custDetails = doc.splitTextToSize(formData.customer_details || 'N/A', 80);
-  doc.text(custDetails, col2X, cursorY);
-  cursorY += custDetails.length * 4 + 2;
-  
-  // Contact Person
-  if (formData.contact_person) {
-    doc.text("Contact:", col2X, cursorY);
-    doc.text(formData.contact_person, col2X + 20, cursorY);
-    cursorY += 5;
-  }
-  
-  // Phone
-  if (formData.phone) {
-    doc.text("Phone:", col2X, cursorY);
-    doc.text(formData.phone, col2X + 20, cursorY);
-    cursorY += 5;
-  }
-  
-  // Email
-  if (formData.email) {
-    doc.text("Email:", col2X, cursorY);
-    const emailText = doc.splitTextToSize(formData.email, 70);
-    doc.text(emailText, col2X + 20, cursorY);
-    cursorY += emailText.length * 4 + 1;
-  }
-
-  // Ship To Address (under customer details)
-  if (formData.ship_to_address) {
-    cursorY += 4;
+    // Section Title
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.text("Ship To:", col2X, cursorY);
-    doc.setFont("helvetica", "normal");
-    const shipAddress = doc.splitTextToSize(formData.ship_to_address, 95);
-    doc.text(shipAddress, col2X + 16, cursorY);
-    cursorY += shipAddress.length * 3.5 + 1;
-    doc.setFontSize(10);
-  }
+    doc.setFontSize(9);
+    doc.setTextColor(THEME.textDark[0], THEME.textDark[1], THEME.textDark[2]);
+    doc.text(title.toUpperCase(), x + 5, cursorY + 5.5);
 
-  // Bill To Address (under ship to)
-  if (formData.bill_to_address) {
-    cursorY += 3;
+    // Execute Content
+    contentCallback();
+  };
+
+  // --- LEFT CARD: Job Details ---
+  drawSectionCard(margin, "Job Information", () => {
+    let y = cursorY + 14;
+    const labelX = margin + 5;
+    const valueX = margin + 45;
+
+    const printRow = (label: string, value: string) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(THEME.textLight[0], THEME.textLight[1], THEME.textLight[2]);
+      doc.text(label, labelX, y);
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0); // Black for values
+      doc.text(value || '-', valueX, y);
+      y += 6;
+    };
+
+    printRow("SRF Number:", formData.srf_no);
+    printRow("Inward Date:", formData.material_inward_date);
+    printRow("DC Number:", formData.customer_dc_no);
+    printRow("DC Date:", formData.customer_dc_date);
+  });
+
+  // --- RIGHT CARD: Customer Details ---
+  const rightX = margin + boxWidth + gap;
+  drawSectionCard(rightX, "Customer Information", () => {
+    let y = cursorY + 14;
+    const padding = 5;
+    const textX = rightX + padding;
+    const maxTextWidth = boxWidth - (padding * 2);
+
+    // Customer Name
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.text("Bill To:", col2X, cursorY);
-    doc.setFont("helvetica", "normal");
-    const billAddress = doc.splitTextToSize(formData.bill_to_address, 95);
-    doc.text(billAddress, col2X + 16, cursorY);
-    cursorY += billAddress.length * 3.5 + 1;
     doc.setFontSize(10);
-  }
+    doc.setTextColor(0, 0, 0);
+    const name = doc.splitTextToSize(formData.customer_details || 'Unknown Customer', maxTextWidth);
+    doc.text(name, textX, y);
+    y += (name.length * 4) + 3;
 
-  // Set cursorY to the greater of the two columns + some padding
-  cursorY = Math.max(leftColumnBottomY, cursorY) + 10;
+    // Contact
+    if (formData.contact_person || formData.phone) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(THEME.textLight[0], THEME.textLight[1], THEME.textLight[2]);
+        const contact = `Contact: ${formData.contact_person || ''} ${formData.phone ? `(${formData.phone})` : ''}`;
+        doc.text(contact, textX, y);
+        y += 5;
+    }
 
-  // --- EQUIPMENT TABLE ---
-  const tableColumn = [
+    // Address
+    const addr = formData.ship_to_address || formData.bill_to_address || formData.address;
+    if (addr) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(THEME.textDark[0], THEME.textDark[1], THEME.textDark[2]);
+        const addrLines = doc.splitTextToSize(addr, maxTextWidth);
+        // Limit to 3 lines to fit nicely
+        doc.text(addrLines.slice(0, 3), textX, y);
+    }
+  });
+
+  cursorY += boxHeight + 10;
+
+  // ==========================================
+  // 4. THE TABLE (17 SEPARATE COLUMNS)
+  // ==========================================
+  
+  const tableHeaders = [
     "S.No", 
-    "NEPL ID",
+    "ID", 
     "Description", 
     "Make", 
-    "Model",
-    "Range",
-    "Serial No", 
+    "Model", 
+    "Range", 
+    "Serial", 
     "Qty", 
-    "Supplier",
-    "In DC",
-    "Out DC",
-    "Calib. By",
-    "NextAge Ref",
+    "Supplier", 
+    "In DC", 
+    "Out DC", 
+    "Calib By", 
+    "Ref", 
     "Acc.", 
-    "Visual Notes", 
-    "Engineer Remarks",
-    "Customer Remarks"
+    "Visual", 
+    "Eng Rem", 
+    "Cust Rem"
   ];
 
-  const tableRows: any[] = [];
-  equipmentList.forEach((eq, index) => {
-    const rowData = [
-      index + 1,
-      eq.nepl_id || '-',
-      eq.material_desc || eq.material_description || '-',
-      eq.make || '-',
-      eq.model || '-',
-      eq.range || '-',
-      eq.serial_no || '-',
-      eq.qty || eq.quantity || '1',
-      eq.supplier || '-',
-      eq.in_dc || '-',
-      eq.out_dc || '-',
-      eq.calibration_by || '-',
-      eq.nextage_ref || eq.nextage_contract_reference || '-',
-      eq.accessories_included || '-',
-      eq.inspe_status || eq.visual_inspection_notes || '-',
-      eq.engineer_remarks || '-',
-      eq.customer_remarks || eq.remarks_and_decision || '-'
-    ];
-    tableRows.push(rowData);
-  });
+  const tableData = equipmentList.map((eq, index) => [
+    index + 1,
+    eq.nepl_id || '-',
+    eq.material_desc || eq.material_description || '-',
+    eq.make || '-',
+    eq.model || '-',
+    eq.range || '-',
+    eq.serial_no || '-',
+    eq.qty || eq.quantity || '1',
+    eq.supplier || '-',
+    eq.in_dc || '-',
+    eq.out_dc || '-',
+    eq.calibration_by || '-',
+    eq.nextage_ref || eq.nextage_contract_reference || '-',
+    eq.accessories_included || '-',
+    eq.inspe_status || eq.visual_inspection_notes || '-',
+    eq.engineer_remarks || '-',
+    eq.customer_remarks || eq.remarks_and_decision || '-'
+  ]);
 
   autoTable(doc, {
     startY: cursorY,
-    head: [tableColumn],
-    body: tableRows,
+    head: [tableHeaders],
+    body: tableData,
     theme: 'grid',
     styles: { 
-      fontSize: 6.5, 
-      cellPadding: 1.5, 
+      fontSize: 6.5,  // Small font required for 17 columns
+      cellPadding: 1.5,
       overflow: 'linebreak', 
       valign: 'middle',
-      lineColor: [200, 200, 200], 
-      lineWidth: 0.1 
+      font: "helvetica",
+      lineWidth: 0.1,
+      lineColor: THEME.border as [number, number, number]
     },
     headStyles: { 
-      fillColor: [44, 62, 80], 
+      fillColor: THEME.primary as [number, number, number], 
       textColor: 255, 
       fontStyle: 'bold',
       halign: 'center',
       valign: 'middle',
       fontSize: 6.5
     },
-    columnStyles: {
-      0: { cellWidth: 8, halign: 'center' },    // S.No
-      1: { cellWidth: 15 },                      // NEPL ID
-      2: { cellWidth: 22 },                      // Description
-      3: { cellWidth: 15 },                      // Make
-      4: { cellWidth: 15 },                      // Model
-      5: { cellWidth: 14 },                      // Range
-      6: { cellWidth: 15 },                      // Serial No
-      7: { cellWidth: 8, halign: 'center' },    // Qty
-      8: { cellWidth: 15 },                      // Supplier
-      9: { cellWidth: 12 },                      // In DC
-      10: { cellWidth: 12 },                     // Out DC
-      11: { cellWidth: 15 },                     // Calib. By
-      12: { cellWidth: 15 },                     // NextAge Ref
-      13: { cellWidth: 16 },                     // Acc.
-      14: { cellWidth: 16 },                     // Visual Notes
-      15: { cellWidth: 16 },                     // Engineer Remarks
-      16: { cellWidth: 18 }                      // Customer Remarks (Fixed width)
+    alternateRowStyles: {
+      fillColor: [248, 250, 252] // Very light stripe
     },
-    // Prevent page break inside a row if possible
-    rowPageBreak: 'avoid' 
+    // Precise Column Widths to sum up to ~277mm
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },   // S.No
+      1: { cellWidth: 14, fontStyle: 'bold' }, // ID
+      2: { cellWidth: 26 },                    // Description (Needs most space)
+      3: { cellWidth: 14 },                    // Make
+      4: { cellWidth: 14 },                    // Model
+      5: { cellWidth: 14 },                    // Range
+      6: { cellWidth: 14 },                    // Serial
+      7: { cellWidth: 8, halign: 'center' },   // Qty
+      8: { cellWidth: 12 },                    // Supplier
+      9: { cellWidth: 11 },                    // In DC
+      10: { cellWidth: 11 },                   // Out DC
+      11: { cellWidth: 12 },                   // Calib By
+      12: { cellWidth: 14 },                   // Ref
+      13: { cellWidth: 16 },                   // Acc
+      14: { cellWidth: 16 },                   // Visual
+      15: { cellWidth: 20 },                   // Eng Rem
+      16: { cellWidth: 'auto' }                // Cust Rem (Takes remaining space)
+    },
+    margin: { left: margin, right: margin },
+    didDrawPage: (data) => {
+        // Footer: Page Number
+        const h = doc.internal.pageSize.height;
+        doc.setFontSize(8);
+        doc.setTextColor(THEME.textLight[0], THEME.textLight[1], THEME.textLight[2]);
+        doc.text(`Page ${data.pageNumber} | Generated on ${new Date().toLocaleDateString()}`, pageWidth - margin, h - 10, { align: 'right' });
+    }
   });
 
-  // --- FOOTER ---
-  const finalY = (doc as any).lastAutoTable.finalY + 15;
+  // ==========================================
+  // 5. FOOTER & SIGNATURES
+  // ==========================================
   
-  // Check for page break if footer doesn't fit
-  if (finalY > pageHeight - 40) {
+  let finalY = doc.lastAutoTable?.finalY || cursorY;
+
+  // Ensure footer fits
+  if (finalY > pageHeight - 35) {
     doc.addPage();
-    cursorY = 20;
+    finalY = 20;
   } else {
-    cursorY = finalY;
+    finalY += 10;
   }
 
-  doc.setFontSize(8);
-  doc.setTextColor(100, 100, 100); // Grey text for disclaimer
-  doc.text("Disclaimer: Items received are subject to detailed verification. Any discrepancies found must be reported within 24 hours.", leftMargin, cursorY);
-  
-  cursorY += 15;
-  doc.setDrawColor(0, 0, 0);
-  doc.setTextColor(0, 0, 0); // Black text
-  doc.setFontSize(10);
+  // Footer Container
+  doc.setDrawColor(THEME.border[0], THEME.border[1], THEME.border[2]);
+  doc.setFillColor(252, 252, 252);
+  doc.roundedRect(margin, finalY, pageWidth - (margin * 2), 25, 2, 2, 'FD');
+
+  // Disclaimer
+  doc.setFontSize(7);
+  doc.setTextColor(THEME.textLight[0], THEME.textLight[1], THEME.textLight[2]);
+  doc.text("Disclaimer: All items received subject to detailed verification. Discrepancies must be reported within 24 hours.", margin + 5, finalY + 6);
 
   // Signatures
-  doc.text("Received By:", leftMargin, cursorY);
+  const sigY = finalY + 18;
+  
+  // Left Signature
+  doc.setFontSize(9);
+  doc.setTextColor(0);
+  doc.text("Received By:", margin + 5, finalY + 14);
   doc.setFont("helvetica", "bold");
-  doc.text(formData.receiver || 'Staff', leftMargin, cursorY + 6);
-  doc.setLineWidth(0.5);
-  doc.line(leftMargin, cursorY + 8, leftMargin + 50, cursorY + 8); // Line for signature
+  doc.text(formData.receiver || 'Staff', margin + 28, finalY + 14);
 
+  // Right Signature
   doc.setFont("helvetica", "normal");
-  doc.text("For Nextage Engineering Private Limited", rightMargin, cursorY, { align: 'right' });
-  doc.line(rightMargin - 50, cursorY + 8, rightMargin, cursorY + 8); // Line for signature
-  doc.text("Authorized Signatory", rightMargin, cursorY + 14, { align: 'right' });
+  doc.text("For Nextage Engineering Pvt. Ltd.", pageWidth - margin - 5, finalY + 14, { align: 'right' });
+  doc.setFont("helvetica", "bold");
+  doc.text("Authorized Signatory", pageWidth - margin - 5, sigY, { align: 'right' });
 
-  // --- PAGE NUMBERS ---
-  const pageCount = (doc as any).internal.getNumberOfPages();
-  for(let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
-  }
-
-  // Save file
+  // Save File
   doc.save(`Inward_Receipt_${formData.srf_no}.pdf`);
 };

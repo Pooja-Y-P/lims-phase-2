@@ -12,8 +12,10 @@ import {
   Lightbulb,
   Wrench,
   ChevronLeft,
+  Lock
 } from "lucide-react";
 import { api, ENDPOINTS } from '../api/config';
+import { useRecordLock } from '../hooks/useRecordLock';
 
 // --- Interfaces ---
 type SrfStatus = 'approved' | 'rejected' | 'pending' | 'inward_completed' | 'created';
@@ -81,6 +83,123 @@ interface Props {
   onStatusChange: (id: number, status: string) => void;
 }
 
+// --- Skeleton Loading Component ---
+const SrfDetailSkeleton: React.FC = () => {
+  return (
+    <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10 animate-pulse">
+      
+      {/* Header Skeleton */}
+      <div className="border-b border-slate-200 pb-6">
+        <div className="flex justify-between items-center mb-4">
+          <div className="h-4 w-32 bg-slate-200 rounded"></div>
+          <div className="h-8 w-24 bg-slate-200 rounded-full"></div>
+        </div>
+        <div className="h-10 w-48 bg-slate-300 rounded mb-3"></div>
+        <div className="h-4 w-full max-w-lg bg-slate-200 rounded"></div>
+      </div>
+
+      {/* Customer Details Skeleton */}
+      <section className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
+          <div className="h-7 w-7 bg-slate-300 rounded-full"></div>
+          <div className="h-6 w-40 bg-slate-300 rounded"></div>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i}>
+              <div className="h-3 w-24 bg-slate-200 rounded mb-2"></div>
+              <div className="h-10 w-full bg-slate-100 rounded"></div>
+            </div>
+          ))}
+          <div className="lg:col-span-4 mt-2">
+            <div className="h-3 w-32 bg-slate-200 rounded mb-2"></div>
+            <div className="h-10 w-full bg-slate-200 rounded"></div>
+          </div>
+          {[1, 2].map((i) => (
+            <div key={i} className="md:col-span-2">
+              <div className="h-3 w-28 bg-slate-200 rounded mb-2"></div>
+              <div className="h-24 w-full bg-slate-100 rounded"></div>
+            </div>
+          ))}
+          <div className="lg:col-span-4 border-t border-slate-100 pt-2 mt-2">
+             <div className="h-5 w-40 bg-slate-200 rounded mb-3"></div>
+          </div>
+          {[1, 2].map((i) => (
+            <div key={i}>
+              <div className="h-3 w-20 bg-slate-200 rounded mb-2"></div>
+              <div className="h-10 w-full bg-slate-100 rounded"></div>
+            </div>
+          ))}
+           <div className="md:col-span-2">
+              <div className="h-3 w-16 bg-slate-200 rounded mb-2"></div>
+              <div className="h-10 w-full bg-slate-100 rounded"></div>
+           </div>
+        </div>
+      </section>
+
+      {/* Special Instructions Skeleton */}
+      <section className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
+          <div className="h-7 w-7 bg-slate-300 rounded-full"></div>
+          <div className="h-6 w-48 bg-slate-300 rounded"></div>
+        </div>
+        <div className="p-6 space-y-8">
+            <div>
+                <div className="h-5 w-48 bg-slate-300 rounded mb-3"></div>
+                <div className="flex gap-4">
+                    <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                    <div className="h-4 w-32 bg-slate-200 rounded"></div>
+                </div>
+            </div>
+            <div>
+                <div className="h-5 w-40 bg-slate-300 rounded mb-3"></div>
+                <div className="h-10 w-full max-w-sm bg-slate-100 rounded"></div>
+            </div>
+            <div>
+                <div className="h-5 w-32 bg-slate-300 rounded mb-2"></div>
+                <div className="h-24 w-full bg-slate-100 rounded"></div>
+            </div>
+        </div>
+      </section>
+
+      {/* Equipment Table Skeleton */}
+      <section className="border border-slate-200 rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center gap-3">
+          <div className="h-7 w-7 bg-slate-300 rounded-full"></div>
+          <div className="h-6 w-40 bg-slate-300 rounded"></div>
+        </div>
+        <div className="overflow-x-auto">
+            <div className="w-full">
+                <div className="bg-slate-100 px-3 py-3 grid grid-cols-7 gap-4">
+                    {[...Array(7)].map((_, i) => (
+                        <div key={i} className="h-4 bg-slate-300 rounded w-full"></div>
+                    ))}
+                </div>
+                {[1, 2, 3].map((row) => (
+                    <div key={row} className="px-3 py-2 grid grid-cols-7 gap-4 border-b border-slate-100">
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                         <div className="col-span-1 h-10 bg-slate-100 rounded"></div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </section>
+
+      {/* Footer Buttons Skeleton */}
+      <footer className="flex justify-end items-center gap-4 pt-8 border-t border-slate-200">
+        <div className="h-11 w-32 bg-slate-200 rounded-lg"></div>
+        <div className="h-11 w-32 bg-slate-300 rounded-lg"></div>
+      </footer>
+    </div>
+  );
+};
+
+// --- Main Component ---
 const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   const { srfId } = useParams<{ srfId: string }>();
   const [srfData, setSrfData] = useState<SrfData | null>(null);
@@ -91,15 +210,16 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   const [rejectionReason, setRejectionReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- Locking Hook Implementation ---
+  const lockId = srfId ? parseInt(srfId) : null;
+  const { isLocked: isRecordLocked, lockedBy } = useRecordLock("SRF", lockId);
+
   // --- Data Loading ---
   const loadSrfData = useCallback(async () => {
     if (!srfId) return;
     setLoading(true);
     setError(null);
     try {
-      // FIX: Use 'api' instance and fix string interpolation
-      // If ENDPOINTS.GET_SRF exists in config, use: api.get(ENDPOINTS.GET_SRF(Number(srfId)))
-      // Otherwise use:
       const response = await api.get(`${ENDPOINTS.SRFS}${srfId}`);
       const data: SrfData = response.data;
       
@@ -144,16 +264,15 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   }, [loadSrfData]);
 
   const handleSrfChange = (key: keyof SrfData, value: any) => {
+    if (isRecordLocked) return; // Prevent changes if locked
     setSrfData((prev: SrfData | null) => (prev ? { ...prev, [key]: value } : null));
   };
 
   const saveAndUpdateStatus = async (status: SrfStatus, remarks?: string) => {
-    if (!srfData) return;
+    if (!srfData || isRecordLocked) return; // Prevent save if locked
     setIsSubmitting(true);
     try {
-      // ---------------------------------------------------------
       // 1. Update SRF Table (Status & Remarks)
-      // ---------------------------------------------------------
       const srfPayload: Partial<SrfData> = {
         status,
         telephone: srfData.telephone,
@@ -172,37 +291,27 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         remark_special_instructions: srfData.remark_special_instructions,
       };
 
-      // FIX: Use api.put instead of fetch
-      await api.put(`${ENDPOINTS.SRFS}/${srfData.srf_id}`, srfPayload);
+      await api.put(`${ENDPOINTS.SRFS}${srfData.srf_id}`, srfPayload);
       
-      // ---------------------------------------------------------
       // 2. IF REJECTED: Update Inward Table (inward_srf_flag -> True)
-      // ---------------------------------------------------------
       if (status === 'rejected' && srfData.inward?.inward_id) {
         const inwardId = srfData.inward.inward_id;
-        
         try {
-            // FIX: Use api.patch and ENDPOINTS constant
-            // Assuming ENDPOINTS.STAFF.INWARDS maps to /staff/inwards
             await api.patch(`${ENDPOINTS.STAFF.INWARDS}/${inwardId}`, { 
                 inward_srf_flag: true 
             });
         } catch (inwardErr) {
             console.error("Network error updating inward flag:", inwardErr);
-            // We don't stop the flow here, just log warning
         }
       }
 
-      // ---------------------------------------------------------
       // 3. Update Local State & UI
-      // ---------------------------------------------------------
       const updatedSrfData: SrfData = {
         ...srfData,
         status,
         remarks: status === 'rejected' ? remarks : srfData.remarks 
       };
 
-      // Manually update the local flag so the UI reflects it immediately
       if (status === 'rejected' && updatedSrfData.inward) {
           updatedSrfData.inward = {
               ...updatedSrfData.inward,
@@ -229,6 +338,7 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   };
 
   const handleRejectSubmit = () => {
+    if (isRecordLocked) return;
     if (!rejectionReason.trim()) {
       alert("Please provide a reason for rejection");
       return;
@@ -237,11 +347,14 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   };
 
   // --- UI State & Classes ---
-  if (loading) return <div className="flex items-center justify-center h-96 text-slate-500">Loading SRF Details...</div>;
+  if (loading) return <SrfDetailSkeleton />; // UPDATED to use Skeleton
+  
   if (error) return <div className="p-8 text-center text-red-700 bg-red-50 rounded-lg border border-red-200">{error}</div>;
   if (!srfData) return <div className="flex items-center justify-center h-96 text-slate-500">SRF not found.</div>;
  
-  const isReadOnly = srfData.status === 'approved' || srfData.status === 'rejected';
+  // Logic for Read-Only State: Approved/Rejected status OR Locked by another user
+  const isStatusReadOnly = srfData.status === 'approved' || srfData.status === 'rejected';
+  const isReadOnly = isStatusReadOnly || isRecordLocked;
  
   const readOnlyInputClasses = "block w-full rounded-md bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed sm:text-sm focus:ring-0 focus:border-slate-200";
   const editableInputClasses = "block w-full rounded-md border-slate-300 shadow-sm sm:text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-150";
@@ -255,10 +368,29 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
   } as const)[srfData.status] || { label: srfData.status, color: "bg-slate-100 text-slate-800", icon: <FileText className="h-4 w-4" /> };
  
   const customerNameDisplay = srfData.inward?.customer?.customer_details || "";
+  
+  // Dynamic Style for Locked State
+  const formOpacity = isRecordLocked ? "opacity-70 pointer-events-none select-none" : "opacity-100";
  
   return (
     <>
-      <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10">
+      <div className="p-6 md:p-8 bg-white rounded-2xl shadow-lg border border-slate-200 space-y-10 relative overflow-hidden">
+        
+        {/* --- LOCKED BANNER --- */}
+        {isRecordLocked && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3 relative z-10 mb-4 -mx-6 -mt-6 rounded-t-2xl">
+              <div className="p-1.5 bg-amber-100 rounded-full text-amber-600">
+                  <Lock className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                  <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Read-Only Mode</h3>
+                  <p className="text-xs text-amber-700">
+                      This record is currently being edited by another user. You cannot make changes until they finish.
+                  </p>
+              </div>
+          </div>
+        )}
+
         <header className="border-b border-slate-200 pb-6">
           <div className="flex justify-between items-center mb-2">
             <Link to="/customer/view-srf" className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors flex items-center gap-1">
@@ -279,6 +411,8 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
           </div>
         )}
        
+       {/* Applied formOpacity here to visually disable inputs when concurrency locked */}
+       <div className={formOpacity}>
         <section className="border border-slate-200 rounded-xl">
           <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl">
             <div className="flex items-center gap-3">
@@ -423,11 +557,12 @@ const CustomerSrfDetailView: React.FC<Props> = ({ onStatusChange }) => {
         </section>
  
         {!isReadOnly && (
-          <footer className="flex justify-end items-center gap-4 pt-8 border-t border-slate-200">
-            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => setShowRejectionModal(true)} disabled={isSubmitting}><X className="h-5 w-5" /> Reject</button>
-            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => saveAndUpdateStatus("approved")} disabled={isSubmitting}><Check className="h-5 w-5" /> Approve</button>
+          <footer className="flex justify-end items-center gap-4 pt-8 border-t border-slate-200 pointer-events-auto">
+            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => setShowRejectionModal(true)} disabled={isSubmitting || isRecordLocked}><X className="h-5 w-5" /> Reject</button>
+            <button className="flex items-center justify-center gap-2 px-6 py-2.5 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75 transition-all disabled:opacity-60 disabled:cursor-not-allowed" onClick={() => saveAndUpdateStatus("approved")} disabled={isSubmitting || isRecordLocked}><Check className="h-5 w-5" /> Approve</button>
           </footer>
         )}
+       </div>
       </div>
  
       {showRejectionModal && (

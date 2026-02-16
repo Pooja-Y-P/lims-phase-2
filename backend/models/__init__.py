@@ -37,5 +37,6 @@ from .htw_un_pg_master import HTWUnPGMaster
 from .htw_t_distribution import HTWTDistribution
 from .htw_max_val_measure_err import HTWMaxValMeasureErr
 from .htw_cmc_reference import HTWCMCReference
+from .record_lock import RecordLock
 
 from backend.db import Base

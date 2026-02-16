@@ -27,6 +27,55 @@ interface HTWStandardUncertaintyManagerProps {
   onBack: () => void;
 }
 
+// --- SKELETON COMPONENT ---
+const HTWStandardUncertaintySkeleton = () => {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20 animate-pulse">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              {[...Array(7)].map((_, i) => (
+                <th key={i} className="px-6 py-4">
+                  <div className="h-4 w-20 bg-slate-200 rounded"></div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {[...Array(5)].map((_, i) => (
+              <tr key={i}>
+                <td className="px-6 py-4">
+                  <div className="space-y-1">
+                    <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                    <div className="h-3 w-24 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4">
+                  <div className="space-y-1">
+                    <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                    <div className="h-3 w-20 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-12 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-6 w-20 bg-slate-200 rounded-full"></div></td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ============================================================================
 // MAIN MANAGER COMPONENT
 // ============================================================================
@@ -147,7 +196,8 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
       setError(err.response?.data?.detail || 'Failed to load data');
       setData([]);
     } finally {
-      setLoading(false);
+      // Small delay to make skeleton visible during fast loads
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -212,10 +262,7 @@ function HTWStandardUncertaintyList({ onBack, onAddNew, onEdit, refreshTrigger }
       {error && <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-4" />
-          <p className="text-gray-500">Loading data...</p>
-        </div>
+        <HTWStandardUncertaintySkeleton />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
           {/* Added mb-20 for safe spacing with footer */}

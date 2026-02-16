@@ -21,6 +21,43 @@ interface HTWUnPGMasterManagerProps {
   onBack: () => void;
 }
 
+// --- SKELETON COMPONENT ---
+const HTWUnPGMasterSkeleton = () => {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20 animate-pulse">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              {[...Array(5)].map((_, i) => (
+                <th key={i} className="px-6 py-4">
+                  <div className="h-4 w-24 bg-slate-200 rounded"></div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {[...Array(5)].map((_, i) => (
+              <tr key={i}>
+                <td className="px-6 py-4"><div className="h-5 w-32 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-16 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-5 w-24 bg-slate-200 rounded"></div></td>
+                <td className="px-6 py-4"><div className="h-6 w-20 bg-slate-200 rounded-full"></div></td>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                    <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ============================================================================
 // MAIN MANAGER COMPONENT
 // ============================================================================
@@ -63,7 +100,8 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
       console.error(err);
       setError(err.response?.data?.detail || 'Failed to load data');
     } finally {
-      setLoading(false);
+      // Artificial delay for smoother skeleton transition
+      setTimeout(() => setLoading(false), 300);
     }
   }, []);
 
@@ -171,10 +209,7 @@ export const HTWUnPGMasterManager: React.FC<HTWUnPGMasterManagerProps> = ({ onBa
 
       {/* Table */}
       {loading ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500 mb-4" />
-          <p className="text-gray-500">Loading data...</p>
-        </div>
+        <HTWUnPGMasterSkeleton />
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
           {/* Added mb-20 for safe spacing with footer */}
@@ -546,10 +581,19 @@ const EditUncertaintyModal: React.FC<EditModalProps> = ({ item, onCancel, onSave
           </div>
 
           <div className="mt-8 flex items-center justify-end gap-3 pt-6 border-t border-gray-100">
-            <button type="button" onClick={onCancel} disabled={submitting} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={submitting}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="flex items-center px-6 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm disabled:opacity-70 transition-all">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex items-center px-6 py-2.5 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm disabled:opacity-70 transition-all"
+            >
               {submitting ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Save size={18} className="mr-2" />}
               Update Record
             </button>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, BACKEND_ROOT_URL } from '../api/config';
+import { useRecordLock } from '../hooks/useRecordLock';
 import {
   Save,
   ArrowLeft,
@@ -18,7 +19,8 @@ import {
   Edit2,
   Truck,
   Gauge,
-  CheckCircle2
+  CheckCircle2,
+  Lock
 } from 'lucide-react';
 
 // --- Interfaces ---
@@ -89,6 +91,103 @@ const InfoCard: React.FC<{ icon: React.ReactNode; label: string; value: React.Re
   </div>
 );
 
+// --- Skeleton Component ---
+const CustomerRemarksSkeleton: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-slate-100 py-8 sm:py-12 font-sans">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
+        
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative animate-pulse">
+          
+          {/* Header Skeleton */}
+          <div className="bg-slate-900 px-6 py-6 sm:px-8 flex justify-between items-start h-[100px]">
+            <div className="space-y-3 w-full max-w-lg">
+              <div className="flex items-center gap-3">
+                <div className="h-6 w-6 bg-slate-700 rounded"></div>
+                <div className="h-8 w-64 bg-slate-700 rounded"></div>
+              </div>
+              <div className="h-4 w-96 bg-slate-800 rounded"></div>
+            </div>
+          </div>
+
+          {/* Info Cards Grid Skeleton */}
+          <div className="bg-white border-b border-slate-200 p-6 grid grid-cols-2 md:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-white p-4 rounded-lg border border-slate-100 flex items-center gap-4">
+                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-slate-200"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-16 bg-slate-200 rounded"></div>
+                  <div className="h-4 w-full bg-slate-300 rounded"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Status Banner Skeleton */}
+          <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-center">
+            <div className="h-10 w-3/4 bg-slate-200 rounded-lg"></div>
+          </div>
+
+          {/* Main Table Skeleton */}
+          <main className="p-6 sm:p-8">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 w-12"><div className="h-4 w-4 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 w-24"><div className="h-4 w-16 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[180px]"><div className="h-4 w-32 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[100px]"><div className="h-4 w-20 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[100px]"><div className="h-4 w-20 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[100px]"><div className="h-4 w-20 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[100px]"><div className="h-4 w-24 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 w-16"><div className="h-4 w-8 mx-auto bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 w-24"><div className="h-4 w-16 bg-slate-300 rounded"></div></th>
+                    <th className="px-4 py-3 min-w-[250px]"><div className="h-4 w-32 bg-slate-300 rounded"></div></th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {[1, 2, 3, 4, 5].map((row) => (
+                    <tr key={row} className="bg-white">
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-4 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-16 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top">
+                        <div className="h-4 w-3/4 bg-slate-300 rounded mb-3"></div>
+                        <div className="h-3 w-1/2 bg-slate-200 rounded mb-3"></div>
+                        <div className="flex gap-2">
+                          <div className="h-10 w-10 bg-slate-200 rounded"></div>
+                          <div className="h-10 w-10 bg-slate-200 rounded"></div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-20 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-16 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-14 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-24 bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-4 w-4 mx-auto bg-slate-200 rounded"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-6 w-20 bg-slate-200 rounded-full"></div></td>
+                      <td className="px-4 py-4 align-top"><div className="h-9 w-32 bg-slate-200 rounded-md"></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-end items-center gap-4">
+              <div className="space-y-2">
+                 <div className="h-3 w-64 bg-slate-200 rounded ml-auto"></div>
+                 <div className="h-3 w-48 bg-slate-200 rounded ml-auto"></div>
+              </div>
+              <div className="h-12 w-full sm:w-64 bg-slate-300 rounded-lg"></div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
+
 export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, accessToken }) => {
   const { inwardId } = useParams<{ inwardId: string }>();
   const navigate = useNavigate();
@@ -98,12 +197,16 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
   const [inwardDetails, setInwardDetails] = useState<InwardForRemarks | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Locking Hook Implementation
+  const lockId = inwardId ? parseInt(inwardId) : null;
+  const { isLocked: isRecordLocked, lockedBy } = useRecordLock("INWARD", lockId);
+
   // Modal States
   const [showImageModal, setShowImageModal] = useState(false);
   const [activePhotos, setActivePhotos] = useState<string[]>([]);
 
   const [showRemarkModal, setShowRemarkModal] = useState(false);
-  const [showFinalizeModal, setShowFinalizeModal] = useState(false); // New Modal for Finalization
+  const [showFinalizeModal, setShowFinalizeModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [tempRemark, setTempRemark] = useState("");
 
@@ -172,6 +275,9 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
   // --- Action Handlers ---
 
   const handleSaveFromModal = async () => {
+    // Prevent save if locked
+    if (isRecordLocked) return;
+
     if (editingId === null) return;
 
     const remarkText = tempRemark.trim();
@@ -208,32 +314,31 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     }
   };
 
-  // Opens the modal confirmation instead of window.confirm
   const handleFinalizeClick = () => {
+    // Prevent finalize if locked
+    if (isRecordLocked) return;
+
     if (!inwardDetails) return;
     setShowFinalizeModal(true);
   };
 
-  // Actual logic to send data with "Ok" default
   const executeFinalize = async () => {
-    if (!inwardDetails) return;
+    if (!inwardDetails || isRecordLocked) return;
     setFinalizing(true);
     
     try {
       // 1. Prepare Payload: Iterate ALL equipment
-      // If user provided a remark, use it. If not, default to "Ok".
       const allRemarksPayload = inwardDetails.equipments.map(eq => {
         const userRemark = customerRemarks[eq.inward_eqp_id];
         return {
           inward_eqp_id: eq.inward_eqp_id,
-          // DEFAULT LOGIC HERE:
           customer_remark: (userRemark && userRemark.trim() !== "") ? userRemark : "Ok"
         };
       });
 
       const remarkUrl = token ? `/portal/direct-fir/${inwardId}/remarks?token=${token}` : `/portal/firs/${inwardId}/remarks`;
       
-      // 2. Post all remarks (updates existing ones and sets defaults for empty ones)
+      // 2. Post all remarks
       if (allRemarksPayload.length > 0) {
         await api.post(remarkUrl, { remarks: allRemarksPayload });
       }
@@ -265,15 +370,9 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
     }
   };
 
+  // --- Loading State (Replaced Spinner with Skeleton) ---
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <Loader2 className="animate-spin h-12 w-12 text-indigo-600 mx-auto" />
-          <p className="mt-4 text-slate-600">Loading First Inspection Report...</p>
-        </div>
-      </div>
-    );
+    return <CustomerRemarksSkeleton />;
   }
 
   if (error || !inwardDetails) {
@@ -290,7 +389,10 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       </div>
     );
   }
-  const isLocked = inwardDetails.status === 'approved' || inwardDetails.status === 'rejected';
+
+  // --- Read-Only Logic ---
+  const isStatusFinalized = inwardDetails.status === 'approved' || inwardDetails.status === 'rejected' || inwardDetails.status === 'reviewed';
+  const isReadOnly = isStatusFinalized || isRecordLocked;
 
   const deviatedCount = inwardDetails.equipments.filter(eq => eq.visual_inspection_notes !== 'OK').length;
   const displayDate = inwardDetails.material_inward_date || inwardDetails.date || inwardDetails.created_at;
@@ -304,7 +406,22 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
       <div className="min-h-screen bg-slate-100 py-8 sm:py-12 font-sans">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
 
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative">
+
+            {/* --- LOCKED BANNER --- */}
+            {isRecordLocked && (
+              <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3 relative z-10">
+                <div className="p-1.5 bg-amber-100 rounded-full text-amber-600">
+                  <Lock className="h-5 w-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Read-Only Mode</h3>
+                  <p className="text-xs text-amber-700">
+                    This record is currently being edited by another user. You cannot make changes or finalize until they finish.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Header */}
             <header className="bg-slate-900 px-6 py-6 sm:px-8 text-white flex justify-between items-start">
@@ -332,23 +449,25 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
             </div>
 
             {/* Status Banner */}
-            {isLocked ? (
+            {isStatusFinalized ? (
               <div className="bg-green-50 border-b border-green-200 p-4 text-center">
                 <p className="text-green-800 font-semibold flex items-center justify-center gap-2">
                   <CheckCircle size={20} /> Review Completed. This report is now read-only.
                 </p>
               </div>
             ) : (
-              <div className="bg-blue-50 border-b border-blue-200 p-4">
-                <p className="text-blue-800 text-sm text-center">
-                  Click <strong>"Add/Edit Remark"</strong> on any item to provide specific instructions. <br />
-                  <span className="font-semibold">Note:</span> Any items left blank will be automatically marked as <strong>"Ok"</strong> upon finalization.
-                </p>
-              </div>
+              !isRecordLocked && (
+                <div className="bg-blue-50 border-b border-blue-200 p-4">
+                  <p className="text-blue-800 text-sm text-center">
+                    Click <strong>"Add/Edit Remark"</strong> on any item to provide specific instructions. <br />
+                    <span className="font-semibold">Note:</span> Any items left blank will be automatically marked as <strong>"Ok"</strong> upon finalization.
+                  </p>
+                </div>
+              )
             )}
 
             {/* Main Table */}
-            <main className="p-6 sm:p-8">
+            <main className={`p-6 sm:p-8 ${isRecordLocked ? 'opacity-80 pointer-events-none' : ''}`}>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
@@ -384,7 +503,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                           <td className="px-4 py-4 text-sm text-slate-900 align-top">
                             <div className="font-medium">{eq.material_description}</div>
                             {eq.photos && eq.photos.length > 0 && (
-                              <div className="flex gap-2 mt-3">
+                              <div className="flex gap-2 mt-3 pointer-events-auto"> {/* Allow photo click even if locked */}
                                 {eq.photos.map((p, i) => (
                                   <button key={i} onClick={() => openImageModal(eq.photos)} className="relative group h-10 w-10 rounded overflow-hidden border border-slate-200 shadow-sm hover:ring-2 ring-indigo-500">
                                     <img src={resolvePhotoUrl(p)} alt="" className="h-full w-full object-cover" />
@@ -458,7 +577,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                                 )}
 
                                 <div className="flex items-center justify-between">
-                                  {!isLocked && (
+                                  {!isReadOnly && (
                                     <button
                                       onClick={() => openRemarkModal(eq.inward_eqp_id, customerRemarks[eq.inward_eqp_id] || "")}
                                       className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all shadow-sm
@@ -472,7 +591,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                                     </button>
                                   )}
 
-                                  {savedSuccessRows[eq.inward_eqp_id] && !isLocked && (
+                                  {savedSuccessRows[eq.inward_eqp_id] && !isReadOnly && (
                                     <span className="text-green-600 text-xs font-medium flex items-center gap-1 animate-fade-in bg-green-50 px-2 py-1 rounded-full border border-green-100">
                                       <CheckCircle size={12} /> Saved
                                     </span>
@@ -488,14 +607,14 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                 </table>
               </div>
 
-              {!isLocked && (
+              {!isReadOnly && (
                 <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row justify-end items-center gap-4">
                   <div className="text-sm text-slate-500 text-center sm:text-right">
                     Individual remarks are saved when you click "Save" in the popup.<br />
                     Click Finalize to complete the process.
                   </div>
                   <button
-                    onClick={handleFinalizeClick} // CHANGED to open modal
+                    onClick={handleFinalizeClick}
                     disabled={finalizing}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold text-base px-8 py-3 rounded-lg shadow-lg hover:shadow-green-600/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
@@ -571,7 +690,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
               </button>
               <button
                 onClick={handleSaveFromModal}
-                disabled={savingRows[editingId!]}
+                disabled={savingRows[editingId!] || isRecordLocked}
                 className="flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {savingRows[editingId!] ? (
@@ -591,7 +710,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
         </div>
       )}
 
-      {/* --- Final Confirmation Modal (NEW) --- */}
+      {/* --- Final Confirmation Modal --- */}
       {showFinalizeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm transition-opacity">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full overflow-hidden">
@@ -631,7 +750,7 @@ export const CustomerRemarksPortal: React.FC<Props> = ({ directAccess = false, a
                 <button
                   className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   onClick={executeFinalize}
-                  disabled={finalizing}
+                  disabled={finalizing || isRecordLocked}
                 >
                   {finalizing && <Loader2 size={14} className="animate-spin" />}
                   {finalizing ? "Processing..." : "Confirm & Submit"}

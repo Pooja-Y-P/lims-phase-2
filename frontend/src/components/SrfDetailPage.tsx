@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import type { AxiosResponse } from "axios";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { useAuth } from "../auth/AuthProvider";
-import { BookOpen, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Phone, Mail, FileText, MapPin, Building, Award, Home } from "lucide-react";
+import { BookOpen, XCircle, ArrowLeft, Download, CheckCircle, Calendar, User, Phone, Mail, FileText, MapPin, Building, Award, Home, Lock } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { api, ENDPOINTS } from "../api/config"; // IMPORTED CONFIG
+import { api, ENDPOINTS } from "../api/config";
+import { useRecordLock } from "../hooks/useRecordLock";
 
-// --- Interfaces ---
+// ... [Interfaces remain unchanged] ...
 interface SrfEquipmentDetail {
   srf_eqp_id?: number;
   unit?: string;
@@ -55,28 +56,18 @@ interface SrfDetail {
   srf_no: string;
   nepl_srf_no?: string;
   date: string;
-
   company_name: string;
   customer_name?: string;
-
-  // Address split (Internal UI State)
   bill_to_address: string;
   ship_to_address: string;
-
   phone: string;
   telephone?: string;
-
   contact_person: string;
   email: string;
-
-  // Certificate Info
   certificate_issue_name: string;
-  certificate_issue_adress: string; // Backend spelling
-
+  certificate_issue_adress: string;
   status: string;
   inward?: InwardDetail;
-
-  // Special Instructions
   calibration_frequency?: string | null;
   statement_of_conformity?: boolean | null;
   ref_iso_is_doc?: boolean | null;
@@ -86,7 +77,7 @@ interface SrfDetail {
   remarks?: string | null;
 }
 
-// Helper function handles Strings (NEPL25001)
+// --- Helper Functions ---
 const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
   if (!srfNo) return "";
   const srfStr = srfNo.toString();
@@ -98,12 +89,9 @@ const generateNeplSrfNo = (srfNo: string | number | undefined): string => {
 
 const getTodayDateString = (): string => new Date().toISOString().split("T")[0];
 
-// Function to fetch unit from manufacturer specs
-// FIX: Uses 'api' instance directly
 const fetchUnitForMakeModel = async (make: string, model: string): Promise<string> => {
   if (!make || !model) return '';
   try {
-    // Note: Assuming this endpoint exists relative to API_BASE_URL
     const response = await api.get(
       `/staff/inwards/manufacturer/range`,
       { params: { make, model } }
@@ -115,10 +103,90 @@ const fetchUnitForMakeModel = async (make: string, model: string): Promise<strin
   }
 };
 
+// --- Skeleton Component ---
+const SrfSkeleton: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4 relative animate-pulse">
+      <div className="w-full max-w-6xl bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden relative">
+        <div className="p-6 md:p-10">
+          
+          {/* Header Skeleton */}
+          <div className="flex items-center justify-between border-b pb-4 mb-6">
+            <div>
+              <div className="h-8 w-48 bg-gray-300 rounded mb-2"></div>
+              <div className="h-5 w-32 bg-gray-200 rounded"></div>
+            </div>
+            <div className="flex gap-3">
+              <div className="h-10 w-36 bg-gray-200 rounded-lg"></div>
+              <div className="h-10 w-24 bg-gray-200 rounded-lg"></div>
+            </div>
+          </div>
+
+          {/* Customer Details Skeleton */}
+          <fieldset className="border border-gray-300 rounded-2xl p-6 mb-10 bg-white shadow-sm">
+            <div className="h-6 w-40 bg-gray-300 rounded mb-6"></div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i}>
+                  <div className="h-3 w-24 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-10 w-full bg-gray-100 rounded-lg"></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-6">
+               <div className="h-3 w-32 bg-gray-200 rounded mb-2"></div>
+               <div className="h-10 w-full bg-gray-100 rounded-lg"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+               {[1, 2].map(i => (
+                 <div key={i} className="h-24 w-full bg-gray-50 rounded-lg"></div>
+               ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+               {[1, 2, 3].map(i => (
+                 <div key={i}>
+                   <div className="h-3 w-20 bg-gray-200 rounded mb-2"></div>
+                   <div className="h-10 w-full bg-gray-100 rounded-lg"></div>
+                 </div>
+               ))}
+            </div>
+          </fieldset>
+
+          {/* Equipment Table Skeleton */}
+          <fieldset className="border border-gray-300 rounded-2xl p-6 bg-gray-50 mb-10">
+             <div className="h-6 w-40 bg-gray-300 rounded mb-4"></div>
+             <div className="space-y-4">
+                <div className="h-8 w-full bg-gray-200 rounded"></div>
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-12 w-full bg-white rounded border border-gray-200"></div>
+                ))}
+             </div>
+          </fieldset>
+
+          {/* Action Buttons Skeleton */}
+          <div className="flex justify-end gap-4 mt-8 pt-8 border-t border-gray-200">
+             <div className="h-11 w-24 bg-gray-200 rounded-lg"></div>
+             <div className="h-11 w-40 bg-gray-300 rounded-lg"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
 export const SrfDetailPage: React.FC = () => {
   const { srfId: paramSrfId } = useParams<{ srfId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const previousTab = (location.state as any)?.activeTab;
 
   const [activeSrfId, setActiveSrfId] = useState<number | null>(null);
   const [srfData, setSrfData] = useState<SrfDetail | null>(null);
@@ -128,14 +196,21 @@ export const SrfDetailPage: React.FC = () => {
   const [autoSaveStatus, setAutoSaveStatus] = useState<string>("");
   const [hasUserEdited, setHasUserEdited] = useState(false);
 
-  // Ref to track if we just created a form to prevent re-fetching/overwriting
   const justCreatedRef = useRef(false);
 
   const isEngineer = user?.role === "engineer";
   const isNewSrfFromUrl = paramSrfId?.startsWith("new-");
   const inwardIdFromUrl = isNewSrfFromUrl ? parseInt(paramSrfId!.split("new-")[1]) : undefined;
 
-  // --- PDF Generation ---
+  const lockId = (!isNewSrfFromUrl && paramSrfId) ? parseInt(paramSrfId) : null;
+  const { isLocked, lockedBy } = useRecordLock("SRF", lockId);
+
+  const canEdit = isEngineer && !isLocked;
+
+  const goBackToList = () => {
+    navigate("/engineer/srfs", { state: { activeTab: previousTab } });
+  };
+
   const generatePDF = useCallback(() => {
     if (!srfData) return;
     const doc = new jsPDF();
@@ -184,29 +259,23 @@ export const SrfDetailPage: React.FC = () => {
     doc.save(`SRF_${srfData.nepl_srf_no || srfData.srf_no}.pdf`);
   }, [srfData]);
 
-  // --- Load SRF Data ---
   const loadSrfData = useCallback(
     async (id: number, signal: AbortSignal) => {
       setLoading(true);
       setError(null);
       try {
-        // FIX: Use 'api' and 'ENDPOINTS'
         const response = await api.get<SrfDetail>(`${ENDPOINTS.SRFS}${id}`, { signal });
         const data = response.data;
         const rawData = data as any;
 
-        // Auto-populate unit for each equipment if not already set
         for (const eq of (data.inward?.equipments || [])) {
           if (!eq.srf_equipment) eq.srf_equipment = {};
           if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "";
           
-          // Auto-populate unit from equipment or manufacturer specs if not set
           if (!eq.srf_equipment.unit && eq.make && eq.model) {
-            // First try to use unit from inward equipment
             if ((eq as any).unit) {
               eq.srf_equipment.unit = (eq as any).unit;
             } else {
-              // Otherwise fetch from manufacturer specs
               const unit = await fetchUnitForMakeModel(eq.make, eq.model);
               if (unit) {
                 eq.srf_equipment.unit = unit;
@@ -259,7 +328,6 @@ export const SrfDetailPage: React.FC = () => {
     []
   );
 
-  // --- Initial Load Effect ---
   useEffect(() => {
     const controller = new AbortController();
 
@@ -268,25 +336,20 @@ export const SrfDetailPage: React.FC = () => {
       setLoading(true);
       const fetchInwardData = async () => {
         try {
-          // FIX: Use 'api' and 'ENDPOINTS'
           const response: AxiosResponse<InwardDetail> = await api.get<InwardDetail>(
             `${ENDPOINTS.STAFF.INWARDS}/${inwardIdFromUrl}`,
             { signal: controller.signal }
           );
           const inward = response.data;
 
-          // Auto-populate unit for each equipment if not already set
           for (const eq of (inward.equipments || [])) {
             if (!eq.srf_equipment) eq.srf_equipment = {};
             if (eq.srf_equipment.no_of_calibration_points == null) eq.srf_equipment.no_of_calibration_points = "1";
             
-            // Auto-populate unit from equipment or manufacturer specs if not set
             if (!eq.srf_equipment.unit && eq.make && eq.model) {
-              // First try to use unit from inward equipment
               if ((eq as any).unit) {
                 eq.srf_equipment.unit = (eq as any).unit;
               } else {
-                // Otherwise fetch from manufacturer specs
                 const unit = await fetchUnitForMakeModel(eq.make, eq.model);
                 if (unit) {
                   eq.srf_equipment.unit = unit;
@@ -355,13 +418,14 @@ export const SrfDetailPage: React.FC = () => {
     return () => controller.abort();
   }, [paramSrfId, isNewSrfFromUrl, inwardIdFromUrl, loadSrfData]);
 
-  // --- Handle Changes ---
   const handleSrfChange = (key: keyof SrfDetail, value: any) => {
+    if (isLocked) return; 
     setHasUserEdited(true);
     setSrfData((prev) => (prev ? { ...prev, [key]: value } : null));
   };
 
   const handleSrfEquipmentChange = (inward_eqp_id: number, field: keyof SrfEquipmentDetail, value: any) => {
+    if (isLocked) return; 
     setHasUserEdited(true);
     setSrfData((prevData) => {
       if (!prevData || !prevData.inward) return prevData;
@@ -376,10 +440,9 @@ export const SrfDetailPage: React.FC = () => {
     });
   };
 
-  // --- Save Function ---
   const handleSaveSrf = useCallback(
     async (newStatus: string, showAlert: boolean = false) => {
-      if (!srfData) return;
+      if (!srfData || isLocked) return; 
       setAutoSaving(true);
       setAutoSaveStatus("Saving...");
       setError(null);
@@ -425,26 +488,25 @@ export const SrfDetailPage: React.FC = () => {
           })),
         };
 
-        // FIX: Use 'api' and 'ENDPOINTS'
         if (activeSrfId || (srfData.srf_id && srfData.srf_id > 0)) {
           const targetId = activeSrfId || srfData.srf_id;
-          await api.put(`${ENDPOINTS.SRFS}/${targetId}`, payload);
+          await api.put(`${ENDPOINTS.SRFS}${targetId}`, payload);
           setSrfData((prev) => (prev ? { ...prev, status: newStatus } : prev));
         } else {
-          const res = await api.post(`${ENDPOINTS.SRFS}`, payload); // Note: No trailing slash
+          const res = await api.post(`${ENDPOINTS.SRFS}`, payload); 
           const newId = res.data.srf_id;
           
-          await api.put(`${ENDPOINTS.SRFS}/${newId}`, payload);
+          await api.put(`${ENDPOINTS.SRFS}${newId}`, payload);
           
           justCreatedRef.current = true;
           setActiveSrfId(newId);
+          navigate(`/engineer/srfs/${newId}`, { replace: true, state: { activeTab: previousTab } });
           setSrfData((prev) => (prev ? { ...prev, srf_id: newId, status: newStatus } : prev));
-          navigate(`/engineer/srfs/${newId}`, { replace: true });
         }
 
         if (showAlert) {
           alert("✅ SRF saved successfully!");
-          navigate("/engineer/srfs");
+          navigate("/engineer/srfs", { state: { activeTab: previousTab } });
         }
 
         setHasUserEdited(false);
@@ -461,13 +523,12 @@ export const SrfDetailPage: React.FC = () => {
         setAutoSaving(false);
       }
     },
-    [activeSrfId, srfData, navigate]
+    [activeSrfId, srfData, navigate, isLocked, previousTab]
   );
 
-  // --- Auto-Save Effect ---
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    if (!isEngineer || !srfData || !hasUserEdited) return;
+    if (!isEngineer || !srfData || !hasUserEdited || isLocked) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -478,23 +539,40 @@ export const SrfDetailPage: React.FC = () => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [srfData, hasUserEdited, isEngineer, handleSaveSrf]);
+  }, [srfData, hasUserEdited, isEngineer, handleSaveSrf, isLocked]);
 
-  if (loading) return <div className="p-12 text-center text-gray-500">Loading SRF Details...</div>;
+  if (loading) {
+    return <SrfSkeleton />;
+  }
+
   if (error) return <div className="p-12 text-center text-red-600 bg-red-50 rounded-lg">Error: {error}</div>;
   if (!srfData) return <div className="p-12 text-center text-gray-500">SRF not found.</div>;
 
-  const canEdit = isEngineer;
   const isApproved = srfData.status === "approved";
   const isRejected = srfData.status === "rejected";
   const showSpecialInstructions = isApproved || isRejected;
 
+  const formOpacity = isLocked ? "opacity-70 pointer-events-none select-none" : "opacity-100";
+
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4">
-      <div className="w-full max-w-6xl bg-white rounded-2xl shadow-lg border border-gray-200 p-6 md:p-10 relative">
+    <div className="min-h-screen bg-gray-50 flex justify-center py-8 px-4 relative">
+      <div className="w-full max-w-6xl bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden relative">
         
-        {/* Auto Save Status */}
-        <div className={`absolute top-4 right-6 text-sm font-medium transition-all duration-300 px-3 py-1 rounded-lg shadow-sm ${
+        {isLocked && (
+          <div className="bg-amber-50 border-b border-amber-200 px-8 py-3 flex items-center gap-3 shadow-sm z-20">
+              <div className="p-1.5 bg-amber-100 rounded-full text-amber-600">
+                  <Lock className="h-5 w-5 animate-pulse" />
+              </div>
+              <div>
+                  <h3 className="text-sm font-bold text-amber-800 uppercase tracking-wide">Read-Only Mode</h3>
+                  <p className="text-xs text-amber-700">
+                      This record is currently being edited by another user. You cannot make changes until they finish.
+                  </p>
+              </div>
+          </div>
+        )}
+
+        <div className={`absolute top-4 right-6 text-sm font-medium transition-all duration-300 px-3 py-1 rounded-lg shadow-sm z-10 ${
             autoSaveStatus.includes("Saving") ? "bg-blue-50 text-blue-700"
               : autoSaveStatus.includes("Failed") ? "bg-red-50 text-red-600"
               : "bg-green-50 text-green-700"
@@ -503,389 +581,379 @@ export const SrfDetailPage: React.FC = () => {
           {autoSaveStatus || "Saved"}
         </div>
 
-        {/* Header */}
-        <header className="flex items-center justify-between border-b pb-4 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">SRF Details</h1>
-            <p className="text-lg text-blue-600 font-mono mt-1">{srfData.nepl_srf_no}</p>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={generatePDF} className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">
-                <Download size={18} />
-                <span>Download PDF</span>
-            </button>
-            <button type="button" onClick={() => navigate("/engineer/srfs")} className="flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm">
-              <ArrowLeft size={18} />
-              <span>Back</span>
-            </button>
-          </div>
-        </header>
+        <div className={`p-6 md:p-10 ${formOpacity}`}>
+          <header className="flex items-center justify-between border-b pb-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">SRF Details</h1>
+              <p className="text-lg text-blue-600 font-mono mt-1">{srfData.nepl_srf_no}</p>
+            </div>
+            <div className="flex gap-3 pointer-events-auto"> 
+              <button 
+                onClick={generatePDF} 
+                className={`flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm ${isLocked ? "pointer-events-auto opacity-100 cursor-pointer" : ""}`}
+              >
+                  <Download size={18} />
+                  <span>Download PDF</span>
+              </button>
+              <button 
+                type="button" 
+                onClick={goBackToList} 
+                className={`flex items-center space-x-2 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-semibold text-sm ${isLocked ? "pointer-events-auto opacity-100 cursor-pointer" : ""}`}
+              >
+                <ArrowLeft size={18} />
+                <span>Back</span>
+              </button>
+            </div>
+          </header>
 
-        {/* Status Banner */}
-        {(isApproved || isRejected) && (
-          <div className={`p-4 mb-8 border-l-4 rounded-r-lg ${isRejected ? "bg-red-50 text-red-800 border-red-400" : "bg-green-50 text-green-800 border-green-400"}`}>
-            <div className="flex items-start gap-3">
-              {isRejected ? <XCircle className="h-6 w-6 flex-shrink-0" /> : <CheckCircle className="h-6 w-6 flex-shrink-0" />}
-              <div>
-                <p className="text-sm font-semibold">
-                  Current Status: {srfData.status.charAt(0).toUpperCase() + srfData.status.slice(1)}
-                </p>
-                {isRejected && srfData.remarks && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium">Rejection Reason:</p>
-                    <p className="text-sm italic">"{srfData.remarks}"</p>
-                  </div>
-                )}
+          {(isApproved || isRejected) && (
+            <div className={`p-4 mb-8 border-l-4 rounded-r-lg ${isRejected ? "bg-red-50 text-red-800 border-red-400" : "bg-green-50 text-green-800 border-green-400"}`}>
+              <div className="flex items-start gap-3">
+                {isRejected ? <XCircle className="h-6 w-6 flex-shrink-0" /> : <CheckCircle className="h-6 w-6 flex-shrink-0" />}
+                <div>
+                  <p className="text-sm font-semibold">
+                    Current Status: {srfData.status.charAt(0).toUpperCase() + srfData.status.slice(1)}
+                  </p>
+                  {isRejected && srfData.remarks && (
+                    <div className="mt-2">
+                      <p className="text-sm font-medium">Rejection Reason:</p>
+                      <p className="text-sm italic">"{srfData.remarks}"</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Customer Details - Improved UI Layout */}
-        <fieldset className="border border-gray-300 rounded-2xl p-6 mb-10 bg-white shadow-sm">
-          <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm border border-gray-200">
-            Customer Details
-          </legend>
+          <fieldset className="border border-gray-300 rounded-2xl p-6 mb-10 bg-white shadow-sm">
+            <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm border border-gray-200">
+              Customer Details
+            </legend>
 
-          {/* Row 1: Document Info (DC No, Date, Ref, Inward Date) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6 mt-2">
-             <div className="relative">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer DC No</label>
-                <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                   <FileText size={16} className="mr-2 text-gray-400"/>
-                   {srfData.inward?.customer_dc_no || "-"}
-                </div>
-             </div>
-             
-             <div className="relative">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer DC Date</label>
-                <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                   <Calendar size={16} className="mr-2 text-gray-400"/>
-                   {srfData.inward?.customer_dc_date || "-"}
-                </div>
-             </div>
-
-             <div className="relative">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reference (SRF No)</label>
-                <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                   <span className="font-mono text-blue-600">{srfData.nepl_srf_no}</span>
-                </div>
-             </div>
-
-             <div className="relative">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Material Inward Date</label>
-                <input
-                  type="date"
-                  readOnly={!canEdit}
-                  value={srfData.date}
-                  onChange={(e) => handleSrfChange("date", e.target.value)}
-                  className={`block w-full rounded-lg border-gray-300 px-3 py-2 text-sm ${canEdit ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" : "bg-gray-50 cursor-not-allowed"}`}
-                />
-             </div>
-          </div>
-
-          {/* Row 2: Company Name */}
-          <div className="mb-6">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Company Name</label>
-              <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-800">
-                 <Building size={18} className="mr-2 text-gray-500"/>
-                 {srfData.company_name}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6 mt-2">
+              <div className="relative">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer DC No</label>
+                  <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    <FileText size={16} className="mr-2 text-gray-400"/>
+                    {srfData.inward?.customer_dc_no || "-"}
+                  </div>
               </div>
-          </div>
-
-          {/* Row 3: Addresses (Read Only - Side by Side) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Bill To */}
-              <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 relative">
-                 <div className="flex items-center gap-2 mb-2">
-                    <MapPin size={16} className="text-blue-600"/>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Bill To Address</label>
-                 </div>
-                 <textarea
-                    rows={3}
-                    readOnly={true}
-                    value={srfData.bill_to_address}
-                    className="block w-full rounded border-0 bg-transparent text-sm text-gray-600 resize-none focus:ring-0 p-0"
-                 />
+              
+              <div className="relative">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer DC Date</label>
+                  <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    <Calendar size={16} className="mr-2 text-gray-400"/>
+                    {srfData.inward?.customer_dc_date || "-"}
+                  </div>
               </div>
 
-              {/* Ship To */}
-              <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 relative">
-                 <div className="flex items-center gap-2 mb-2">
-                    <MapPin size={16} className="text-green-600"/>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Ship To Address</label>
-                 </div>
-                 <textarea
-                    rows={3}
-                    readOnly={true}
-                    value={srfData.ship_to_address}
-                    className="block w-full rounded border-0 bg-transparent text-sm text-gray-600 resize-none focus:ring-0 p-0"
-                 />
+              <div className="relative">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Reference (SRF No)</label>
+                  <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                    <span className="font-mono text-blue-600">{srfData.nepl_srf_no}</span>
+                  </div>
               </div>
-          </div>
 
-          {/* Row 4: Contact Information */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Contact Person</label>
-                <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User size={16} className="text-gray-400"/>
-                   </div>
-                   <input
-                      type="text"
-                      readOnly={!canEdit}
-                      value={srfData.contact_person}
-                      onChange={(e) => handleSrfChange("contact_person", e.target.value)}
-                      className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
-                   />
+              <div className="relative">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Material Inward Date</label>
+                  <input
+                    type="date"
+                    readOnly={!canEdit}
+                    value={srfData.date}
+                    onChange={(e) => handleSrfChange("date", e.target.value)}
+                    className={`block w-full rounded-lg border-gray-300 px-3 py-2 text-sm ${canEdit ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500" : "bg-gray-50 cursor-not-allowed"}`}
+                  />
+              </div>
+            </div>
+
+            <div className="mb-6">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Company Name</label>
+                <div className="flex items-center w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-800">
+                  <Building size={18} className="mr-2 text-gray-500"/>
+                  {srfData.company_name}
                 </div>
-              </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Phone</label>
-                <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Phone size={16} className="text-gray-400"/>
-                   </div>
-                   <input
-                      type="text"
-                      readOnly={!canEdit}
-                      value={srfData.phone}
-                      onChange={(e) => handleSrfChange("phone", e.target.value)}
-                      className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
-                   />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 relative">
+                  <div className="flex items-center gap-2 mb-2">
+                      <MapPin size={16} className="text-blue-600"/>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Bill To Address</label>
+                  </div>
+                  <textarea
+                      rows={3}
+                      readOnly={true}
+                      value={srfData.bill_to_address}
+                      className="block w-full rounded border-0 bg-transparent text-sm text-gray-600 resize-none focus:ring-0 p-0"
+                  />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Email</label>
-                <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Mail size={16} className="text-gray-400"/>
-                   </div>
-                   <input
-                      type="email"
-                      readOnly={!canEdit}
-                      value={srfData.email}
-                      onChange={(e) => handleSrfChange("email", e.target.value)}
-                      className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
-                   />
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 relative">
+                  <div className="flex items-center gap-2 mb-2">
+                      <MapPin size={16} className="text-green-600"/>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Ship To Address</label>
+                  </div>
+                  <textarea
+                      rows={3}
+                      readOnly={true}
+                      value={srfData.ship_to_address}
+                      className="block w-full rounded border-0 bg-transparent text-sm text-gray-600 resize-none focus:ring-0 p-0"
+                  />
                 </div>
-              </div>
-          </div>
+            </div>
 
-          {/* Row 5: Certificate Issue Details (Stacked Vertically) */}
-          <div className="space-y-6">
-              {/* Certificate Issue Name */}
-              <div>
-                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Certificate Issue Name</label>
-                 <div className="relative">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Contact Person</label>
+                  <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                       <Award size={16} className="text-indigo-500"/>
+                        <User size={16} className="text-gray-400"/>
                     </div>
                     <input
                         type="text"
                         readOnly={!canEdit}
-                        value={srfData.certificate_issue_name}
-                        onChange={(e) => handleSrfChange("certificate_issue_name", e.target.value)}
+                        value={srfData.contact_person}
+                        onChange={(e) => handleSrfChange("contact_person", e.target.value)}
                         className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
-                     />
-                 </div>
-              </div>
-
-              {/* Certificate Issue Address */}
-              <div>
-                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Certificate Issue Address</label>
-                 <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 pt-2.5 flex items-start pointer-events-none">
-                       <Home size={16} className="text-indigo-500"/>
-                    </div>
-                    <textarea
-                        rows={2}
-                        readOnly={!canEdit}
-                        value={srfData.certificate_issue_adress || ""}
-                        onChange={(e) => handleSrfChange("certificate_issue_adress", e.target.value)}
-                        className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
-                        placeholder="Same as Bill To if empty"
                     />
-                 </div>
-              </div>
-          </div>
-        </fieldset>
-        
-        {/* --- SPECIAL INSTRUCTIONS (Visible ONLY when Approved/Rejected, and always Read Only) --- */}
-        {showSpecialInstructions && (
-          <fieldset className="mb-10 border border-gray-300 rounded-2xl bg-gray-50 p-6">
-            <legend className="flex items-center gap-2 px-3 py-1.5 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">
-              <BookOpen className="h-5 w-5 text-indigo-600" /> Special Instructions from customer for calibration
-            </legend>
+                  </div>
+                </div>
 
-            {/* 1. Calibration Frequency */}
-            <div className="mb-6">
-              <strong className="text-gray-800 text-sm block mb-3">1. Calibration Frequency:</strong>
-              <div className="flex flex-col md:flex-row gap-4 ml-2 text-sm text-gray-700">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="freq"
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                    checked={srfData.calibration_frequency === "As per Standard"}
-                    disabled={true}
-                  />
-                  As per Standard
-                </label>
-                
-                <div className="flex items-center gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Phone</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Phone size={16} className="text-gray-400"/>
+                    </div>
+                    <input
+                        type="text"
+                        readOnly={!canEdit}
+                        value={srfData.phone}
+                        onChange={(e) => handleSrfChange("phone", e.target.value)}
+                        className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Email</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Mail size={16} className="text-gray-400"/>
+                    </div>
+                    <input
+                        type="email"
+                        readOnly={!canEdit}
+                        value={srfData.email}
+                        onChange={(e) => handleSrfChange("email", e.target.value)}
+                        className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
+                    />
+                  </div>
+                </div>
+            </div>
+
+            <div className="space-y-6">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Certificate Issue Name</label>
+                  <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Award size={16} className="text-indigo-500"/>
+                      </div>
+                      <input
+                          type="text"
+                          readOnly={!canEdit}
+                          value={srfData.certificate_issue_name}
+                          onChange={(e) => handleSrfChange("certificate_issue_name", e.target.value)}
+                          className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
+                      />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Certificate Issue Address</label>
+                  <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 pt-2.5 flex items-start pointer-events-none">
+                        <Home size={16} className="text-indigo-500"/>
+                      </div>
+                      <textarea
+                          rows={2}
+                          readOnly={!canEdit}
+                          value={srfData.certificate_issue_adress || ""}
+                          onChange={(e) => handleSrfChange("certificate_issue_adress", e.target.value)}
+                          className={`block w-full pl-10 rounded-lg border-gray-300 text-sm ${canEdit ? "bg-white" : "bg-gray-50 cursor-not-allowed"}`}
+                          placeholder="Same as Bill To if empty"
+                      />
+                  </div>
+                </div>
+            </div>
+          </fieldset>
+          
+          {showSpecialInstructions && (
+            <fieldset className="mb-10 border border-gray-300 rounded-2xl bg-gray-50 p-6">
+              <legend className="flex items-center gap-2 px-3 py-1.5 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">
+                <BookOpen className="h-5 w-5 text-indigo-600" /> Special Instructions from customer for calibration
+              </legend>
+
+              <div className="mb-6">
+                <strong className="text-gray-800 text-sm block mb-3">1. Calibration Frequency:</strong>
+                <div className="flex flex-col md:flex-row gap-4 ml-2 text-sm text-gray-700">
                   <label className="flex items-center gap-2">
                     <input
                       type="radio"
                       name="freq"
                       className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                      checked={srfData.calibration_frequency !== "As per Standard"}
+                      checked={srfData.calibration_frequency === "As per Standard"}
                       disabled={true}
                     />
-                    Specify
+                    As per Standard
                   </label>
-                  {srfData.calibration_frequency !== "As per Standard" && (
-                    <input
-                      type="text"
-                      className="border border-gray-300 rounded-lg px-3 py-1.5 w-64 text-sm bg-gray-100 cursor-not-allowed"
-                      value={srfData.calibration_frequency || ""}
-                      readOnly={true}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Statement of Conformity */}
-            <div className="mb-6">
-              <strong className="text-gray-800 text-sm block mb-3">2. Required 'Statement of conformity' to be reported in the Calibration Certificate?</strong>
-              <div className="flex gap-6 ml-2 text-sm text-gray-700">
-                <label className="flex items-center gap-2 cursor-not-allowed">
-                  <input
-                    type="radio"
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                    checked={srfData.statement_of_conformity === true}
-                    disabled={true}
-                  />
-                  YES
-                </label>
-                <label className="flex items-center gap-2 cursor-not-allowed">
-                  <input
-                    type="radio"
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
-                    checked={srfData.statement_of_conformity === false}
-                    disabled={true}
-                  />
-                  NO
-                </label>
-              </div>
-            </div>
-
-            {/* 2.1 Decision Rules (Conditional) */}
-            {srfData.statement_of_conformity && (
-              <div className="mb-6 ml-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <strong className="text-gray-800 text-sm block mb-3">2.1 Decision Rule (tick √):</strong>
-                <div className="flex flex-col gap-2 text-sm text-gray-700">
-                  {[
-                    ["ref_iso_is_doc", "Reference to ISO/IS Doc. Standard"],
-                    ["ref_manufacturer_manual", "Reference to manufacturer Instruction Manual"],
-                    ["ref_customer_requirement", "Reference to Customer Requirement"]
-                  ].map(([field, label]) => (
-                    <label key={field} className="flex items-center gap-2 cursor-not-allowed">
+                  
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2">
                       <input
-                        type="checkbox"
-                        className="rounded text-indigo-600 focus:ring-indigo-500"
-                        checked={!!(srfData as any)[field]}
+                        type="radio"
+                        name="freq"
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                        checked={srfData.calibration_frequency !== "As per Standard"}
                         disabled={true}
                       />
-                      {label}
+                      Specify
                     </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 3. Turnaround Time & Remarks */}
-            <div className="grid gap-6 md:grid-cols-2 mt-6 border-t pt-6">
-              <div>
-                <strong className="text-gray-800 text-sm block mb-2">3. Turnaround time (Days):</strong>
-                <input
-                  type="number"
-                  className="border border-gray-300 rounded-lg px-3 py-2 w-full max-w-xs text-sm bg-gray-100 cursor-not-allowed"
-                  value={srfData.turnaround_time || ""}
-                  readOnly={true}
-                />
-              </div>
-              <div>
-                <strong className="text-gray-800 text-sm block mb-2">Additional Details / Remarks:</strong>
-                <textarea
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
-                  value={srfData.remarks || ""}
-                  readOnly={true}
-                />
-              </div>
-            </div>
-          </fieldset>
-        )}
-
-        {/* Equipment Table */}
-        <fieldset className="border border-gray-300 rounded-2xl p-6 bg-gray-50 mb-10">
-          <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">Equipment Details</legend>
-          <div className="overflow-x-auto mt-4">
-            <table className="w-full text-sm text-left text-gray-700">
-              <thead className="text-xs uppercase bg-gray-100 text-gray-600">
-                <tr>
-                  <th className="px-4 py-3">Instrument Nomenclature</th>
-                  <th className="px-4 py-3">Model</th>
-                  <th className="px-4 py-3">Serial No/ID</th>
-                  <th className="px-4 py-3">Range</th>
-                  <th className="px-4 py-3">Unit</th>
-                  <th className="px-4 py-3">Calibration Points</th>
-                  <th className="px-4 py-3">Mode of Calibration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {srfData.inward?.equipments.map((eq) => (
-                  <tr key={eq.inward_eqp_id} className="bg-white border-b hover:bg-blue-50 transition">
-                    <td className="px-4 py-2">{eq.material_description}</td>
-                    <td className="px-4 py-2 font-medium">{eq.model}</td>
-                    <td className="px-4 py-2">{eq.serial_no}</td>
-                    <td className="px-4 py-2">{eq.range}</td>
-                    <td className="px-4 py-2">
+                    {srfData.calibration_frequency !== "As per Standard" && (
                       <input
                         type="text"
-                        readOnly
-                        value={eq.srf_equipment?.unit || eq.unit || ""}
-                        className="block w-full rounded-lg border-gray-300 px-2 py-1 text-sm bg-gray-50 cursor-not-allowed"
-                        placeholder="Auto-filled from spec"
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 w-64 text-sm bg-gray-100 cursor-not-allowed"
+                        value={srfData.calibration_frequency || ""}
+                        readOnly={true}
                       />
-                    </td>
-                    <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.no_of_calibration_points ?? ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "no_of_calibration_points", e.target.value)} /></td>
-                    <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.mode_of_calibration || ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "mode_of_calibration", e.target.value)} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </fieldset>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-        {/* Actions */}
-        {canEdit && (
-          <div className="flex justify-end items-center gap-4 pt-8 mt-8 border-t border-gray-200">
-            <button className="px-5 py-2.5 rounded-lg font-medium text-gray-800 bg-gray-200 hover:bg-gray-300 transition" onClick={() => navigate("/engineer/srfs")}>Cancel</button>
-            <button
-                className="px-5 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
-                onClick={() => handleSaveSrf((srfData.status === "created" || srfData.status === "draft") ? "inward_completed" : srfData.status, true)}
-                disabled={autoSaving}
-            >
-              {activeSrfId ? "Save Changes & Submit" : "Create SRF & Submit"}
-            </button>
-          </div>
-        )}
+              <div className="mb-6">
+                <strong className="text-gray-800 text-sm block mb-3">2. Required 'Statement of conformity' to be reported in the Calibration Certificate?</strong>
+                <div className="flex gap-6 ml-2 text-sm text-gray-700">
+                  <label className="flex items-center gap-2 cursor-not-allowed">
+                    <input
+                      type="radio"
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                      checked={srfData.statement_of_conformity === true}
+                      disabled={true}
+                    />
+                    YES
+                  </label>
+                  <label className="flex items-center gap-2 cursor-not-allowed">
+                    <input
+                      type="radio"
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                      checked={srfData.statement_of_conformity === false}
+                      disabled={true}
+                    />
+                    NO
+                  </label>
+                </div>
+              </div>
+
+              {srfData.statement_of_conformity && (
+                <div className="mb-6 ml-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <strong className="text-gray-800 text-sm block mb-3">2.1 Decision Rule (tick √):</strong>
+                  <div className="flex flex-col gap-2 text-sm text-gray-700">
+                    {[
+                      ["ref_iso_is_doc", "Reference to ISO/IS Doc. Standard"],
+                      ["ref_manufacturer_manual", "Reference to manufacturer Instruction Manual"],
+                      ["ref_customer_requirement", "Reference to Customer Requirement"]
+                    ].map(([field, label]) => (
+                      <label key={field} className="flex items-center gap-2 cursor-not-allowed">
+                        <input
+                          type="checkbox"
+                          className="rounded text-indigo-600 focus:ring-indigo-500"
+                          checked={!!(srfData as any)[field]}
+                          disabled={true}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-6 md:grid-cols-2 mt-6 border-t pt-6">
+                <div>
+                  <strong className="text-gray-800 text-sm block mb-2">3. Turnaround time (Days):</strong>
+                  <input
+                    type="number"
+                    className="border border-gray-300 rounded-lg px-3 py-2 w-full max-w-xs text-sm bg-gray-100 cursor-not-allowed"
+                    value={srfData.turnaround_time || ""}
+                    readOnly={true}
+                  />
+                </div>
+                <div>
+                  <strong className="text-gray-800 text-sm block mb-2">Additional Details / Remarks:</strong>
+                  <textarea
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-gray-100 cursor-not-allowed"
+                    value={srfData.remarks || ""}
+                    readOnly={true}
+                  />
+                </div>
+              </div>
+            </fieldset>
+          )}
+
+          <fieldset className="border border-gray-300 rounded-2xl p-6 bg-gray-50 mb-10">
+            <legend className="px-3 text-lg font-semibold text-gray-800 bg-white rounded-md shadow-sm">Equipment Details</legend>
+            <div className="overflow-x-auto mt-4">
+              <table className="w-full text-sm text-left text-gray-700">
+                <thead className="text-xs uppercase bg-gray-100 text-gray-600">
+                  <tr>
+                    <th className="px-4 py-3">Instrument Nomenclature</th>
+                    <th className="px-4 py-3">Model</th>
+                    <th className="px-4 py-3">Serial No/ID</th>
+                    <th className="px-4 py-3">Range</th>
+                    <th className="px-4 py-3">Unit</th>
+                    <th className="px-4 py-3">Calibration Points</th>
+                    <th className="px-4 py-3">Mode of Calibration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {srfData.inward?.equipments.map((eq) => (
+                    <tr key={eq.inward_eqp_id} className="bg-white border-b hover:bg-blue-50 transition">
+                      <td className="px-4 py-2">{eq.material_description}</td>
+                      <td className="px-4 py-2 font-medium">{eq.model}</td>
+                      <td className="px-4 py-2">{eq.serial_no}</td>
+                      <td className="px-4 py-2">{eq.range}</td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={eq.srf_equipment?.unit || eq.unit || ""}
+                          className="block w-full rounded-lg border-gray-300 px-2 py-1 text-sm bg-gray-50 cursor-not-allowed"
+                          placeholder="Auto-filled from spec"
+                        />
+                      </td>
+                      <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.no_of_calibration_points ?? ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "no_of_calibration_points", e.target.value)} /></td>
+                      <td className="px-2 py-1"><input type="text" className={`block w-full rounded-lg border-gray-300 px-2 py-1 text-sm ${canEdit ? "bg-white" : "bg-gray-100 cursor-not-allowed"}`} readOnly={!canEdit} value={eq.srf_equipment?.mode_of_calibration || ""} onChange={(e) => handleSrfEquipmentChange(eq.inward_eqp_id, "mode_of_calibration", e.target.value)} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </fieldset>
+
+          {canEdit && (
+            <div className="flex justify-end items-center gap-4 pt-8 mt-8 border-t border-gray-200">
+              <button className="px-5 py-2.5 rounded-lg font-medium text-gray-800 bg-gray-200 hover:bg-gray-300 transition" onClick={goBackToList}>Cancel</button>
+              <button
+                  className="px-5 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
+                  onClick={() => handleSaveSrf((srfData.status === "created" || srfData.status === "draft") ? "inward_completed" : srfData.status, true)}
+                  disabled={autoSaving || isLocked}
+              >
+                {activeSrfId ? "Save Changes & Submit" : "Create SRF & Submit"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -17,7 +17,6 @@ import {
   FileDown, 
   CheckSquare,
   Square,
-  RefreshCw
 } from "lucide-react";
 import { api, ENDPOINTS } from "../api/config";
 import { InwardDetail } from "../types/inward";
@@ -301,12 +300,82 @@ export const ViewUpdateInward: React.FC = () => {
       <SortDesc className="w-4 h-4 text-blue-600" />;
   };
 
-  // --- Render ---
+  // --- [UPDATED] SKELETON LOADER ---
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin text-blue-600" size={48} />
-        <span className="ml-3 text-lg text-gray-600">Loading inward records...</span>
+      <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 animate-in fade-in duration-300">
+        {/* Header Skeleton */}
+        <div className="flex flex-wrap items-center justify-between border-b pb-4 mb-6 gap-4">
+          <div className="flex items-center space-x-4">
+            <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+            <div>
+              <div className="h-8 w-48 bg-gray-200 rounded animate-pulse mb-2" />
+              <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className="h-10 w-32 bg-gray-200 rounded-lg animate-pulse" />
+        </div>
+
+        {/* Filters Skeleton */}
+        <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="h-10 bg-gray-200 rounded animate-pulse" />
+            <div className="h-10 bg-gray-200 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-gray-200 rounded animate-pulse place-self-center justify-self-end" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="h-10 bg-gray-200 rounded animate-pulse" />
+            <div className="h-10 bg-gray-200 rounded animate-pulse" />
+            <div className="flex gap-2">
+               <div className="flex-1 h-10 bg-gray-200 rounded animate-pulse" />
+               <div className="flex-1 h-10 bg-gray-200 rounded animate-pulse" />
+               <div className="w-16 h-10 bg-gray-200 rounded animate-pulse" />
+            </div>
+          </div>
+        </div>
+
+        {/* Table Skeleton */}
+        <div className="border rounded-lg bg-white overflow-hidden shadow-sm">
+          {/* Table Header */}
+          <div className="bg-gray-50 p-4 border-b flex gap-4">
+             <div className="w-10 h-4 bg-gray-300 rounded animate-pulse" /> {/* Checkbox */}
+             <div className="flex-1 h-4 bg-gray-300 rounded animate-pulse" /> {/* SRF */}
+             <div className="flex-1 h-4 bg-gray-300 rounded animate-pulse" /> {/* Date */}
+             <div className="flex-[2] h-4 bg-gray-300 rounded animate-pulse" /> {/* Customer */}
+             <div className="flex-1 h-4 bg-gray-300 rounded animate-pulse" /> {/* DC */}
+             <div className="w-16 h-4 bg-gray-300 rounded animate-pulse" /> {/* Qty */}
+             <div className="w-24 h-4 bg-gray-300 rounded animate-pulse" /> {/* Status */}
+             <div className="w-24 h-4 bg-gray-300 rounded animate-pulse" /> {/* Actions */}
+          </div>
+          
+          {/* Table Rows (Simulate 6 rows) */}
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="p-4 border-b flex items-center gap-4 hover:bg-gray-50">
+               <div className="w-10 h-6 bg-gray-200 rounded animate-pulse" /> {/* Checkbox */}
+               <div className="flex-1 h-6 bg-gray-200 rounded animate-pulse" /> {/* SRF */}
+               <div className="flex-1 h-4 bg-gray-200 rounded animate-pulse" /> {/* Date */}
+               <div className="flex-[2] h-4 bg-gray-200 rounded animate-pulse" /> {/* Customer */}
+               <div className="flex-1 h-4 bg-gray-200 rounded animate-pulse" /> {/* DC */}
+               <div className="w-16 h-6 bg-gray-200 rounded-full animate-pulse" /> {/* Qty */}
+               <div className="w-24 h-6 bg-gray-200 rounded-full animate-pulse" /> {/* Status */}
+               <div className="w-24 flex gap-2 justify-center"> {/* Actions */}
+                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
+               </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Summary Stats Skeleton */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+           {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2">
+                 <div className="w-12 h-8 bg-gray-200 rounded animate-pulse" />
+                 <div className="w-20 h-4 bg-gray-200 rounded animate-pulse" />
+              </div>
+           ))}
+        </div>
       </div>
     );
   }
@@ -336,14 +405,7 @@ export const ViewUpdateInward: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={fetchInwards}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-            title="Refresh List"
-          >
-            <RefreshCw size={20} />
-          </button>
+          
           <button
             type="button"
             onClick={() => navigate('/engineer')}

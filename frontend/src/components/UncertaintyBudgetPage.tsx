@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom"; // Added useLocation
+import { useParams, useNavigate, useLocation } from "react-router-dom"; 
 import { api } from "../api/config";
 import {
   ArrowLeft,
-  Loader2,
   Calculator,
   AlertTriangle,
   Info,
@@ -32,7 +31,7 @@ interface UncertaintyBudget {
 
   // Final results
   combined_uncertainty: number;
-  effective_dof: number; // Matches backend schema
+  effective_dof: number; 
   coverage_factor: number;
   expanded_uncertainty: number;
   expanded_un_nm: number | null;
@@ -51,10 +50,80 @@ interface UncertaintyBudget {
   created_at: string;
 }
 
+// --- Skeleton Component ---
+const UncertaintyBudgetSkeleton: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 font-sans animate-pulse">
+      <div className="max-w-[100rem] mx-auto space-y-6">
+        
+        {/* Header Skeleton */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 bg-gray-300 rounded"></div>
+              <div className="h-8 w-64 bg-gray-300 rounded"></div>
+            </div>
+            <div className="h-4 w-48 bg-gray-200 rounded"></div>
+          </div>
+          <div className="h-10 w-32 bg-gray-200 rounded-lg"></div>
+        </div>
+
+        {/* Table Container Skeleton */}
+        <div className="bg-white rounded-xl border border-gray-300 shadow-sm overflow-hidden">
+          {/* Table Toolbar */}
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-5 w-5 bg-gray-300 rounded"></div>
+              <div className="h-5 w-40 bg-gray-300 rounded"></div>
+            </div>
+            {/* Decimal Control Skeleton */}
+            <div className="h-8 w-24 bg-gray-200 rounded-lg"></div>
+          </div>
+
+          {/* Table Grid Skeleton */}
+          <div className="overflow-x-auto p-2">
+            <div className="min-w-[1000px]">
+              {/* Fake Headers (3 rows) */}
+              <div className="flex gap-1 mb-1">
+                {[...Array(15)].map((_, i) => (
+                  <div key={`h1-${i}`} className="h-8 bg-gray-200 rounded flex-1"></div>
+                ))}
+              </div>
+              <div className="flex gap-1 mb-1">
+                {[...Array(15)].map((_, i) => (
+                  <div key={`h2-${i}`} className="h-8 bg-gray-200 rounded flex-1"></div>
+                ))}
+              </div>
+              <div className="flex gap-1 mb-2">
+                {[...Array(15)].map((_, i) => (
+                  <div key={`h3-${i}`} className="h-8 bg-gray-200 rounded flex-1"></div>
+                ))}
+              </div>
+
+              {/* Fake Data Rows */}
+              {[1, 2, 3, 4, 5].map((row) => (
+                <div key={row} className="flex gap-1 mb-2">
+                  {[...Array(21)].map((col) => (
+                    <div 
+                      key={col} 
+                      className={`h-10 bg-gray-100 rounded border border-gray-100 ${col === 0 ? 'bg-gray-200 w-24 flex-shrink-0' : 'flex-1'}`}
+                    ></div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Main Component ---
 const UncertaintyBudgetPage: React.FC = () => {
   const { inwardId, equipmentId } = useParams<{ inwardId: string; equipmentId: string }>();
   const navigate = useNavigate();
-  const location = useLocation(); // Hook to access passed state
+  const location = useLocation(); 
 
   const [loading, setLoading] = useState(true);
   const [budgets, setBudgets] = useState<UncertaintyBudget[]>([]);
@@ -129,12 +198,7 @@ const UncertaintyBudgetPage: React.FC = () => {
 
   // --- Render States ---
   if (loading) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50">
-        <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
-        <p className="text-gray-500 font-medium">Loading Analysis...</p>
-      </div>
-    );
+    return <UncertaintyBudgetSkeleton />;
   }
 
   if (error || budgets.length === 0) {
