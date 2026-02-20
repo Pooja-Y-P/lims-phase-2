@@ -102,6 +102,7 @@ const RepeatabilitySkeleton: React.FC = () => {
 // --- Main Component ---
 const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onStepAdded }) => {
   const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false); // Track if initial load is done
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [tableData, setTableData] = useState<RepeatabilityRowData[]>([]);
   const [references, setReferences] = useState<UncertaintyReference[]>([]);
@@ -130,8 +131,9 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
     1000
   );
  
-  const isFirstRender = useRef(true);
-  const isInitialLoad = useRef(true);
+  // Refs for Strict Edit Guard
+  const hasUserEdited = useRef(false);
+  const lastSavedPayload = useRef<string | null>(null);
  
   const pressureUnit = tableData.length > 0 ? tableData[0].pressure_unit : "psi";
   const torqueUnit = tableData.length > 0 ? tableData[0].torque_unit : "ft-lb";
@@ -153,8 +155,10 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
           setSpecDefaults(jobRes.data.defaults);
         }
  
+        let currentData: RepeatabilityRowData[] = [];
+
         if (jobRes.data.status === "success" && jobRes.data.results.length > 0) {
-          const formattedData: RepeatabilityRowData[] = jobRes.data.results.map((item) => ({
+          currentData = jobRes.data.results.map((item) => ({
             step_percent: Number(item.step_percent),
             set_pressure: Number(item.set_pressure) || 0,
             set_torque: Number(item.set_torque) || 0,
@@ -170,41 +174,71 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
             torque_unit: item.torque_unit || "",
           }));
  
-          formattedData.sort((a, b) => a.step_percent - b.step_percent);
-          setTableData(formattedData);
-        } else {
-          setTableData([]);
+          currentData.sort((a, b) => a.step_percent - b.step_percent);
         }
+        
+        setTableData(currentData);
+
+        // SYNC REFERENCE: Set initial payload so auto-save knows it's synced
+        const initialPayload = JSON.stringify(
+            currentData.map((r) => ({
+                step_percent: Number(r.step_percent),
+                set_pressure: Number(r.set_pressure),
+                set_torque: Number(r.set_torque),
+                readings: r.readings.map((v) => (v === "" || isNaN(Number(v)) ? 0 : Number(v))),
+            }))
+        );
+        lastSavedPayload.current = initialPayload;
+
+        // RESET EDIT FLAG
+        hasUserEdited.current = false;
+        setDataLoaded(true);
+
       } catch (err) {
         console.error("Failed to load data", err);
       } finally {
         setLoading(false);
-        setTimeout(() => { isInitialLoad.current = false; }, 500);
       }
     };
     init();
   }, [jobId]);
  
-  // --- 2. AUTO-SAVE (Runs on normal edits with delay) ---
+  // --- 2. AUTO-SAVE (Strict Guard) ---
   useEffect(() => {
-    if (isFirstRender.current || isInitialLoad.current) {
-      isFirstRender.current = false;
-      return;
-    }
+    // 1. Check if data loaded
+    if (!dataLoaded) return;
+    
+    // 2. Check if user actually edited
+    if (!hasUserEdited.current) return;
+    
+    // 3. Check if debouncedData is valid
     if (!debouncedData) return;
  
     const autoSave = async () => {
+      // Construct payload
+      const payload = debouncedData.map((r) => ({
+        step_percent: Number(r.step_percent),
+        set_pressure: Number(r.set_pressure),
+        set_torque: Number(r.set_torque),
+        readings: r.readings.map((v) => (v === "" || isNaN(Number(v)) ? 0 : Number(v))),
+      }));
+
+      const payloadString = JSON.stringify(payload);
+      
+      // Prevent duplicate saves
+      if (payloadString === lastSavedPayload.current) {
+         setSaveStatus("saved");
+         return;
+      }
+
       try {
         setSaveStatus("saving");
         await api.post("/htw-calculations/repeatability/draft", {
           job_id: jobId,
-          steps: debouncedData.map((r) => ({
-            step_percent: Number(r.step_percent),
-            set_pressure: Number(r.set_pressure),
-            set_torque: Number(r.set_torque),
-            readings: r.readings.map((v) => (v === "" || isNaN(Number(v)) ? 0 : Number(v))),
-          })),
+          steps: payload,
         });
+        
+        lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
       } catch (err) {
         console.error("Draft Save Failed", err);
@@ -212,7 +246,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
       }
     };
     autoSave();
-  }, [debouncedData, jobId]);
+  }, [debouncedData, jobId, dataLoaded]);
  
   // --- 3. MATH HELPERS ---
   const calculateInterpolation = (val: number): number => {
@@ -256,9 +290,13 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
   // --- 4. STEP MANAGEMENT HANDLERS ---
  
   const handleToggleStep = async (targetPercent: number) => {
+    // This action counts as a user edit
+    hasUserEdited.current = true;
+    
     const exists = tableData.some((r) => Number(r.step_percent) === targetPercent);
  
     if (exists) {
+      // REMOVE STEP
       setTableData((prev) => prev.filter((r) => Number(r.step_percent) !== targetPercent));
       
       try {
@@ -278,6 +316,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
         setSaveStatus("error");
       }
     } else {
+      // ADD STEP (Checkbox)
       setTableData((prev) => {
         const key = targetPercent.toString();
         const defs = specDefaults[key];
@@ -287,7 +326,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
           step_percent: targetPercent,
           set_pressure: defs ? defs.set_pressure : 0,
           set_torque: defs ? defs.set_torque : 0,
-          readings: ["", "", "", "", ""],
+          readings: ["", "", "", "", ""], // Explicit empty strings
           mean_xr: null,
           corrected_standard: null,
           corrected_mean: null,
@@ -298,6 +337,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
         const newData = [...prev, newRow];
         return newData.sort((a, b) => a.step_percent - b.step_percent);
       });
+      // The useEffect auto-save will pick this up because hasUserEdited is true
     }
   };
  
@@ -316,6 +356,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
     }
  
     setIsAddingStep(true);
+    hasUserEdited.current = true; // Mark as edit
  
     const baseRow = tableData.length > 0 ? tableData[0] : null;
    
@@ -323,7 +364,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
       step_percent: stepVal,
       set_pressure: isNaN(pressVal) ? 0 : pressVal,
       set_torque: isNaN(torqVal) ? 0 : torqVal,
-      readings: ["", "", "", "", ""],
+      readings: ["", "", "", "", ""], // Initialize with 5 empty strings
       mean_xr: null,
       corrected_standard: null,
       corrected_mean: null,
@@ -336,6 +377,7 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
     setTableData(updatedData);
 
     try {
+      // Immediate save for explicit Add action
       await api.post("/htw-calculations/repeatability/draft", {
         job_id: jobId,
         steps: updatedData.map((r) => ({
@@ -365,6 +407,9 @@ const RepeatabilitySection: React.FC<RepeatabilitySectionProps> = ({ jobId, onSt
   // --- 5. INPUT HANDLERS ---
   const handleReadingChange = (rowIndex: number, readingIndex: number, value: string) => {
     if (!/^\d*.?\d*$/.test(value)) return;
+    
+    hasUserEdited.current = true; // Mark as edit
+    
     setTableData((prevData) => {
       const newData = [...prevData];
       const row = { ...newData[rowIndex] };

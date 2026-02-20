@@ -136,14 +136,19 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
         setTableData(currentData);
 
+        // SYNC REFERENCE: Convert to payload string immediately
+        // This ensures the auto-save effect knows "this data is already saved"
         const initialPayload = JSON.stringify({
             job_id: jobId,
             positions: currentData.map(r => ({
                 loading_position_mm: r.loading_position_mm,
-                readings: r.readings.map(v => (v === "" ? 0 : Number(v)))
+                readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
             }))
         });
         lastSavedPayload.current = initialPayload;
+        
+        // RESET EDIT FLAG: This data came from DB, not user
+        hasUserEdited.current = false;
         
         setDataLoaded(true);
 
@@ -159,21 +164,27 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
   // --- 2. AUTO-SAVE EFFECT ---
   useEffect(() => {
+    // 1. Safety Check: Data must be loaded
     if (!dataLoaded) return;
-    if (!hasUserEdited.current && !tableData.some(r => r.readings.some(v => v !== ""))) return;
+
+    // 2. STRICT GUARD: If user hasn't typed anything, DO NOT SAVE.
+    // This prevents overwriting existing data with zeros on load.
+    if (!hasUserEdited.current) return;
 
     const performAutoSave = async () => {
       const payload = {
         job_id: jobId,
         positions: debouncedTableData.map(r => ({
           loading_position_mm: r.loading_position_mm,
-          readings: r.readings.map(v => (v === "" ? 0 : Number(v)))
+          readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
         }))
       };
 
       const payloadString = JSON.stringify(payload);
+      
+      // 3. Prevent Duplicate Saves
       if (payloadString === lastSavedPayload.current) {
-        setSaveStatus("saved");
+        setSaveStatus("saved"); // Just visually confirm it's synced
         return;
       }
 
@@ -207,7 +218,9 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
     
+    // FLAG THE EDIT
     hasUserEdited.current = true;
+    
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -217,14 +230,15 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
       // Mean calculation
       const nums = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
-      // Strict mean calc: only if all 10 present? Or partial? Using partial for UI feedback.
+      // Partial mean calc for UI feedback
       row.mean_value = nums.length > 0 ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
 
-      // Instant error b_l (Difference between means of -10 and +10)
+      // Instant error b_l (Difference between means of -10 and +10) logic for UI
       const m1 = newData[0].mean_value;
       const m2 = newData[1].mean_value;
       
       if (m1 !== null && m2 !== null) {
+          // Temporarily update UI while waiting for backend response
           setMeta(m => ({ ...m, error_value: Math.abs(m1 - m2) }));
       }
 
@@ -234,7 +248,7 @@ const LoadingPointSection: React.FC<LoadingPointSectionProps> = ({ jobId }) => {
 
   const handleClear = () => {
     if (window.confirm("Clear all readings?")) {
-      hasUserEdited.current = true;
+      hasUserEdited.current = true; // Clearing counts as an edit
       setSaveStatus("idle");
       setTableData(prev => prev.map(r => ({ ...r, readings: Array(10).fill(""), mean_value: null })));
       setMeta(m => ({ ...m, error_value: 0 }));

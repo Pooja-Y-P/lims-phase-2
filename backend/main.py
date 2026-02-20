@@ -59,14 +59,27 @@ for attempt in range(max_retries):
 app = FastAPI(title="LIMS Backend", version="1.0")
 
 # --- CORS CONFIGURATION (FIXED FOR LAN) ---
-# allow_origins=["*"] is the safest way to ensure 192.168.x.x works without issues
+# # allow_origins=["*"] is the safest way to ensure 192.168.x.x works without issues
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"], 
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=[
+        "http://localhost:3000",
+        "http://192.168.31.195:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Serve uploaded files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

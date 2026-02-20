@@ -1105,7 +1105,7 @@ class InwardService:
         if self.db.scalars(select(User).where(User.email == customer_email)).first(): raise HTTPException(status_code=400, detail="A user account already exists with this email.")
 
         temp_password = self.generate_temp_password()
-        new_user = User(email=customer_email, username=customer_email, password_hash=hash_password(temp_password), role='customer', is_active=False, customer_id=db_inward.customer_id, full_name=db_inward.customer.contact_person)
+        new_user = User(email=customer_email, username=customer_email, password_hash=hash_password(temp_password), role='customer', is_active=True, customer_id=db_inward.customer_id, full_name=db_inward.customer.contact_person)
         self.db.add(new_user)
 
         new_invitation = Invitation(email=customer_email, token=create_invitation_token(), customer_id=db_inward.customer_id, created_by=creator_id, user_role='customer', invited_name=db_inward.customer.contact_person)

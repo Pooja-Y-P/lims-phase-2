@@ -53,7 +53,6 @@ def get_job_and_specs(db: Session, job_id: int):
     
     if not specs:
         # Fallback search logic in case of minor mismatches (Case sensitivity/Spacing)
-        # matches the logic used in standard selection service
         search_make = eqp.make.strip()
         search_model = eqp.model.strip()
         
@@ -71,21 +70,48 @@ def get_job_and_specs(db: Session, job_id: int):
         
     return job, specs
 
-def get_job_and_20_percent_torque(db: Session, job_id: int):
+def get_job_and_reference_torque(db: Session, job_id: int):
     """
-    Helper: Fetches the 20% Set Torque value.
-    Used by Sections B, C, D, E.
+    Helper: Dynamically fetches the Set Torque value for Sections B, C, D, E.
+    
+    Logic:
+    1. Query HTWRepeatability for this job.
+    2. Filter to ensure torque is not null.
+    3. Order by 'step_percent' ASCENDING.
+    4. Return the torque of the first result (the minimum percent).
+    5. Fallback: If no Section A data, find the lowest available Manufacturer Spec.
     """
     job, specs = get_job_and_specs(db, job_id)
-    if specs.torque_20 is None:
-        raise ValueError("20% Torque value is missing in Manufacturer Specifications")
-    return float(specs.torque_20), specs
+
+    # 1. Dynamic Fetch: Find the row with the LOWEST step_percent that has a valid torque
+    min_step_row = db.query(HTWRepeatability).filter(
+        and_(
+            HTWRepeatability.job_id == job_id,
+            HTWRepeatability.set_torque_ts.isnot(None)
+        )
+    ).order_by(asc(HTWRepeatability.step_percent)).first()
+
+    if min_step_row:
+        # Use the torque from the minimum step found (e.g., 10%, 15%, or 20%)
+        val = float(min_step_row.set_torque_ts)
+        return val, specs
+
+    # 2. Fallback: If Section A hasn't been run yet, find the lowest defined Spec
+    # This prevents errors if 20% spec is missing but 40% exists
+    if specs.torque_20 is not None and float(specs.torque_20) > 0:
+        return float(specs.torque_20), specs
+    if specs.torque_40 is not None and float(specs.torque_40) > 0:
+        return float(specs.torque_40), specs
+    if specs.torque_60 is not None and float(specs.torque_60) > 0:
+        return float(specs.torque_60), specs
+    
+    # 3. Last resort fallback
+    return 0.0, specs
 
 def get_set_values_safe(specs: HTWManufacturerSpec, step_percent: float):
     """
     Helper to fetch specs. 
     Returns (Pressure, Torque) for 20/40/60/80/100.
-    FIXED: Added 40% and 80% support.
     """
     percent = int(step_percent)
     if percent == 20:
@@ -136,7 +162,6 @@ def calculate_interpolation(db: Session, mean_xr: float) -> float:
 #                           SECTION A: REPEATABILITY
 # ==================================================================================
 
-# Lines 105-127 in your provided code
 def delete_repeatability_step(db: Session, job_id: int, step_percent: float):
     """
     Deletes a specific repeatability step and its associated data.
@@ -466,8 +491,8 @@ def get_uncertainty_references(db: Session):
 # ==================================================================================
 
 def process_reproducibility_calculation(db: Session, request: ReproducibilityCalculationRequest):
-    # 1. Get the Set Torque (20% value) and specs for Unit
-    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    # 1. Get the Set Torque (Minimum Step used in Job)
+    reference_torque_val, specs = get_job_and_reference_torque(db, request.job_id)
     
     # Use requested unit if provided, else fallback to spec unit
     torque_unit = request.torque_unit or specs.torque_unit or ""
@@ -510,13 +535,13 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
         ).first()
 
         if repro_entry:
-            repro_entry.set_torque_ts = set_torque_val
+            repro_entry.set_torque_ts = reference_torque_val
             repro_entry.mean_xr = seq_item['mean_xr']
             repro_entry.error_due_to_reproducibility = b_rep_rounded
         else:
             repro_entry = HTWReproducibility(
                 job_id=request.job_id,
-                set_torque_ts=set_torque_val,
+                set_torque_ts=reference_torque_val,
                 sequence_no=seq_item['sequence_no'],
                 mean_xr=seq_item['mean_xr'],
                 error_due_to_reproducibility=b_rep_rounded,
@@ -557,7 +582,7 @@ def process_reproducibility_calculation(db: Session, request: ReproducibilityCal
     return {
         "job_id": request.job_id,
         "status": "success",
-        "set_torque_20": set_torque_val,
+        "set_torque_20": reference_torque_val, # Kept key name for frontend compatibility
         "error_due_to_reproducibility": b_rep_rounded,
         "torque_unit": torque_unit,
         "sequences": sequence_results
@@ -568,10 +593,10 @@ def process_reproducibility_draft(db: Session, request: ReproducibilityCalculati
 
 def get_stored_reproducibility(db: Session, job_id: int):
     try:
-        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        reference_torque_val, specs = get_job_and_reference_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except Exception:
-        set_torque_val = 0.0
+        reference_torque_val = 0.0
         torque_unit = ""
 
     repro_rows = db.query(HTWReproducibility).filter(
@@ -599,7 +624,7 @@ def get_stored_reproducibility(db: Session, job_id: int):
     return {
         "job_id": job_id,
         "status": "success" if repro_rows else "no_data",
-        "set_torque_20": set_torque_val,
+        "set_torque_20": reference_torque_val,
         "error_due_to_reproducibility": b_rep,
         "torque_unit": torque_unit,
         "sequences": sequences
@@ -610,7 +635,7 @@ def get_stored_reproducibility(db: Session, job_id: int):
 # ==================================================================================
 
 def process_output_drive_calculation(db: Session, request: GeometricCalculationRequest):
-    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    reference_torque_val, specs = get_job_and_reference_torque(db, request.job_id)
     torque_unit = specs.torque_unit or ""
     
     position_results = []
@@ -644,13 +669,13 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
         ).first()
 
         if var_entry:
-            var_entry.set_torque_ts = set_torque_val
+            var_entry.set_torque_ts = reference_torque_val
             var_entry.mean_value = item['mean_value']
             var_entry.error_due_output_drive_bout = b_out_rounded
         else:
             var_entry = HTWOutputDriveVariation(
                 job_id=request.job_id,
-                set_torque_ts=set_torque_val,
+                set_torque_ts=reference_torque_val,
                 position_deg=item['position_deg'],
                 mean_value=item['mean_value'],
                 error_due_output_drive_bout=b_out_rounded, 
@@ -691,7 +716,7 @@ def process_output_drive_calculation(db: Session, request: GeometricCalculationR
     return {
         "job_id": request.job_id,
         "status": "success",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_value": b_out_rounded,
         "torque_unit": torque_unit,
         "positions": position_results
@@ -702,10 +727,10 @@ def process_output_drive_draft(db: Session, request: GeometricCalculationRequest
 
 def get_stored_output_drive(db: Session, job_id: int):
     try:
-        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        reference_torque_val, specs = get_job_and_reference_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
-        set_torque_val = 0.0
+        reference_torque_val = 0.0
         torque_unit = ""
 
     rows = db.query(HTWOutputDriveVariation).filter(
@@ -735,7 +760,7 @@ def get_stored_output_drive(db: Session, job_id: int):
     return {
         "job_id": job_id,
         "status": "success" if rows else "no_data",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_value": round(b_out, 4),
         "torque_unit": torque_unit,
         "positions": positions
@@ -746,7 +771,7 @@ def get_stored_output_drive(db: Session, job_id: int):
 # ==================================================================================
 
 def process_drive_interface_calculation(db: Session, request: GeometricCalculationRequest):
-    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    reference_torque_val, specs = get_job_and_reference_torque(db, request.job_id)
     torque_unit = specs.torque_unit or ""
 
     position_results = []
@@ -780,13 +805,13 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
         ).first()
 
         if var_entry:
-            var_entry.set_torque_ts = set_torque_val
+            var_entry.set_torque_ts = reference_torque_val
             var_entry.mean_value = item['mean_value']
             var_entry.error_due_drive_interface_bint = b_int_rounded
         else:
             var_entry = HTWDriveInterfaceVariation(
                 job_id=request.job_id,
-                set_torque_ts=set_torque_val,
+                set_torque_ts=reference_torque_val,
                 position_deg=item['position_deg'],
                 mean_value=item['mean_value'],
                 error_due_drive_interface_bint=b_int_rounded,
@@ -827,7 +852,7 @@ def process_drive_interface_calculation(db: Session, request: GeometricCalculati
     return {
         "job_id": request.job_id,
         "status": "success",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_value": b_int_rounded,
         "torque_unit": torque_unit,
         "positions": position_results
@@ -838,10 +863,10 @@ def process_drive_interface_draft(db: Session, request: GeometricCalculationRequ
 
 def get_stored_drive_interface(db: Session, job_id: int):
     try:
-        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        reference_torque_val, specs = get_job_and_reference_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
-        set_torque_val = 0.0
+        reference_torque_val = 0.0
         torque_unit = ""
 
     rows = db.query(HTWDriveInterfaceVariation).filter(
@@ -871,7 +896,7 @@ def get_stored_drive_interface(db: Session, job_id: int):
     return {
         "job_id": job_id,
         "status": "success" if rows else "no_data",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_value": round(b_int, 4),
         "torque_unit": torque_unit,
         "positions": positions
@@ -882,7 +907,7 @@ def get_stored_drive_interface(db: Session, job_id: int):
 # ==================================================================================
 
 def process_loading_point_calculation(db: Session, request: LoadingPointRequest):
-    set_torque_val, specs = get_job_and_20_percent_torque(db, request.job_id)
+    reference_torque_val, specs = get_job_and_reference_torque(db, request.job_id)
     torque_unit = specs.torque_unit or ""
 
     position_results = []
@@ -917,13 +942,13 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
         ).first()
 
         if var_entry:
-            var_entry.set_torque_ts = set_torque_val
+            var_entry.set_torque_ts = reference_torque_val
             var_entry.mean_value = item['mean_value']
             var_entry.error_due_loading_point_bl = b_l_rounded
         else:
             var_entry = HTWLoadingPointVariation(
                 job_id=request.job_id,
-                set_torque_ts=set_torque_val,
+                set_torque_ts=reference_torque_val,
                 loading_position_mm=item['loading_position_mm'],
                 mean_value=item['mean_value'],
                 error_due_loading_point_bl=b_l_rounded,
@@ -964,7 +989,7 @@ def process_loading_point_calculation(db: Session, request: LoadingPointRequest)
     return {
         "job_id": request.job_id,
         "status": "success",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_due_to_loading_point": b_l_rounded,
         "torque_unit": torque_unit,
         "positions": position_results
@@ -975,10 +1000,10 @@ def process_loading_point_draft(db: Session, request: LoadingPointRequest):
 
 def get_stored_loading_point(db: Session, job_id: int):
     try:
-        set_torque_val, specs = get_job_and_20_percent_torque(db, job_id)
+        reference_torque_val, specs = get_job_and_reference_torque(db, job_id)
         torque_unit = specs.torque_unit or ""
     except:
-        set_torque_val = 0.0
+        reference_torque_val = 0.0
         torque_unit = ""
 
     rows = db.query(HTWLoadingPointVariation).filter(
@@ -1008,7 +1033,7 @@ def get_stored_loading_point(db: Session, job_id: int):
     return {
         "job_id": job_id,
         "status": "success" if rows else "no_data",
-        "set_torque": set_torque_val,
+        "set_torque": reference_torque_val,
         "error_due_to_loading_point": round(b_l, 4),
         "torque_unit": torque_unit,
         "positions": positions

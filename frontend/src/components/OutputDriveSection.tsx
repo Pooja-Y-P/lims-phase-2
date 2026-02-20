@@ -29,7 +29,7 @@ interface OutputDriveResponse {
 const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // Add dataLoaded state
+  const [dataLoaded, setDataLoaded] = useState(false);
   
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -97,12 +97,15 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
             job_id: jobId,
             positions: currentData.map(r => ({
                 position_deg: r.position_deg,
-                readings: r.readings.map(v => v === "" || isNaN(Number(v)) ? 0 : Number(v))
+                readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
             }))
         };
         lastSavedPayload.current = JSON.stringify(initialPayload);
         
-        setDataLoaded(true); // Mark data as ready for auto-save logic
+        // RESET EDIT FLAG: Ensure we don't save just because we loaded data
+        hasUserEdited.current = false;
+
+        setDataLoaded(true);
 
       } catch (err) { 
           console.error(err); 
@@ -115,46 +118,45 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
 
   // --- 2. AUTO-SAVE EFFECT (DRAFT MODE) ---
   useEffect(() => {
-    // Only proceed if initial data fetch is complete
+    // 1. Safety Checks
     if (!dataLoaded) return;
 
-    // Only save if user has edited OR if there is data (redundant safe check)
-    if (!hasUserEdited.current && !debouncedReadings.some(r => r.readings.some(v => v !== ""))) return;
+    // 2. STRICT GUARD: Stop save if user has not edited
+    // This prevents overwriting data with zeros on mount
+    if (!hasUserEdited.current) return;
 
     const performAutoSave = async () => {
       try {
         setSaveStatus("saving");
 
-        // 1. Construct Payload (Convert empty strings to 0 for draft endpoint)
+        // 3. Construct Payload
         const payload = {
           job_id: jobId,
           positions: debouncedReadings.map(r => ({
             position_deg: r.position_deg,
-            readings: r.readings.map(v => v === "" || isNaN(Number(v)) ? 0 : Number(v))
+            readings: r.readings.map(v => (v === "" || isNaN(Number(v))) ? 0 : Number(v))
           }))
         };
 
-        // 2. Prevent Duplicate Saves
+        // 4. Prevent Duplicate Saves
         const payloadString = JSON.stringify(payload);
         if (payloadString === lastSavedPayload.current) {
           setSaveStatus("saved");
           return; 
         }
 
-        // 3. POST to DRAFT endpoint
+        // 5. POST to DRAFT endpoint
         const res = await api.post<OutputDriveResponse>(
-          "/htw-calculations/output-drive/draft", // UPDATED ENDPOINT
+          "/htw-calculations/output-drive/draft",
           payload
         );
 
-        // 4. Update Meta from Response
         setMeta({
           set_torque: res.data.set_torque,
           error_value: res.data.error_value,
           torque_unit: res.data.torque_unit || "-"
         });
         
-        // 5. Update Reference
         lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
         setLastSaved(new Date());
@@ -171,7 +173,9 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
     if (!/^\d*\.?\d*$/.test(val)) return;
     
+    // FLAG THE EDIT
     hasUserEdited.current = true;
+    
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -198,10 +202,9 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
   const handleClear = async () => {
     if (!window.confirm("Clear all readings?")) return;
     
-    hasUserEdited.current = true;
+    hasUserEdited.current = true; // Clearing is an edit
     setSaveStatus("idle");
 
-    // Clear local state; auto-save effect will handle syncing 0s to backend
     setTableData(prev =>
       prev.map(r => ({
         ...r,
@@ -215,7 +218,8 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
   if (loading) return <div className="p-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-purple-600"/></div>;
 
   return (
-    <div className="flex flex-col w-full animate-in fade-in duration-500 bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6">
+    // REMOVED "animate-in fade-in duration-500" to stop movement
+    <div className="flex flex-col w-full bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6">
         
         {/* Header */}
         <div className="mb-4 flex justify-between items-center">
@@ -256,7 +260,6 @@ const OutputDriveSection: React.FC<OutputDriveSectionProps> = ({ jobId }) => {
             <table className="w-full min-w-[1100px] border-collapse">
                 <thead>
                     <tr className="bg-gray-100 text-[11px] font-bold text-gray-800 border-b border-gray-400 text-center">
-                        {/* Sticky Columns for better UX */}
                         <th className="border-r border-gray-400 p-2 w-[100px] sticky left-0 bg-gray-100 z-10 shadow-sm">Set Torque<br/>({meta.torque_unit})</th>
                         <th className="border-r border-gray-400 p-2 w-[80px] sticky left-[100px] bg-gray-100 z-10 shadow-sm">Position</th>
                         

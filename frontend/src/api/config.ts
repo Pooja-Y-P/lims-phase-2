@@ -254,7 +254,7 @@ api.interceptors.response.use(
 
       return new Promise((resolve, reject) => {
         axios.post(
-          `${API_BASE_URL}${ENDPOINTS.AUTH.REFRESH}`,
+          `${BACKEND_ROOT_URL}${ENDPOINTS.AUTH.REFRESH}`,
           { refresh_token: refreshToken },
           { headers: { 'Content-Type': 'application/json' } }
         )

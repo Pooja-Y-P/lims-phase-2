@@ -324,15 +324,18 @@ const CalibrationPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation(); 
 
-  const { isLocked, lockedBy } = useRecordLock("INWARD", inwardId ? Number(inwardId) : null);
+  // --- UPDATED RECORD LOCK LOGIC ---
+  // Changed namespace from "INWARD" to "EQUIPMENT"
+  // Changed ID from inwardId to equipmentId
+  const { isLocked, lockedBy } = useRecordLock("EQUIPMENT", equipmentId ? Number(equipmentId) : null);
 
   useEffect(() => {
       if (isLocked) {
           console.warn(`[CALIBRATION PAGE] 🔒 Locked by: ${lockedBy}. Form is Read-Only.`);
       } else {
-          console.log(`[CALIBRATION PAGE] 🔓 Lock acquired. Edit mode enabled.`);
+          console.log(`[CALIBRATION PAGE] 🔓 Lock acquired for Equipment ${equipmentId}. Edit mode enabled.`);
       }
-  }, [isLocked, lockedBy]);
+  }, [isLocked, lockedBy, equipmentId]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -673,7 +676,7 @@ const CalibrationPage: React.FC = () => {
 
   const formOpacity = isLocked ? "opacity-70 pointer-events-none select-none" : "opacity-100";
 
-  // --- [UPDATED] SKELETON LOADER ---
+  // --- SKELETON LOADER ---
   if (loading) {
     return (
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 h-screen flex flex-col overflow-hidden animate-in fade-in duration-300">
@@ -689,10 +692,7 @@ const CalibrationPage: React.FC = () => {
 
         {/* Body Skeleton */}
         <div className="flex-1 overflow-y-auto px-8 py-6 bg-white space-y-8">
-           {/* Section Title */}
            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse mb-6" />
-           
-           {/* Form Grid */}
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-12 gap-y-5 pb-8 border-b border-gray-100">
               {[...Array(9)].map((_, i) => (
                  <div key={i} className="space-y-2">
@@ -701,8 +701,6 @@ const CalibrationPage: React.FC = () => {
                  </div>
               ))}
            </div>
-
-           {/* Validate Button */}
            <div className="flex justify-end">
               <div className="h-10 w-48 bg-gray-200 rounded-lg animate-pulse" />
            </div>
@@ -759,7 +757,7 @@ const CalibrationPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Body - Applied formOpacity here to lock everything inside */}
+      {/* Body */}
       <div className={`flex-1 overflow-y-auto px-8 py-6 bg-white ${formOpacity}`}>
         <div className="mb-6"><h2 className="text-sm font-bold text-gray-800 flex items-center gap-2 border-l-4 border-blue-500 pl-2">Device Under Calibration</h2></div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-x-12 gap-y-5 pb-8 border-b border-gray-100">
@@ -848,30 +846,31 @@ const CalibrationPage: React.FC = () => {
                                 })}
                             </div>
                             
+                            {/* DYNAMIC RENDERING FOR DATA RE-FETCHING */}
                             <div className="mt-8 min-h-[400px]">
-                                <div className={activeTab === 'PRE' ? 'block animate-step' : 'hidden'}>
+                                {activeTab === 'PRE' && (
                                     <EnvironmentCheckSection 
                                         jobId={jobId} 
                                         stage="PRE" 
                                         onValidationChange={(valid) => { setPreEnvValid(valid); if (valid) setIsWorksheetSaved(true); }}
-                                        isLocked={isLocked} // Pass lock
+                                        isLocked={isLocked}
                                     />
-                                </div>
+                                )}
                                 
-                                <div className={activeTab === 'A' ? 'block animate-step' : 'hidden'}><RepeatabilitySection jobId={jobId} onStepAdded={handleRefreshStandards} /></div>
-                                <div className={activeTab === 'B' ? 'block animate-step' : 'hidden'}><ReproducibilitySection jobId={jobId} torqueUnit={deviceDetails.rangeUnit} /></div>
-                                <div className={activeTab === 'C' ? 'block animate-step' : 'hidden'}><OutputDriveSection jobId={jobId} /></div>
-                                <div className={activeTab === 'D' ? 'block animate-step' : 'hidden'}><DriveInterfaceSection jobId={jobId} /></div>
-                                <div className={activeTab === 'E' ? 'block animate-step' : 'hidden'}><LoadingPointSection jobId={jobId} /></div>
+                                {activeTab === 'A' && <RepeatabilitySection jobId={jobId} onStepAdded={handleRefreshStandards} />}
+                                {activeTab === 'B' && <ReproducibilitySection jobId={jobId} torqueUnit={deviceDetails.rangeUnit} />}
+                                {activeTab === 'C' && <OutputDriveSection jobId={jobId} />}
+                                {activeTab === 'D' && <DriveInterfaceSection jobId={jobId} />}
+                                {activeTab === 'E' && <LoadingPointSection jobId={jobId} />}
                                 
-                                <div className={activeTab === 'POST' ? 'block animate-step' : 'hidden'}>
+                                {activeTab === 'POST' && (
                                     <EnvironmentCheckSection 
                                         jobId={jobId} 
                                         stage="POST" 
                                         onValidationChange={setPostEnvValid} 
                                         isLocked={isLocked} 
                                     />
-                                </div>
+                                )}
                             </div>
                         </div>
                     ) : (

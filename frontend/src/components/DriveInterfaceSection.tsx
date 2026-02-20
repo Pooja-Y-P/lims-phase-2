@@ -82,12 +82,17 @@ const DriveInterfaceSkeleton: React.FC = () => {
 const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) => {
   // --- STATE ---
   const [loading, setLoading] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false); // Critical for Auto-Save logic
+  const [dataLoaded, setDataLoaded] = useState(false); 
   
   // Auto-Save Status
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  
+  // Ref to track the exact JSON string of the last successful save/fetch
   const lastSavedPayload = useRef<string | null>(null);
+  
+  // Ref to track if the user has actually typed anything
+  const hasUserEdited = useRef(false);
 
   // Table data
   const [tableData, setTableData] = useState<GeometricRowData[]>([
@@ -100,12 +105,12 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
   const [meta, setMeta] = useState({ set_torque: 0, error_value: 0, torque_unit: "-" });
 
   // --- DEBOUNCE SETUP ---
+  // Wait 1 second after typing stops before updating `debouncedTableData`
   const debouncedTableData = useDebounce(tableData, 1000);
-  const hasUserEdited = useRef(false);
 
   // --- 1. INITIAL FETCH ---
   useEffect(() => {
-    const init = async () => {
+    const fetchData = async () => {
       if (!jobId) return;
       setLoading(true);
       try {
@@ -128,19 +133,18 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
           currentData = [0, 90, 180, 270].map(deg =>
             mappedData.find(d => d.position_deg === deg) || { position_deg: deg, readings: Array(10).fill(""), mean_value: null }
           );
-
-          setMeta({
-            set_torque: res.data.set_torque,
-            error_value: res.data.error_value,
-            torque_unit: res.data.torque_unit || "-"
-          });
-        } else {
-            setMeta(prev => ({ ...prev, set_torque: res.data.set_torque, torque_unit: res.data.torque_unit || "-" }));
         }
+
+        // Update Meta (This gets the Set Torque dynamically from the backend logic we fixed)
+        setMeta({
+          set_torque: res.data.set_torque,
+          error_value: res.data.error_value,
+          torque_unit: res.data.torque_unit || "-"
+        });
 
         setTableData(currentData);
 
-        // --- SYNC REFERENCE TO PREVENT IMMEDIATE SAVE ---
+        // --- CRITICAL: SYNC REFERENCE TO PREVENT IMMEDIATE SAVE ---
         const initialPayload = { 
           job_id: jobId, 
           positions: currentData.map(r => ({
@@ -150,26 +154,31 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
         };
         lastSavedPayload.current = JSON.stringify(initialPayload);
         
+        // Reset the edit flag because this is data from DB, not user
+        hasUserEdited.current = false;
+        
         setDataLoaded(true);
 
       } catch (err) {
-        console.error(err);
+        console.error("Fetch Error:", err);
       } finally {
         setLoading(false);
       }
     };
-    init();
+    fetchData();
   }, [jobId]);
 
-  // --- 2. AUTO-SAVE EFFECT (DRAFT) ---
+  // --- 2. AUTO-SAVE EFFECT ---
   useEffect(() => {
+    // 1. Safety Checks
     if (!dataLoaded) return;
     
-    // Only save if user edited OR if we have data (redundant check but safe)
-    if (!hasUserEdited.current && !tableData.some(r => r.readings.some(v => v !== ""))) return;
+    // *** CRITICAL FIX: STOP SAVE IF USER HAS NOT EDITED ***
+    // This prevents the component from saving "zeros" just because it mounted.
+    if (!hasUserEdited.current) return;
 
     const performAutoSave = async () => {
-      // 1. Construct Payload (Convert "" to 0)
+      // 2. Construct Payload (Convert "" to 0)
       const payload = { 
         job_id: jobId, 
         positions: debouncedTableData.map(r => ({
@@ -178,10 +187,9 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
         }))
       };
 
-      // 2. Prevent Duplicate Saves
+      // 3. Prevent Duplicate Saves (Check if data actually changed from last DB state)
       const payloadString = JSON.stringify(payload);
       if (payloadString === lastSavedPayload.current) {
-        setSaveStatus("saved");
         return; 
       }
 
@@ -194,17 +202,20 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
           payload
         );
 
-        // 3. Update Meta (Backend Calculations)
+        // 4. Update Meta (Backend Calculations like b_int)
         setMeta({
           set_torque: res.data.set_torque,
           error_value: res.data.error_value,
           torque_unit: res.data.torque_unit || "-"
         });
 
-        // 4. Update Reference
+        // 5. Update Reference
         lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
         setLastSaved(new Date());
+        
+        // Note: We do NOT reset hasUserEdited here. 
+        // We keep it true so subsequent edits continue to save.
       } catch (err) {
         console.error("Auto-save failed", err);
         setSaveStatus("error");
@@ -216,9 +227,12 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
 
   // --- 3. HANDLERS ---
   const handleReadingChange = (rowIdx: number, readIdx: number, val: string) => {
+    // Only allow numbers and decimal
     if (!/^\d*\.?\d*$/.test(val)) return;
     
+    // FLAG THE EDIT
     hasUserEdited.current = true;
+    
     setSaveStatus("idle");
 
     setTableData(prev => {
@@ -227,15 +241,16 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
       row.readings = [...row.readings];
       row.readings[readIdx] = val;
 
-      // Instant UI Mean
+      // Instant UI Mean Calculation (for responsiveness)
       const nums = row.readings.filter(r => r !== "" && !isNaN(Number(r))).map(Number);
       row.mean_value = nums.length === 10 ? nums.reduce((a, b) => a + b, 0) / 10 : null;
 
       newData[rowIdx] = row;
 
-      // Instant UI Error (b_int)
+      // Instant UI Error (b_int) Calculation
       const means = newData.map(r => r.mean_value).filter((m): m is number => m !== null);
       if (means.length === 4) {
+        // Simple client-side calc while waiting for backend
         setMeta(m => ({ ...m, error_value: Math.max(...means) - Math.min(...means) }));
       }
 
@@ -245,7 +260,7 @@ const DriveInterfaceSection: React.FC<DriveInterfaceSectionProps> = ({ jobId }) 
 
   const handleClear = () => {
     if (window.confirm("Clear all readings?")) {
-      hasUserEdited.current = true;
+      hasUserEdited.current = true; // Clearing is an edit
       setSaveStatus("idle");
       setTableData(prev => prev.map(r => ({ ...r, readings: Array(10).fill(""), mean_value: null })));
       setMeta(m => ({ ...m, error_value: 0 }));

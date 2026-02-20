@@ -4,7 +4,7 @@ from datetime import date, datetime
  
  
 class HTWUnPGMasterBase(BaseModel):
-    set_pressure_min: float = Field(..., gt=0, description="Minimum set pressure")
+    set_pressure_min: float = Field(..., ge=0, description="Minimum set pressure")
     set_pressure_max: float = Field(..., gt=0, description="Maximum set pressure")
     uncertainty_percent: float = Field(..., gt=0, description="Un-PG in %")
     valid_upto: date
@@ -22,7 +22,7 @@ class HTWUnPGMasterCreate(HTWUnPGMasterBase):
  
  
 class HTWUnPGMasterUpdate(BaseModel):
-    set_pressure_min: Optional[float] = Field(None, gt=0)
+    set_pressure_min: Optional[float] = Field(None, ge=0)
     set_pressure_max: Optional[float] = Field(None, gt=0)
     uncertainty_percent: Optional[float] = Field(None, gt=0)
     valid_upto: Optional[date]

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef} from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api, ENDPOINTS } from "../api/config";
 import { Loader2, CheckCircle2, AlertCircle, Cloud, Trash2 } from "lucide-react";
 import useDebounce from "../hooks/useDebounce"; 
@@ -164,8 +164,9 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
         });
         lastSavedPayload.current = initialPayload;
 
-        setDataLoaded(true);
+        // Reset edit flag because this is data from DB
         hasUserEdited.current = false;
+        setDataLoaded(true);
 
       } catch (err) {
         console.error("Failed to fetch reproducibility", err);
@@ -179,16 +180,13 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
   // --- 2. AUTO-SAVE EFFECT ---
   useEffect(() => {
+    // 1. Safety Checks
     if (!dataLoaded) return;
+    
+    // 2. Strict Guard: Stop save if user has not edited
     if (!hasUserEdited.current) return;
 
-    // Check if empty
-    const hasAnyValue = debouncedTableData.some(seq => seq.readings.some(r => r !== ""));
-    if (!hasAnyValue && !hasUserEdited.current) return;
-
     const performAutoSave = async () => {
-      setSaveStatus("saving");
-
       const payload = {
         job_id: jobId,
         torque_unit: meta.unit,
@@ -199,12 +197,14 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
       };
 
       const payloadString = JSON.stringify(payload);
+      
+      // 3. Prevent Duplicate Saves
       if (payloadString === lastSavedPayload.current) {
         setSaveStatus("saved");
         return;
       }
 
-      lastSavedPayload.current = payloadString;
+      setSaveStatus("saving");
 
       try {
         const res = await api.post<ReproducibilityResponse>(
@@ -212,14 +212,16 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
           payload
         );
 
+        // Update meta with backend calculations
         const backendUnit = res.data.torque_unit || res.data.unit || meta.unit;
-
         setMeta({
             set_torque: res.data.set_torque_20,
             b_rep: res.data.error_due_to_reproducibility,
             unit: backendUnit
         });
 
+        // Update Reference
+        lastSavedPayload.current = payloadString;
         setSaveStatus("saved");
         setLastSaved(new Date());
       } catch (err) {
@@ -229,7 +231,7 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
     };
 
     performAutoSave();
-  }, [debouncedTableData, jobId]);
+  }, [debouncedTableData, jobId, dataLoaded, meta.unit]);
 
   // --- 3. HANDLERS ---
   const handleReadingChange = (rowIdx: number, readIdx: number, value: string) => {
@@ -283,7 +285,7 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
     }
   };
 
-  // --- STYLES (Matching DriveInterfaceSection) ---
+  // --- STYLES ---
   const thBase = "border border-gray-300 px-2 py-2 font-bold text-center align-middle bg-gray-100 text-gray-700 text-xs";
   const thUnit = "border border-gray-300 px-1 py-1 font-bold text-center align-middle bg-blue-50 text-blue-800 text-[10px]";
   const tdBase = "border border-gray-300 px-2 py-2 text-center align-middle text-gray-800 font-medium text-sm";
@@ -296,7 +298,8 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
 
   return (
     <>
-    <div className="flex flex-col w-full animate-in fade-in duration-500 bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6">
+    {/* Removed 'animate-in fade-in' to prevent movement */}
+    <div className="flex flex-col w-full bg-white border border-gray-200 rounded-xl shadow-sm p-4 mt-6">
       
       {/* HEADER */}
       <div className="mb-4 flex justify-between items-center">
@@ -362,9 +365,9 @@ const ReproducibilitySection: React.FC<ReproducibilitySectionProps> = ({ jobId, 
             {tableData.map((row, rowIdx) => (
               <tr key={row.sequence_no} className="hover:bg-gray-50 transition-colors">
                 
-                {/* SET TORQUE (Merged Cell for all 4 rows) */}
+                {/* SET TORQUE (Merged Cell - Dynamic RowSpan) */}
                 {rowIdx === 0 && (
-                  <td rowSpan={4} className={`${tdBase} bg-gray-50 font-bold text-lg text-gray-700 border-r border-gray-300`}>
+                  <td rowSpan={tableData.length} className={`${tdBase} bg-gray-50 font-bold text-lg text-gray-700 border-r border-gray-300`}>
                     {meta.set_torque || "-"}
                   </td>
                 )}

@@ -2,48 +2,62 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     """
-    Configuration settings for the application, loaded from environment variables.
+    Application configuration loaded strictly from environment variables (.env).
     """
+
     model_config = SettingsConfigDict(
-        env_file='.env', 
-        env_file_encoding='utf-8', 
-        extra='ignore' # Ignore keys in .env that are not defined here
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
-    # --- Application Settings ---
-    APP_ENV: str = "development"
-    APP_NAME: str = "Nextage LIMS API"
-    APP_PORT: int = 8000
+    # -----------------------------
+    # Application Settings
+    # -----------------------------
+    APP_ENV: str
+    APP_NAME: str
+    APP_PORT: int
 
-    # --- Database Settings ---
-    DATABASE_URL: str = "postgresql://postgres:root@localhost:5432/limsdbp1"
+    # -----------------------------
+    # Database Settings
+    # -----------------------------
+    DATABASE_URL: str
 
-    # --- JWT/Security Settings ---
+    # -----------------------------
+    # JWT / Security Settings
+    # -----------------------------
     JWT_SECRET: str
     REFRESH_TOKEN_SECRET: str
-    ALGORITHM: str = "HS256" # Default algorithm for JWT
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = 15
-    TIMEZONE: str = "UTC"
+    ALGORITHM: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    REFRESH_TOKEN_EXPIRE_MINUTES: int
+    TIMEZONE: str
 
-    # --- SMTP/Email Settings ---
-    SMTP_SERVER: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
+    # -----------------------------
+    # SMTP / Email Settings
+    # -----------------------------
+    SMTP_SERVER: str
+    SMTP_PORT: int
     SMTP_USER: str
     SMTP_PASSWORD: str
     FROM_EMAIL: str
 
-    # === THIS IS THE MISSING SETTING THAT NEEDS TO BE ADDED ===
-    # --- Frontend URL ---
-    # This is the URL for your React/Vue/Svelte frontend application.
-    FRONTEND_URL: str = "http://localhost:3000"
-    # ==========================================================
+    # Optional (Report Module)
+    REPORT_EMAIL_TO: str | None = None
 
-    # --- Delayed Email Settings ---
-    DELAYED_EMAIL_DELAY_MINUTES: int = 3
+    # -----------------------------
+    # Frontend URL
+    # -----------------------------
+    FRONTEND_URL: str
+
+    # -----------------------------
+    # Delayed Email Settings
+    # -----------------------------
+    DELAYED_EMAIL_DELAY_MINUTES: int
 
 
-# Create an instance of the settings for import throughout the application
+# Singleton instance
 settings = Settings()
